@@ -1,5 +1,3 @@
-
-
 import Foundation
 import CoreData
 
@@ -19,24 +17,27 @@ final class ModelCacheManager: ObservableObject {
     private init() {}
     
     /// Get all models across all providers, sorted by favorites first, then provider/model
-    /// By default (no custom selection), all models are shown.
+    /// Only shows selected models and favorites, not all available models
     var allModels: [(provider: String, model: AIModel)] {
         let selectedModelsManager = SelectedModelsManager.shared
         var result: [(provider: String, model: AIModel)] = []
         
         for (providerType, models) in cachedModels {
-            let filteredModels: [AIModel]
             if selectedModelsManager.hasCustomSelection(for: providerType) {
                 let selectedModelIds = selectedModelsManager.getSelectedModelIds(for: providerType)
-                filteredModels = models.filter { model in
-                    favoriteManager.isFavorite(provider: providerType, model: model.id) || selectedModelIds.contains(model.id)
+                let filteredModels = models.filter { model in
+                    let isFavorite = favoriteManager.isFavorite(provider: providerType, model: model.id)
+                    let isSelected = selectedModelIds.contains(model.id)
+                    return isFavorite || isSelected
+                }
+                for model in filteredModels {
+                    result.append((provider: providerType, model: model))
                 }
             } else {
-                filteredModels = models
-            }
-            
-            for model in filteredModels {
-                result.append((provider: providerType, model: model))
+                // No custom selection => include all models
+                for model in models {
+                    result.append((provider: providerType, model: model))
+                }
             }
         }
         
@@ -84,31 +85,30 @@ final class ModelCacheManager: ObservableObject {
     }
     
     /// Get models for a specific provider, sorted with favorites first
-    /// By default (no custom selection), all models are shown.
+    /// Only shows selected models and favorites, not all available models
     func getModelsSorted(for providerType: String) -> [AIModel] {
         let allModels = getModels(for: providerType)
         let selectedModelsManager = SelectedModelsManager.shared
+        let hasCustom = selectedModelsManager.hasCustomSelection(for: providerType)
+        let selectedModelIds = selectedModelsManager.getSelectedModelIds(for: providerType)
         
-        let filteredModels: [AIModel]
-        if selectedModelsManager.hasCustomSelection(for: providerType) {
-            let selectedModelIds = selectedModelsManager.getSelectedModelIds(for: providerType)
-            filteredModels = allModels.filter { model in
-                favoriteManager.isFavorite(provider: providerType, model: model.id) || selectedModelIds.contains(model.id)
+        let baseModels: [AIModel]
+        if hasCustom {
+            baseModels = allModels.filter { model in
+                let isFavorite = favoriteManager.isFavorite(provider: providerType, model: model.id)
+                let isSelected = selectedModelIds.contains(model.id)
+                return isFavorite || isSelected
             }
         } else {
-            filteredModels = allModels
+            baseModels = allModels
         }
         
-        return filteredModels.sorted { first, second in
+        return baseModels.sorted { first, second in
             let firstIsFavorite = favoriteManager.isFavorite(provider: providerType, model: first.id)
             let secondIsFavorite = favoriteManager.isFavorite(provider: providerType, model: second.id)
-            
-            // Favorites come first
             if firstIsFavorite != secondIsFavorite {
                 return firstIsFavorite
             }
-            
-            // If both are favorites or both are not, sort alphabetically
             return first.id < second.id
         }
     }
@@ -125,15 +125,27 @@ final class ModelCacheManager: ObservableObject {
     
     /// Fetch models for all configured providers
     func fetchAllModels(from apiServices: [APIServiceEntity]) {
+        if !Thread.isMainThread {
+            DispatchQueue.main.async { [weak self] in
+                self?.fetchAllModels(from: apiServices)
+            }
+            return
+        }
         let providerTypes = Set(apiServices.compactMap { $0.type })
         
         for providerType in providerTypes {
-            fetchModels(for: providerType, from: apiServices)
+            self.fetchModels(for: providerType, from: apiServices)
         }
     }
     
     /// Fetch models for a specific provider
     func fetchModels(for providerType: String, from apiServices: [APIServiceEntity]) {
+        if !Thread.isMainThread {
+            DispatchQueue.main.async { [weak self] in
+                self?.fetchModels(for: providerType, from: apiServices)
+            }
+            return
+        }
         guard let service = getServiceForProvider(providerType, from: apiServices) else { return }
         guard let config = AppConstants.defaultApiConfigurations[providerType] else { return }
         
@@ -144,6 +156,49 @@ final class ModelCacheManager: ObservableObject {
             return
         }
         
+        // Special handling for HuggingFace - doesn't require API key
+        if providerType.lowercased() == "huggingface" {
+            loadingStates[providerType] = true
+            fetchErrors[providerType] = nil
+            
+            Task { [weak self] in
+                guard let self else { return }
+                do {
+                    // Create HuggingFace service to fetch models
+                    let huggingFaceService = HuggingFaceService(model: config.defaultModel)
+                    let models = try await huggingFaceService.fetchModels()
+
+                    await MainActor.run {
+                        self.cachedModels[providerType] = models
+                        self.loadingStates[providerType] = false
+                        self.fetchErrors[providerType] = nil
+                        
+                        #if DEBUG
+                        WardenLog.app.debug("HuggingFace models cached: \(models.count) models")
+                        #endif
+                    }
+
+                    // Trigger metadata fetching for HuggingFace
+                    await self.triggerMetadataFetch(for: providerType, apiKey: "")
+                } catch {
+                    await MainActor.run {
+                        self.loadingStates[providerType] = false
+                        self.fetchErrors[providerType] = error.localizedDescription
+
+                        // Fall back to static models if fetching fails
+                        if let staticModels = AppConstants.defaultApiConfigurations[providerType]?.models {
+                            self.cachedModels[providerType] = staticModels.map { AIModel(id: $0) }
+                        }
+                        
+                        #if DEBUG
+                        WardenLog.app.error("Failed to fetch HuggingFace models: \(error.localizedDescription)")
+                        #endif
+                    }
+                }
+            }
+            return
+        }
+        
         // Get current API key
         let currentAPIKey = (try? TokenManager.getToken(for: service.id?.uuidString ?? "")) ?? ""
         
@@ -151,7 +206,7 @@ final class ModelCacheManager: ObservableObject {
         // 1. Never fetched before
         // 2. API key changed
         // 3. Currently loading
-        let shouldFetch = cachedModels[providerType] == nil || 
+        let shouldFetch = cachedModels[providerType] == nil ||
                          lastFetchedAPIKeys[providerType] != currentAPIKey
         
         guard shouldFetch else { return }
@@ -161,40 +216,42 @@ final class ModelCacheManager: ObservableObject {
         fetchErrors[providerType] = nil
         
         // Create API service configuration
-        guard let serviceUrl = service.url else { 
+        guard let serviceUrl = service.url else {
             loadingStates[providerType] = false
-            return 
+            return
         }
         
-        let fallbackStaticModels = AppConstants.defaultApiConfigurations[providerType]?.models.map { AIModel(id: $0) } ?? []
-        Task.detached(priority: .userInitiated) { [providerType, currentAPIKey, serviceUrl] in
+        let apiConfig = APIServiceConfig(
+            name: providerType,
+            apiUrl: serviceUrl,
+            apiKey: currentAPIKey,
+            model: ""
+        )
+        
+        let apiService = APIServiceFactory.createAPIService(config: apiConfig)
+        
+        Task { [weak self] in
+            guard let self else { return }
             do {
-                let apiConfig = APIServiceConfig(
-                    name: providerType,
-                    apiUrl: serviceUrl,
-                    apiKey: currentAPIKey,
-                    model: ""
-                )
-                let apiService = APIServiceFactory.createAPIService(config: apiConfig)
                 let models = try await apiService.fetchModels()
-                await MainActor.run { [weak self] in
-                    guard let self else { return }
+
+                await MainActor.run {
                     self.cachedModels[providerType] = models
                     self.lastFetchedAPIKeys[providerType] = currentAPIKey
                     self.loadingStates[providerType] = false
                     self.fetchErrors[providerType] = nil
                 }
 
-                await ModelMetadataCache.shared.fetchMetadataIfNeeded(provider: providerType, apiKey: currentAPIKey)
+                // Trigger metadata fetching for this provider now that we have models
+                await self.triggerMetadataFetch(for: providerType, apiKey: currentAPIKey)
             } catch {
-                await MainActor.run { [weak self] in
-                    guard let self else { return }
+                await MainActor.run {
                     self.loadingStates[providerType] = false
                     self.fetchErrors[providerType] = error.localizedDescription
 
-                    // Fall back to static models if fetching fails.
-                    if !fallbackStaticModels.isEmpty {
-                        self.cachedModels[providerType] = fallbackStaticModels
+                    // Fall back to static models if fetching fails
+                    if let staticModels = AppConstants.defaultApiConfigurations[providerType]?.models {
+                        self.cachedModels[providerType] = staticModels.map { AIModel(id: $0) }
                         self.lastFetchedAPIKeys[providerType] = currentAPIKey
                     }
                 }
@@ -204,6 +261,12 @@ final class ModelCacheManager: ObservableObject {
     
     /// Force refresh models for a specific provider
     func refreshModels(for providerType: String, from apiServices: [APIServiceEntity]) {
+        if !Thread.isMainThread {
+            DispatchQueue.main.async { [weak self] in
+                self?.refreshModels(for: providerType, from: apiServices)
+            }
+            return
+        }
         cachedModels[providerType] = nil
         lastFetchedAPIKeys[providerType] = nil
         fetchModels(for: providerType, from: apiServices)
@@ -211,6 +274,12 @@ final class ModelCacheManager: ObservableObject {
     
     /// Clear all cached models
     func clearCache() {
+        if !Thread.isMainThread {
+            DispatchQueue.main.async { [weak self] in
+                self?.clearCache()
+            }
+            return
+        }
         cachedModels.removeAll()
         lastFetchedAPIKeys.removeAll()
         loadingStates.removeAll()
@@ -226,6 +295,14 @@ final class ModelCacheManager: ObservableObject {
     }
     
     private func hasValidToken(for service: APIServiceEntity) -> Bool {
+        // HuggingFace doesn't require an API token
+        if let type = service.type?.lowercased(), type == "huggingface" {
+            return true
+        }
+        
+        if let type = service.type?.lowercased(), type == "ollama" || type == "lmstudio" {
+            return true
+        }
         guard let serviceId = service.id?.uuidString else { return false }
         do {
             let token = try TokenManager.getToken(for: serviceId)
@@ -234,4 +311,11 @@ final class ModelCacheManager: ObservableObject {
             return false
         }
     }
+    
+    /// Trigger metadata fetching for a provider
+    /// This is called after models are successfully fetched to ensure metadata is available
+    private func triggerMetadataFetch(for providerType: String, apiKey: String) async {
+        await ModelMetadataCache.shared.fetchMetadataIfNeeded(provider: providerType, apiKey: apiKey)
+    }
 } 
+

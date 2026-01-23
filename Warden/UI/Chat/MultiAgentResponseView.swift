@@ -1,5 +1,5 @@
-
 import SwiftUI
+import AppKit
 
 struct MultiAgentResponseView: View {
     let responses: [MultiAgentMessageManager.AgentResponse]
@@ -46,6 +46,85 @@ struct AgentResponseColumn: View {
     
     private var serviceLogoName: String {
         "logo_\(response.serviceType)"
+    }
+    
+    private var isGoogleImageModel: Bool {
+        let service = response.serviceType.lowercased()
+        let model = response.model.lowercased()
+        let isGoogle = service.contains("gemini") || service.contains("google")
+        let hasImageKeyword = model.contains("imagen") || model.contains("image") || model.contains("banana")
+        return isGoogle && hasImageKeyword
+    }
+
+    private var googleImage: NSImage? {
+        guard isGoogleImageModel else { return nil }
+        guard let base64 = parseGoogleImageBase64(from: response.response) else { return nil }
+        return decodeBase64ToNSImage(base64)
+    }
+
+    private func parseGoogleImageBase64(from responseString: String) -> String? {
+        // Attempt to parse JSON and locate part.inlineData.data.base64 (with flexible traversal)
+        guard let data = responseString.data(using: .utf8) else { return nil }
+        do {
+            let json = try JSONSerialization.jsonObject(with: data, options: [])
+            if let found = searchForBase64(in: json, seenInlineData: false, seenData: false) {
+                return stripDataURLPrefix(found)
+            }
+        } catch {
+            // Not valid JSON; silently ignore and return nil
+        }
+        return nil
+    }
+
+    private func searchForBase64(in any: Any, seenInlineData: Bool, seenData: Bool) -> String? {
+        if let dict = any as? [String: Any] {
+            for (key, value) in dict {
+                if key == "inlineData" || key == "inline_data" {
+                    if let result = searchForBase64(in: value, seenInlineData: true, seenData: false) { return result }
+                } else if key == "data" {
+                    if seenInlineData {
+                        // If value is string, return immediately
+                        if let str = value as? String { return str }
+                        // If value is dictionary, keep searching for base64 key
+                        if let result = searchForBase64(in: value, seenInlineData: seenInlineData, seenData: true) { return result }
+                    } else {
+                        if let result = searchForBase64(in: value, seenInlineData: seenInlineData, seenData: true) { return result }
+                    }
+                } else if key == "base64", seenInlineData && seenData {
+                    if let str = value as? String { return str }
+                } else if key == "image_url" {
+                    if let str = value as? String,
+                       str.starts(with: "data:"),
+                       str.contains(";base64,") {
+                        if let commaIndex = str.firstIndex(of: ",") {
+                            return String(str[str.index(after: commaIndex)...])
+                        }
+                    }
+                } else {
+                    if let result = searchForBase64(in: value, seenInlineData: seenInlineData, seenData: seenData) { return result }
+                }
+            }
+        } else if let array = any as? [Any] {
+            for element in array {
+                if let result = searchForBase64(in: element, seenInlineData: seenInlineData, seenData: seenData) { return result }
+            }
+        }
+        return nil
+    }
+
+    private func stripDataURLPrefix(_ base64: String) -> String {
+        if let range = base64.range(of: ",") {
+            let prefix = base64[..<range.lowerBound]
+            if prefix.contains("base64") {
+                return String(base64[range.upperBound...])
+            }
+        }
+        return base64
+    }
+
+    private func decodeBase64ToNSImage(_ base64: String) -> NSImage? {
+        guard let imgData = Data(base64Encoded: base64, options: [.ignoreUnknownCharacters]) else { return nil }
+        return NSImage(data: imgData)
     }
     
     var body: some View {
@@ -107,6 +186,17 @@ struct AgentResponseColumn: View {
                                 .foregroundColor(.secondary)
                         }
                         .padding(.vertical, 4)
+                    } else if let image = googleImage {
+                        Image(nsImage: image)
+                            .resizable()
+                            .interpolation(.high)
+                            .aspectRatio(contentMode: .fit)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .cornerRadius(8)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+                            )
                     } else if !response.response.isEmpty {
                         Text(response.response)
                             .font(.system(size: chatFontSize))

@@ -16,7 +16,15 @@ final class ModelMetadataCache: ObservableObject {
     private init() {
         loadFromStorage()
     }
-
+    
+    /// Upsert a single model metadata entry for a provider
+    func upsertMetadata(provider: String, metadata: ModelMetadata) {
+        var providerCache = cachedMetadata[provider] ?? [:]
+        providerCache[metadata.modelId] = metadata
+        cachedMetadata[provider] = providerCache
+        saveToStorage()
+    }
+    
     /// Get metadata for a model, fetching if needed
     func getMetadata(provider: String, modelId: String) -> ModelMetadata? {
         return cachedMetadata[provider]?[modelId]
@@ -41,32 +49,63 @@ final class ModelMetadataCache: ObservableObject {
         }
         
         isFetching[provider] = true
-
-        Task.detached(priority: .utility) { [provider, apiKey] in
-            defer {
-                Task { @MainActor [weak self] in
-                    guard let self else { return }
-                    self.isFetching[provider] = false
-                    self.lastRefreshAttempt[provider] = Date()
-                }
-            }
-
-            do {
-                let fetcher = ModelMetadataFetcherFactory.createFetcher(for: provider)
-                let newMetadata = try await fetcher.fetchAllMetadata(apiKey: apiKey)
-
-                await MainActor.run { [weak self] in
-                    guard let self else { return }
-                    self.cachedMetadata[provider] = newMetadata
-                    self.saveToStorage()
-                }
-            } catch {
-                await MainActor.run {
-                    WardenLog.app.error(
-                        "Failed to fetch metadata for \(provider, privacy: .public): \(error.localizedDescription, privacy: .public)"
+        
+        defer {
+            isFetching[provider] = false
+            lastRefreshAttempt[provider] = Date()
+        }
+        
+        do {
+            let fetcher = ModelMetadataFetcherFactory.createFetcher(for: provider)
+            let newMetadata = try await fetcher.fetchAllMetadata(apiKey: apiKey)
+            
+            cachedMetadata[provider] = newMetadata
+            
+            // Ensure OpenAI image model metadata exists with image-generation capability
+            let normalized = provider.lowercased()
+            if normalized == "chatgpt" || normalized == "openai" {
+                let modelId = "gpt-image-1"
+                if cachedMetadata[provider]?[modelId] == nil {
+                    let imageMeta = ModelMetadata(
+                        modelId: modelId,
+                        provider: provider,
+                        pricing: nil,
+                        maxContextTokens: nil,
+                        capabilities: ["image-generation"],
+                        latency: nil,
+                        costLevel: nil,
+                        lastUpdated: Date(),
+                        source: .providerDocumentation
                     )
+                    upsertMetadata(provider: provider, metadata: imageMeta)
+                } else {
+                    // Ensure the capability includes image-generation
+                    if var existing = cachedMetadata[provider]?[modelId] {
+                        if !existing.capabilities.contains("image-generation") {
+                            var caps = existing.capabilities
+                            caps.append("image-generation")
+                            let updated = ModelMetadata(
+                                modelId: existing.modelId,
+                                provider: existing.provider,
+                                pricing: existing.pricing,
+                                maxContextTokens: existing.maxContextTokens,
+                                capabilities: caps,
+                                latency: existing.latency,
+                                costLevel: existing.costLevel,
+                                lastUpdated: Date(),
+                                source: existing.source
+                            )
+                            upsertMetadata(provider: provider, metadata: updated)
+                        }
+                    }
                 }
             }
+            
+            saveToStorage()
+        } catch {
+            WardenLog.app.error(
+                "Failed to fetch metadata for \(provider, privacy: .public): \(error.localizedDescription, privacy: .public)"
+            )
         }
     }
     
@@ -114,19 +153,3 @@ final class ModelMetadataCache: ObservableObject {
     }
 }
 
-enum ModelMetadataStorage {
-    static let userDefaultsKey = "modelMetadataCache"
-
-    static func getMetadata(provider: String, modelId: String) -> ModelMetadata? {
-        guard let data = UserDefaults.standard.data(forKey: userDefaultsKey), !data.isEmpty else {
-            return nil
-        }
-
-        do {
-            let decoded = try JSONDecoder().decode([String: [String: ModelMetadata]].self, from: data)
-            return decoded[provider]?[modelId]
-        } catch {
-            return nil
-        }
-    }
-}

@@ -8,6 +8,7 @@ struct MessageCell: View {
     @Binding var isActive: Bool
     let viewContext: NSManagedObjectContext
     @State private var isHovered = false
+    @Environment(\.colorScheme) var colorScheme
     @AppStorage("showSidebarAIIcons") private var showSidebarAIIcons: Bool = true
 
     var searchText: String = ""
@@ -62,15 +63,21 @@ struct MessageCell: View {
                             .renderingMode(.template)
                             .interpolation(.high)
                             .frame(width: 16, height: 16)
-                            .foregroundColor(self.isActive ? .white : .primary)
+                            .foregroundColor(self.isActive ? (colorScheme == .dark ? .white : .black) : .primary)
                     }
                     
                     // Branch indicator badge
                     if chat.isBranch {
-                        Image(systemName: "arrow.triangle.branch")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(self.isActive ? .white : .secondary)
-                            .help(branchHelpText)
+                        ZStack {
+                            Circle()
+                                .fill(Color.accentColor.opacity(0.15))
+                                .frame(width: 16, height: 16)
+                            
+                            Image(systemName: "arrow.triangle.branch")
+                                .font(.system(size: 8, weight: .semibold))
+                                .foregroundColor(.accentColor)
+                        }
+                        .help(branchHelpText)
                     }
                 }
                 .padding(.leading, isSelectionMode ? 4 : 8)
@@ -85,7 +92,7 @@ struct MessageCell: View {
                     
                     // Snippet removed
                 }
-                .padding(.vertical, 6)
+                .padding(.vertical, 8)
                 .padding(.trailing, 8)
                 .padding(.leading, showSidebarAIIcons ? 0 : (isSelectionMode ? 4 : 8))
                 
@@ -99,7 +106,7 @@ struct MessageCell: View {
                             .frame(width: 8, height: 8)
                         Text(project.name ?? "Project")
                             .font(.caption2)
-                            .foregroundColor(self.isActive ? .white : .secondary)
+                            .foregroundColor(self.isActive ? (colorScheme == .dark ? .white : .black) : .secondary)
                             .lineLimit(1)
                     }
                     .padding(.trailing, 4)
@@ -107,14 +114,23 @@ struct MessageCell: View {
                 
                 if chat.isPinned {
                     Image(systemName: "pin.fill")
-                        .foregroundColor(self.isActive ? .white : .secondary)
+                        .foregroundColor(self.isActive ? (colorScheme == .dark ? .white : .black) : .secondary)
                         .font(.system(size: 10, weight: .medium))
                         .rotationEffect(.degrees(45))
                         .padding(.trailing, 10)
                 }
             }
             .frame(maxWidth: .infinity)
-            .foregroundColor(self.isActive ? .white : .primary)
+            .foregroundColor(self.isActive ? (colorScheme == .dark ? .white : .black) : .primary)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(
+                        self.isActive
+                            ? Color.accentColor.opacity(0.15)
+                            : self.isHovered
+                                ? Color.primary.opacity(0.05) : Color.clear
+                    )
+            )
             .animation(.easeInOut(duration: 0.15), value: isHovered)
             .animation(.easeInOut(duration: 0.15), value: isActive)
             .onHover { hovering in

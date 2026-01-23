@@ -73,7 +73,6 @@ public class ChatEntity: NSManagedObject, Identifiable {
     @NSManaged public var top_p: Double
     @NSManaged public var behavior: String?
     @NSManaged public var newMessage: String?
-    @NSManaged public var reasoningEffortRaw: String?
     @NSManaged public var createdDate: Date
     @NSManaged public var updatedDate: Date
     @NSManaged public var systemMessage: String
@@ -95,10 +94,6 @@ public class ChatEntity: NSManagedObject, Identifiable {
 
     public var messagesArray: [MessageEntity] {
         messages.array as? [MessageEntity] ?? []
-    }
-    
-    public func nextMessageID() -> Int64 {
-        (messagesArray.map(\.id).max() ?? 0) + 1
     }
 
     public var topP: Double {
@@ -130,18 +125,6 @@ public class ChatEntity: NSManagedObject, Identifiable {
         (messages.array as? [MessageEntity])?.forEach { managedObjectContext?.delete($0) }
         messages = NSOrderedSet()
         newChat = true
-    }
-
-    var reasoningEffort: ReasoningEffort {
-        get {
-            guard let reasoningEffortRaw, let effort = ReasoningEffort(rawValue: reasoningEffortRaw) else {
-                return .off
-            }
-            return effort
-        }
-        set {
-            reasoningEffortRaw = newValue == .off ? nil : newValue.rawValue
-        }
     }
     
     public var childChatsArray: [ChatEntity] {
@@ -304,7 +287,6 @@ struct ChatBackup: Codable {
     var top_p: Float64?
     var behavior: String?
     var newMessage: String?
-    var reasoningEffortRaw: String?
     var gptModel: String?
     var systemMessage: String?
     var name: String?
@@ -319,7 +301,6 @@ struct ChatBackup: Codable {
         self.top_p = chatEntity.top_p
         self.behavior = chatEntity.behavior
         self.newMessage = chatEntity.newMessage
-        self.reasoningEffortRaw = chatEntity.reasoningEffortRaw
         self.requestMessages = chatEntity.requestMessages
         self.gptModel = chatEntity.gptModel
         self.systemMessage = chatEntity.systemMessage

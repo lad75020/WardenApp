@@ -51,24 +51,28 @@ Rephrase the following sentence to improve clarity and readability, without chan
 	        apiServiceInstance.sendMessage(
 	            requestMessages,
 	            tools: nil,
-	            settings: GenerationSettings(temperature: 0.3) // Lower temperature for more consistent rephrasing
+	            temperature: 0.3 // Lower temperature for more consistent rephrasing
 	        ) { [weak self] result in
-                self?.isRephrasing = false
+                Task { [weak self] in
+                    await MainActor.run {
+                        self?.isRephrasing = false
 
-                switch result {
-                case .success(let (rephrasedText, _)):
-                    guard let rephrasedText else {
-                        completion(.failure(.invalidResponse))
-                        return
+                        switch result {
+                        case .success(let (rephrasedText, _)):
+                            guard let rephrasedText else {
+                                completion(.failure(.invalidResponse))
+                                return
+                            }
+
+                            let cleanedText = rephrasedText
+                                .trimmingCharacters(in: .whitespacesAndNewlines)
+                                .trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+                            completion(.success(cleanedText))
+
+                        case .failure(let error):
+                            completion(.failure(error))
+                        }
                     }
-
-                    let cleanedText = rephrasedText
-                        .trimmingCharacters(in: .whitespacesAndNewlines)
-                        .trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
-                    completion(.success(cleanedText))
-
-                case .failure(let error):
-                    completion(.failure(error))
                 }
 	        }
     }

@@ -10,6 +10,14 @@ struct BranchPopover: View {
     let onDismiss: () -> Void
     
     @Environment(\.managedObjectContext) private var viewContext
+    @Environment(\.colorScheme) private var colorScheme
+    @StateObject private var viewModel = ModelSelectorViewModel()
+    @StateObject private var favoriteManager = FavoriteModelsManager.shared
+    @StateObject private var metadataCache = ModelMetadataCache.shared
+    
+    @State private var hoveredItem: String? = nil
+    @State private var isCreating = false
+    @State private var errorMessage: String?
     
     @FetchRequest(
         sortDescriptors: [NSSortDescriptor(keyPath: \APIServiceEntity.addedDate, ascending: false)],
@@ -17,36 +25,72 @@ struct BranchPopover: View {
     )
     private var apiServices: FetchedResults<APIServiceEntity>
     
-    @State private var isCreating = false
-    @State private var errorMessage: String?
-    
     var body: some View {
         VStack(spacing: 0) {
+            // Header
             header
             
-            Divider().opacity(0.5)
+            Divider()
+                .opacity(0.5)
             
             if isCreating {
                 creatingView
             } else if let error = errorMessage {
                 errorView(error)
             } else {
-                BranchModelPicker(
-                    apiServices: Array(apiServices),
-                    onSelect: { provider, model in
-                        createBranch(providerType: provider, model: model)
+                // Search bar
+                searchBar
+                    .padding(.horizontal, 14)
+                    .padding(.top, 12)
+                    .padding(.bottom, 10)
+                
+                Divider()
+                    .opacity(0.5)
+                
+                // Model list
+                ScrollView(.vertical, showsIndicators: true) {
+                    LazyVStack(spacing: 4, pinnedViews: [.sectionHeaders]) {
+                        ForEach(viewModel.filteredSections) { section in
+                            if section.id == "favorites" {
+                                Section {
+                                    ForEach(section.items) { item in
+                                        modelRow(item: item)
+                                    }
+                                } header: {
+                                    sectionHeader(section.title, icon: "star.fill")
+                                }
+                            } else if section.id != "search" {
+                                Section {
+                                    ForEach(section.items) { item in
+                                        modelRow(item: item)
+                                    }
+                                } header: {
+                                    providerSectionHeader(title: section.title, provider: section.id)
+                                }
+                            }
+                        }
+                        
+                        // Bottom padding
+                        Spacer()
+                            .frame(height: 8)
                     }
-                )
+                    .padding(.horizontal, 10)
+                    .padding(.top, 6)
+                }
             }
         }
         .frame(width: 360, height: 420)
         .background(Color(NSColor.controlBackgroundColor))
+        .onAppear {
+            viewModel.updateServices(Array(apiServices))
+        }
     }
     
     // MARK: - Header
     
     private var header: some View {
         HStack(spacing: 12) {
+            // Branch icon
             ZStack {
                 RoundedRectangle(cornerRadius: 8)
                     .fill(Color.accentColor.opacity(0.12))
@@ -69,6 +113,7 @@ struct BranchPopover: View {
             
             Spacer()
             
+            // Close button
             Button(action: onDismiss) {
                 Image(systemName: "xmark.circle.fill")
                     .font(.system(size: 18))
@@ -79,6 +124,176 @@ struct BranchPopover: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
+    }
+    
+    // MARK: - Search Bar
+    
+    private var searchBar: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 12, weight: .regular))
+                .foregroundStyle(.tertiary)
+            
+            TextField("Search models...", text: $viewModel.searchText)
+                .textFieldStyle(.plain)
+                .font(.system(size: 12))
+            
+            if !viewModel.searchText.isEmpty {
+                Button(action: { viewModel.searchText = "" }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color(NSColor.textBackgroundColor))
+        )
+    }
+    
+    // MARK: - Section Headers
+    
+    private func sectionHeader(_ title: String, icon: String? = nil) -> some View {
+        HStack(spacing: 6) {
+            if let icon = icon {
+                Image(systemName: icon)
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundColor(.accentColor.opacity(0.8))
+            }
+            Text(title.uppercased())
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .foregroundStyle(.secondary)
+            Spacer()
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(Color(NSColor.controlBackgroundColor))
+    }
+    
+    private func providerSectionHeader(title: String, provider: String) -> some View {
+        HStack(spacing: 6) {
+            Image("logo_\(provider)")
+                .resizable()
+                .renderingMode(.template)
+                .interpolation(.high)
+                .frame(width: 12, height: 12)
+                .foregroundStyle(.secondary)
+            
+            Text(title.uppercased())
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .foregroundStyle(.secondary)
+            
+            Spacer()
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(Color(NSColor.controlBackgroundColor))
+    }
+    
+    // MARK: - Model Row
+    
+    private func modelRow(item: ModelSelectorViewModel.ModelItem) -> some View {
+        let metadata = metadataCache.getMetadata(provider: item.provider, modelId: item.modelId)
+        let isReasoning = metadata?.hasReasoning ?? false
+        let isVision = metadata?.hasVision ?? false
+        let formattedModel = ModelMetadata.formatModelComponents(modelId: item.modelId, provider: item.provider)
+        let isHovered = hoveredItem == item.id
+        
+        return Button(action: {
+            createBranch(providerType: item.provider, model: item.modelId)
+        }) {
+            HStack(spacing: 10) {
+                // Model info
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 5) {
+                        Text(formattedModel.displayName)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                        
+                        if let provider = formattedModel.provider {
+                            Text(provider)
+                                .font(.system(size: 10, weight: .regular))
+                                .foregroundStyle(.tertiary)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 1)
+                                .background(
+                                    Capsule()
+                                        .fill(Color.primary.opacity(0.06))
+                                )
+                        }
+                    }
+                    
+                    // Capabilities badges
+                    if isReasoning || isVision || (metadata?.hasPricing == true) {
+                        HStack(spacing: 8) {
+                            if isReasoning {
+                                HStack(spacing: 3) {
+                                    Image(systemName: "brain")
+                                        .font(.system(size: 8))
+                                    Text("Reasoning")
+                                        .font(.system(size: 9))
+                                }
+                                .foregroundStyle(.secondary)
+                            }
+                            if isVision {
+                                HStack(spacing: 3) {
+                                    Image(systemName: "eye")
+                                        .font(.system(size: 8))
+                                    Text("Vision")
+                                        .font(.system(size: 9))
+                                }
+                                .foregroundStyle(.secondary)
+                            }
+                            if let pricing = metadata?.pricing, let inputPrice = pricing.inputPer1M {
+                                Text(pricing.outputPer1M != nil
+                                    ? "$\(String(format: "%.2f", inputPrice))/$\(String(format: "%.2f", pricing.outputPer1M!))/M"
+                                    : "$\(String(format: "%.2f", inputPrice))/M")
+                                    .font(.system(size: 9))
+                                    .foregroundStyle(.tertiary)
+                            }
+                        }
+                    }
+                }
+                
+                Spacer()
+                
+                // Actions
+                HStack(spacing: 10) {
+                    // Favorite button
+                    Button(action: {
+                        favoriteManager.toggleFavorite(provider: item.provider, model: item.modelId)
+                    }) {
+                        Image(systemName: item.isFavorite ? "star.fill" : "star")
+                            .font(.system(size: 11))
+                            .foregroundStyle(item.isFavorite ? Color.accentColor : Color.secondary.opacity(0.5))
+                    }
+                    .buttonStyle(.plain)
+                    
+                    // Branch action indicator
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(isHovered ? .accentColor : .secondary.opacity(0.5))
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(isHovered ? Color.accentColor.opacity(0.1) : Color.clear)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            withAnimation(.easeInOut(duration: 0.1)) {
+                hoveredItem = hovering ? item.id : nil
+            }
+        }
     }
     
     // MARK: - Creating State
@@ -164,183 +379,5 @@ struct BranchPopover: View {
                 }
             }
         }
-    }
-}
-
-// MARK: - Branch Model Picker
-
-private struct BranchModelPicker: View {
-    let apiServices: [APIServiceEntity]
-    let onSelect: (String, String) -> Void
-    
-    @ObservedObject private var modelCache = ModelCacheManager.shared
-    @ObservedObject private var favoriteManager = FavoriteModelsManager.shared
-    @ObservedObject private var selectedModelsManager = SelectedModelsManager.shared
-    @ObservedObject private var metadataCache = ModelMetadataCache.shared
-    
-    private static let providerNames: [String: String] = [
-        "chatgpt": "OpenAI", "claude": "Anthropic", "gemini": "Google",
-        "xai": "xAI", "perplexity": "Perplexity", "deepseek": "DeepSeek",
-        "groq": "Groq", "openrouter": "OpenRouter", "ollama": "Ollama", "mistral": "Mistral"
-    ]
-    
-    private var availableModels: [(provider: String, models: [String])] {
-        var result: [(provider: String, models: [String])] = []
-        for service in apiServices {
-            guard let serviceType = service.type else { continue }
-            let serviceModels = modelCache.getModels(for: serviceType)
-            
-            let visibleModels = serviceModels.filter { model in
-                if selectedModelsManager.hasCustomSelection(for: serviceType) {
-                    return selectedModelsManager.getSelectedModelIds(for: serviceType).contains(model.id)
-                }
-                return true
-            }
-            
-            if !visibleModels.isEmpty {
-                result.append((provider: serviceType, models: visibleModels.map { $0.id }))
-            }
-        }
-        return result
-    }
-    
-    private var favoriteModels: [(provider: String, modelId: String)] {
-        availableModels.flatMap { provider, models in
-            models.compactMap { model in
-                favoriteManager.isFavorite(provider: provider, model: model) ? (provider, model) : nil
-            }
-        }
-    }
-    
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Select a model to branch with")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 14)
-                    .padding(.top, 12)
-                
-                if !favoriteModels.isEmpty {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("FAVORITES")
-                            .font(.system(size: 10, weight: .semibold, design: .rounded))
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 14)
-                        
-                        ForEach(favoriteModels, id: \.modelId) { item in
-                            modelMenuItem(provider: item.provider, modelId: item.modelId)
-                        }
-                    }
-                }
-                
-                ForEach(availableModels, id: \.provider) { providerModels in
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack(spacing: 6) {
-                            Image("logo_\(providerModels.provider)")
-                                .resizable()
-                                .renderingMode(.template)
-                                .interpolation(.high)
-                                .frame(width: 12, height: 12)
-                                .foregroundStyle(.secondary)
-                            
-                            Text((Self.providerNames[providerModels.provider] ?? providerModels.provider.capitalized).uppercased())
-                                .font(.system(size: 10, weight: .semibold, design: .rounded))
-                                .foregroundStyle(.secondary)
-                        }
-                        .padding(.horizontal, 14)
-                        
-                        ForEach(providerModels.models, id: \.self) { modelId in
-                            modelMenuItem(provider: providerModels.provider, modelId: modelId)
-                        }
-                    }
-                }
-            }
-            .padding(.bottom, 12)
-        }
-        .task {
-            if !apiServices.isEmpty {
-                modelCache.fetchAllModels(from: apiServices)
-            }
-        }
-    }
-    
-    @ViewBuilder
-    private func modelMenuItem(provider: String, modelId: String) -> some View {
-        let displayName = ModelMetadata.formatModelDisplayName(modelId: modelId, provider: provider)
-        let isFavorite = favoriteManager.isFavorite(provider: provider, model: modelId)
-        let metadata = metadataCache.getMetadata(provider: provider, modelId: modelId)
-        
-        Menu {
-            if let meta = metadata {
-                if meta.hasReasoning {
-                    Label("Reasoning", systemImage: "brain")
-                }
-                if meta.hasVision {
-                    Label("Vision", systemImage: "eye")
-                }
-                if meta.hasFunctionCalling {
-                    Label("Function Calling", systemImage: "wrench")
-                }
-                if let context = meta.maxContextTokens {
-                    Label("\(context.formatted()) tokens", systemImage: "text.alignleft")
-                }
-                if let pricing = meta.pricing, let input = pricing.inputPer1M {
-                    if let output = pricing.outputPer1M {
-                        Label("$\(String(format: "%.2f", input)) / $\(String(format: "%.2f", output)) per 1M", systemImage: "dollarsign.circle")
-                    } else {
-                        Label("$\(String(format: "%.2f", input)) per 1M", systemImage: "dollarsign.circle")
-                    }
-                }
-                if let latency = meta.latency {
-                    Label(latency.rawValue.capitalized, systemImage: "speedometer")
-                }
-                
-                Divider()
-            }
-            
-            Button {
-                favoriteManager.toggleFavorite(provider: provider, model: modelId)
-            } label: {
-                Label(isFavorite ? "Remove from Favorites" : "Add to Favorites", systemImage: isFavorite ? "star.slash" : "star")
-            }
-        } label: {
-            HStack(spacing: 10) {
-                Text(displayName)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                
-                Spacer()
-                
-                if metadata?.hasReasoning == true {
-                    Image(systemName: "brain")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.secondary)
-                }
-                if metadata?.hasVision == true {
-                    Image(systemName: "eye")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.secondary)
-                }
-                if isFavorite {
-                    Image(systemName: "star.fill")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.yellow)
-                }
-                
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.secondary.opacity(0.5))
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-            .background(Color.primary.opacity(0.001))
-            .contentShape(Rectangle())
-        } primaryAction: {
-            onSelect(provider, modelId)
-        }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
     }
 }

@@ -9,7 +9,7 @@ final class SettingsWindowManager: ObservableObject {
     
     private var settingsWindow: NSWindow?
     private var windowDelegate: SettingsWindowDelegate?
-    private var chatStore: ChatStore?
+    private var appearanceObserver: NSKeyValueObservation?
     
     private init() {
         // Observe UserDefaults changes for color scheme
@@ -51,8 +51,6 @@ final class SettingsWindowManager: ObservableObject {
             NSApp.activate(ignoringOtherApps: true)
             return
         }
-
-        let store = chatStore ?? ChatStore(persistenceController: PersistenceController.shared)
         
         // Get the current color scheme preference
         let preferredColorSchemeRaw = UserDefaults.standard.integer(forKey: "preferredColorScheme")
@@ -66,14 +64,14 @@ final class SettingsWindowManager: ObservableObject {
         
         // Create the settings view with required environment objects and color scheme
         let settingsView = SettingsView()
-            .environmentObject(store)
+            .environmentObject(ChatStore(persistenceController: PersistenceController.shared))
             .environment(\.managedObjectContext, PersistenceController.shared.container.viewContext)
             .preferredColorScheme(colorScheme)
         
-        // Create and configure the window with transparent titlebar
+        // Create and configure the window with no title bar
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 900, height: 700),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+            contentRect: NSRect(x: 0, y: 0, width: 900, height: 800),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
@@ -82,11 +80,8 @@ final class SettingsWindowManager: ObservableObject {
         window.center()
         window.setFrameAutosaveName("SettingsWindow")
         window.isReleasedWhenClosed = false
+        // Set empty title to work with hiddenTitleBar appearance
         window.title = ""
-        window.titlebarAppearsTransparent = true
-        window.titleVisibility = .hidden
-        window.isOpaque = false
-        window.backgroundColor = .clear
         
         // Apply initial appearance
         switch preferredColorSchemeRaw {
@@ -118,10 +113,6 @@ final class SettingsWindowManager: ObservableObject {
         settingsWindow?.close()
         settingsWindow = nil
         windowDelegate = nil
-    }
-
-    func configure(chatStore: ChatStore) {
-        self.chatStore = chatStore
     }
 }
 

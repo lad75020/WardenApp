@@ -7,7 +7,6 @@ struct TabGeneralSettingsView: View {
     @AppStorage("preferredColorScheme") private var preferredColorSchemeRaw: Int = 0
     @AppStorage("enableMultiAgentMode") private var enableMultiAgentMode: Bool = false
     @AppStorage("showSidebarAIIcons") private var showSidebarAIIcons: Bool = true
-    @AppStorage("showMenuBarIcon") private var showMenuBarIcon: Bool = true
     @Environment(\.colorScheme) private var systemColorScheme
     @EnvironmentObject private var store: ChatStore
     @State private var selectedColorSchemeRaw: Int = 0
@@ -48,11 +47,21 @@ struct TabGeneralSettingsView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 24) {
+                // Header
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("General")
+                        .font(.system(size: 24, weight: .bold))
+                    Text("Customize appearance and behavior")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.bottom, 8)
+                
                 // Appearance Section
                 GlassCard {
-                    VStack(alignment: .leading, spacing: 14) {
-                        SettingsSectionHeader(title: "Appearance")
+                    VStack(alignment: .leading, spacing: 16) {
+                        SettingsSectionHeader(title: "Appearance", icon: "paintbrush.fill", iconColor: .purple)
                         
                         VStack(spacing: 12) {
                             SettingsRow(title: "Theme") {
@@ -103,8 +112,8 @@ struct TabGeneralSettingsView: View {
                 
                 // Features Section
                 GlassCard {
-                    VStack(alignment: .leading, spacing: 14) {
-                        SettingsSectionHeader(title: "Features")
+                    VStack(alignment: .leading, spacing: 16) {
+                        SettingsSectionHeader(title: "Features", icon: "sparkles", iconColor: .orange)
                         
                         VStack(spacing: 12) {
                             SettingsRow(
@@ -132,25 +141,14 @@ struct TabGeneralSettingsView: View {
                                         .fill(Color.orange.opacity(0.1))
                                 )
                             }
-                            
-                            SettingsDivider()
-                            
-                            SettingsRow(
-                                title: "Menu Bar Icon",
-                                subtitle: "Show Warden in the menu bar for quick access"
-                            ) {
-                                Toggle("", isOn: $showMenuBarIcon)
-                                    .toggleStyle(.switch)
-                                    .labelsHidden()
-                            }
                         }
                     }
                 }
                 
                 // Data & Privacy Section
                 GlassCard {
-                    VStack(alignment: .leading, spacing: 14) {
-                        SettingsSectionHeader(title: "Data & Privacy")
+                    VStack(alignment: .leading, spacing: 16) {
+                        SettingsSectionHeader(title: "Data & Privacy", icon: "lock.shield.fill", iconColor: .green)
                         
                         Text("Export and import your chat history. Data is stored locally in unencrypted JSON format.")
                             .font(.system(size: 12))

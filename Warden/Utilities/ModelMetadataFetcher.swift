@@ -36,19 +36,72 @@ class ModelMetadataFetcherFactory {
             return GenericMetadataFetcher(provider: "deepseek")
         case .ollama, .lmstudio:
             return LocalModelMetadataFetcher()
+        case .huggingface:
+            return HuggingFaceMetadataFetcher()
         case nil:
             return GenericMetadataFetcher(provider: provider)
         }
     }
 }
 
+// MARK: - HuggingFace Metadata Fetcher
 
-
-
-
-
-
-// MARK: - Groq Fetcher
+class HuggingFaceMetadataFetcher: ModelMetadataFetcher {
+    func fetchAllMetadata(apiKey: String) async throws -> [String: ModelMetadata] {
+        // HuggingFace models are locally installed and don't have online metadata
+        // Return empty dictionary to indicate we can't fetch metadata
+        return [:]
+    }
+    
+    func fetchMetadata(for modelId: String, apiKey: String) async throws -> ModelMetadata {
+        // Create metadata for local HuggingFace models
+        return ModelMetadata.freeSelfHosted(
+            modelId: modelId,
+            provider: "huggingface",
+            context: nil,
+            capabilities: determineCapabilities(from: modelId)
+        )
+    }
+    
+    private func determineCapabilities(from modelId: String) -> [String] {
+        var capabilities: [String] = []
+        let lowerModelId = modelId.lowercased()
+        
+        // Basic capabilities all local models support
+        capabilities.append("text-generation")
+        
+        // Check for instruction-tuned models
+        if lowerModelId.contains("-instruct") || lowerModelId.contains("chat") {
+            capabilities.append("instruction-following")
+        }
+        
+        // Check for code models
+        if lowerModelId.contains("code") || lowerModelId.contains("codellama") {
+            capabilities.append("code-generation")
+        }
+        
+        // Check for specific architectures
+        if lowerModelId.contains("mistral") || lowerModelId.contains("llama") {
+            capabilities.append("contextual-qa")
+        }
+        
+        return capabilities
+    }
+    
+    private func estimateLatency(from modelId: String) -> LatencyLevel {
+        let lowerModelId = modelId.lowercased()
+        
+        if lowerModelId.contains("7b") || lowerModelId.contains("phi-2") || lowerModelId.contains("granite-3b") {
+            return .fast
+        } else if lowerModelId.contains("13b") || lowerModelId.contains("mixtral") {
+            return .medium
+        } else if lowerModelId.contains("70b") || lowerModelId.contains("llama-2-70") {
+            return .slow
+        }
+        
+        return .medium
+    }
+}
 
 class GroqMetadataFetcher: ModelMetadataFetcher {
     func fetchAllMetadata(apiKey: String) async throws -> [String: ModelMetadata] {
@@ -63,16 +116,10 @@ class GroqMetadataFetcher: ModelMetadataFetcher {
             return metadata
         }
         
-        return ModelMetadata(
+        return ModelMetadata.freeSelfHosted(
             modelId: modelId,
             provider: "groq",
-            pricing: PricingInfo.groqFree,
-            maxContextTokens: nil,
-            capabilities: [],
-            latency: .fast,
-            costLevel: .cheap,
-            lastUpdated: Date(),
-            source: .providerDocumentation
+            context: nil
         )
     }
 }
@@ -126,7 +173,6 @@ class OpenRouterMetadataFetcher: ModelMetadataFetcher {
                 pricing: pricing,
                 maxContextTokens: model.context_length,
                 capabilities: capabilities,
-                supportedParameters: model.supported_parameters,
                 latency: estimateLatency(from: model),
                 costLevel: getCostLevel(for: pricing),
                 lastUpdated: Date(),
@@ -209,14 +255,6 @@ class OpenRouterMetadataFetcher: ModelMetadataFetcher {
     }
 }
 
-
-
-
-
-
-
-
-
 // MARK: - Local Model Fetcher (Ollama, LMStudio)
 
 class LocalModelMetadataFetcher: ModelMetadataFetcher {
@@ -284,3 +322,4 @@ struct OpenRouterPricing: Codable {
     let prompt: String
     let completion: String
 }
+

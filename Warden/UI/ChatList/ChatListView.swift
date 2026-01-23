@@ -9,7 +9,10 @@ struct ChatListView: View {
     @State private var showSearch = false
     @State private var scrollOffset: CGFloat = 0
     @State private var previousOffset: CGFloat = 0
-    @State private var selectedChatID: UUID?
+    @State private var newChatButtonTapped = false
+    @State private var settingsButtonTapped = false
+    @State private var selectedChatIDs: Set<UUID> = []
+    @State private var lastSelectedChatID: UUID?
     @FocusState private var isSearchFocused: Bool
     
     // Search performance optimization
@@ -17,15 +20,6 @@ struct ChatListView: View {
     @State private var searchTask: Task<Void, Never>?
     @State private var searchResults: Set<UUID> = []
     @State private var isSearching = false
-    
-    @MainActor
-    private func presentAlert(_ alert: NSAlert, handler: @escaping (NSApplication.ModalResponse) -> Void) {
-        if let window = NSApp.keyWindow ?? NSApp.mainWindow {
-            alert.beginSheetModal(for: window, completionHandler: handler)
-        } else {
-            handler(alert.runModal())
-        }
-    }
 
     @FetchRequest(
         entity: ChatEntity.entity(),
@@ -124,68 +118,85 @@ struct ChatListView: View {
         
         isSearching = true
         
-        searchTask = Task(priority: .userInitiated) {
+        searchTask = Task.detached(priority: .userInitiated) {
             var matchingChatIDs: Set<UUID> = []
-
+            
+            // Perform search in background context
             let backgroundContext = PersistenceController.shared.container.newBackgroundContext()
-
+            
             await backgroundContext.perform {
+                // Use NSPredicate for database-level filtering (much faster than in-memory iteration)
+                // This leverages SQLite indices for faster search
+                let fetchRequest = NSFetchRequest<ChatEntity>(entityName: "ChatEntity")
+                
+                // Build compound predicate for name, system message, and persona name
+                // Case-insensitive, diacritic-insensitive search with CONTAINS[cd]
                 let namePredicate = NSPredicate(format: "name CONTAINS[cd] %@", query)
                 let systemMessagePredicate = NSPredicate(format: "systemMessage CONTAINS[cd] %@", query)
                 let personaNamePredicate = NSPredicate(format: "persona.name CONTAINS[cd] %@", query)
-
-                let metadataRequest = NSFetchRequest<NSDictionary>(entityName: "ChatEntity")
-                metadataRequest.resultType = .dictionaryResultType
-                metadataRequest.propertiesToFetch = ["id"]
-                metadataRequest.returnsDistinctResults = true
-                metadataRequest.predicate = NSCompoundPredicate(orPredicateWithSubpredicates: [
+                
+                // Combine predicates with OR for initial fast filtering
+                fetchRequest.predicate = NSCompoundPredicate(orPredicateWithSubpredicates: [
                     namePredicate,
                     systemMessagePredicate,
                     personaNamePredicate
                 ])
-
-                let messageRequest = NSFetchRequest<NSDictionary>(entityName: "ChatEntity")
-                messageRequest.resultType = .dictionaryResultType
-                messageRequest.propertiesToFetch = ["id"]
-                messageRequest.returnsDistinctResults = true
-                messageRequest.predicate = NSPredicate(format: "ANY messages.body CONTAINS[cd] %@", query)
-
+                
                 do {
-                    for dict in try backgroundContext.fetch(metadataRequest) {
+                    // First pass: get chats matching name/system/persona (database-level, fast)
+                    let matchedByMetadata = try backgroundContext.fetch(fetchRequest)
+                    for chat in matchedByMetadata {
                         if Task.isCancelled { return }
-                        if let id = dict["id"] as? UUID {
-                            matchingChatIDs.insert(id)
-                        }
+                        matchingChatIDs.insert(chat.id)
                     }
-
-                    for dict in try backgroundContext.fetch(messageRequest) {
+                    
+                    // Second pass: search in message bodies for chats not yet matched
+                    // This requires relationship traversal so we do it separately
+                    // Only fetch chats that weren't already matched to avoid redundant work
+                    let messageSearchRequest = NSFetchRequest<ChatEntity>(entityName: "ChatEntity")
+                    messageSearchRequest.predicate = NSPredicate(format: "ANY messages.body CONTAINS[cd] %@", query)
+                    
+                    let matchedByMessages = try backgroundContext.fetch(messageSearchRequest)
+                    for chat in matchedByMessages {
                         if Task.isCancelled { return }
-                        if let id = dict["id"] as? UUID {
-                            matchingChatIDs.insert(id)
-                        }
+                        matchingChatIDs.insert(chat.id)
                     }
+                    
                 } catch {
                     WardenLog.app.error("Search error: \(error.localizedDescription, privacy: .public)")
                 }
             }
-
-            if Task.isCancelled { return }
+            
+            // Update UI on main thread
             await MainActor.run {
-                self.searchResults = matchingChatIDs
-                self.debouncedSearchText = query
-                self.isSearching = false
+                if !Task.isCancelled {
+                    self.searchResults = matchingChatIDs
+                    self.debouncedSearchText = query
+                    self.isSearching = false
+                }
             }
         }
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            // Search bar at the top
-            searchBarSection
+            // New Chat button at the top
+            newChatButtonSection
                 .padding(.top, 12)
                 .padding(.bottom, 8)
+            
+            // Search bar
+            searchBarSection
+                .padding(.bottom, 8)
 
-            List(selection: $selectedChatID) {
+            // Selection toolbar (only shown when chats are selected)
+            if !selectedChatIDs.isEmpty {
+                selectionToolbar
+                    .padding(.horizontal)
+                    .padding(.bottom, 8)
+            }
+
+            List {
                 // Projects section
                 projectsSection
                 
@@ -195,40 +206,48 @@ struct ChatListView: View {
                 }
             }
             .listStyle(.sidebar)
-            .onDeleteCommand {
-                deleteSelectedChat()
-            }
-            .onExitCommand {
-                selectedChatID = nil
-            }
             
             // Settings button at the bottom
             bottomSettingsSection
                 .padding(.bottom, 12)
         }
-        .onChange(of: selectedChat) { _, newValue in
-            selectedChatID = newValue?.id
-        }
-        .onChange(of: selectedProject) { _, newValue in
-            guard newValue != nil else { return }
-            selectedChatID = nil
-        }
-        .onChange(of: selectedChatID) { _, newValue in
-            guard let newValue else {
-                selectedChat = nil
-                return
+        .background(
+            Button("") {
+                isSearchFocused = true
             }
-            guard selectedChat?.id != newValue else { return }
-            if let chat = chats.first(where: { $0.id == newValue }) {
-                selectedChat = chat
+            .keyboardShortcut("f", modifiers: .command)
+            .opacity(0)
+        )
+        .background(
+            Button("") {
+                if !selectedChatIDs.isEmpty {
+                    deleteSelectedChats()
+                }
             }
-        }
+            .keyboardShortcut(.delete, modifiers: .command)
+            .opacity(0)
+        )
+        .background(
+            Button("") {
+                selectedChatIDs.removeAll()
+                lastSelectedChatID = nil
+            }
+            .keyboardShortcut(.escape)
+            .opacity(0)
+        )
         .onChange(of: selectedChat) { _, _ in
             isSearchFocused = false
         }
         .onReceive(NotificationCenter.default.publisher(for: AppConstants.newChatHotkeyNotification)) { _ in
             onNewChat()
         }
+    }
+
+    private var newChatButtonSection: some View {
+        VStack(spacing: 0) {
+            newChatButton
+        }
+        .padding(.horizontal)
     }
 
     private var searchBarSection: some View {
@@ -243,11 +262,10 @@ struct ChatListView: View {
                     .foregroundColor(.gray)
             }
 
-            TextField("Search chats", text: $searchText)
+            TextField("Search chats...", text: $searchText)
                 .textFieldStyle(PlainTextFieldStyle())
                 .font(.system(.body))
                 .focused($isSearchFocused)
-                .accessibilityLabel("Search chats")
                 .onExitCommand {
                     searchText = ""
                     isSearchFocused = false
@@ -265,7 +283,7 @@ struct ChatListView: View {
                         searchTask = Task {
                             try? await Task.sleep(nanoseconds: 300_000_000) // 300ms
                             if !Task.isCancelled {
-                                performSearch(newValue)
+                                await performSearch(newValue)
                             }
                         }
                     }
@@ -283,7 +301,6 @@ struct ChatListView: View {
                         .foregroundColor(.gray)
                 }
                 .buttonStyle(PlainButtonStyle())
-                .accessibilityLabel("Clear search")
             }
         }
         .padding(8)
@@ -312,8 +329,38 @@ struct ChatListView: View {
         .padding(.horizontal)
     }
 
-    private var settingsButton: some View {
+    private var newChatButton: some View {
         Button(action: {
+            newChatButtonTapped.toggle()
+            onNewChat()
+        }) {
+            HStack(spacing: 8) {
+                Image(systemName: "square.and.pencil")
+                    .font(.system(size: 14, weight: .medium))
+                Text("New Thread")
+                    .font(.system(size: 13, weight: .medium))
+            }
+            .symbolEffect(.bounce.down.wholeSymbol, options: .nonRepeating, value: newChatButtonTapped)
+            .foregroundColor(.white)
+            .frame(maxWidth: .infinity)
+            .frame(height: 36)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color.accentColor)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.white.opacity(0.1), lineWidth: 0.5)
+            )
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 16)
+    }
+    
+    private var settingsButton: some View {
+        // Simplified settings button at bottom with text and icon, smaller size
+        Button(action: {
+            settingsButtonTapped.toggle()
             onOpenPreferences()
         }) {
             HStack(spacing: 6) {
@@ -322,6 +369,7 @@ struct ChatListView: View {
                 Text("Settings")
                     .font(.system(size: 12, weight: .medium))
             }
+            .symbolEffect(.bounce.down.wholeSymbol, options: .nonRepeating, value: settingsButtonTapped)
             .foregroundColor(.secondary)
             .frame(maxWidth: .infinity)
             .frame(height: 28)
@@ -329,28 +377,108 @@ struct ChatListView: View {
         .buttonStyle(PlainButtonStyle())
     }
 
-    private func deleteSelectedChat() {
-        guard let selectedChatID else { return }
-        guard let chat = chats.first(where: { $0.id == selectedChatID }) else { return }
+    private var selectionToolbar: some View {
+        HStack(spacing: 8) {
+            Text("\(selectedChatIDs.count) selected")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.secondary)
+            
+            Spacer()
+            
+            Button {
+                if selectedChatIDs.count == filteredChats.count {
+                    selectedChatIDs.removeAll()
+                    lastSelectedChatID = nil
+                } else {
+                    selectedChatIDs = Set(filteredChats.map { $0.id })
+                    lastSelectedChatID = filteredChats.last?.id
+                }
+            } label: {
+                Text(selectedChatIDs.count == filteredChats.count ? "Deselect All" : "Select All")
+                    .font(.system(size: 11, weight: .medium))
+            }
+            .buttonStyle(.borderless)
+            
+            Button(role: .destructive) {
+                deleteSelectedChats()
+            } label: {
+                Image(systemName: "trash")
+                    .font(.system(size: 12))
+            }
+            .buttonStyle(.borderless)
+            .disabled(selectedChatIDs.isEmpty)
+            
+            Button {
+                selectedChatIDs.removeAll()
+                lastSelectedChatID = nil
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 11, weight: .medium))
+            }
+            .buttonStyle(.borderless)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(.regularMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+    }
 
+    private func deleteSelectedChats() {
+        guard !selectedChatIDs.isEmpty else { return }
+        
         let alert = NSAlert()
-        alert.messageText = "Delete chat \(chat.name)?"
-        alert.informativeText = "Are you sure you want to delete this chat? This action cannot be undone."
+        alert.messageText = "Delete \(selectedChatIDs.count) chat\(selectedChatIDs.count == 1 ? "" : "s")?"
+        alert.informativeText = "Are you sure you want to delete the selected chats? This action cannot be undone."
         alert.addButton(withTitle: "Delete")
         alert.addButton(withTitle: "Cancel")
         alert.alertStyle = .warning
         
-        presentAlert(alert) { response in
+        alert.beginSheetModal(for: NSApp.keyWindow!) { response in
             if response == .alertFirstButtonReturn {
-                if selectedChat?.id == selectedChatID {
+                // Clear selectedChat if it's in the list to be deleted
+                if let selectedChatID = selectedChat?.id, selectedChatIDs.contains(selectedChatID) {
                     selectedChat = nil
                 }
-                self.selectedChatID = nil
-                store.deleteSelectedChats([selectedChatID])
+                
+                // Perform bulk delete
+                store.deleteSelectedChats(selectedChatIDs)
+                
+                // Clear selection
+                selectedChatIDs.removeAll()
+                lastSelectedChatID = nil
             }
         }
     }
 
+    private func handleKeyboardSelection(chatID: UUID, isCommandPressed: Bool, isShiftPressed: Bool) {
+        if isCommandPressed {
+            // Command+click: toggle selection
+            if selectedChatIDs.contains(chatID) {
+                selectedChatIDs.remove(chatID)
+            } else {
+                selectedChatIDs.insert(chatID)
+                lastSelectedChatID = chatID
+            }
+        } else if isShiftPressed, let lastID = lastSelectedChatID {
+            // Shift+click: select range from last selected to current
+            if let startIndex = filteredChats.firstIndex(where: { $0.id == lastID }),
+               let endIndex = filteredChats.firstIndex(where: { $0.id == chatID }) {
+                let range = min(startIndex, endIndex)...max(startIndex, endIndex)
+                for chat in filteredChats[range] {
+                    selectedChatIDs.insert(chat.id)
+                }
+            }
+        } else {
+            // Regular selection handling
+            if selectedChatIDs.contains(chatID) {
+                selectedChatIDs.remove(chatID)
+            } else {
+                selectedChatIDs.insert(chatID)
+                lastSelectedChatID = chatID
+            }
+        }
+    }
+    
     // MARK: - Section Views
     
     private var projectsSection: some View {
@@ -451,9 +579,20 @@ struct ChatListView: View {
                             chat: chat,
                             selectedChat: $selectedChat,
                             viewContext: viewContext,
-                            searchText: searchText
+                            searchText: searchText,
+                            isSelectionMode: !selectedChatIDs.isEmpty,
+                            isSelected: selectedChatIDs.contains(chat.id),
+                            onSelectionToggle: { chatID, isSelected in
+                                if isSelected {
+                                    selectedChatIDs.insert(chatID)
+                                } else {
+                                    selectedChatIDs.remove(chatID)
+                                }
+                            },
+                            onKeyboardSelection: { chatID, isCmd, isShift in
+                                handleKeyboardSelection(chatID: chatID, isCommandPressed: isCmd, isShiftPressed: isShift)
+                            }
                         )
-                        .tag(chat.id)
                     }
                 } header: {
                     HStack {
@@ -478,9 +617,20 @@ struct ChatListView: View {
                                 chat: chat,
                                 selectedChat: $selectedChat,
                                 viewContext: viewContext,
-                                searchText: searchText
+                                searchText: searchText,
+                                isSelectionMode: !selectedChatIDs.isEmpty,
+                                isSelected: selectedChatIDs.contains(chat.id),
+                                onSelectionToggle: { chatID, isSelected in
+                                    if isSelected {
+                                        selectedChatIDs.insert(chatID)
+                                    } else {
+                                        selectedChatIDs.remove(chatID)
+                                    }
+                                },
+                                onKeyboardSelection: { chatID, isCmd, isShift in
+                                    handleKeyboardSelection(chatID: chatID, isCommandPressed: isCmd, isShiftPressed: isShift)
+                                }
                             )
-                            .tag(chat.id)
                         }
                     } header: {
                         HStack {

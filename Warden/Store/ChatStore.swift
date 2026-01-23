@@ -107,7 +107,47 @@ final class ChatStore: ObservableObject {
                 viewContext.perform {
                     do {
                         let chatEntities = try self.viewContext.fetch(fetchRequest)
-                        let chats = chatEntities.map { ChatBackup(chatEntity: $0) }
+                        
+                        // Filter out chats with invalid API configurations
+                        let validChats = chatEntities.filter { chatEntity in
+                            guard let apiService = chatEntity.apiService else {
+                                // If chat has no API service, it's invalid - log and skip
+                                WardenLog.coreData.warning(
+                                    "Deleting chat \(chatEntity.id, privacy: .public) - no API service attached"
+                                )
+                                self.viewContext.delete(chatEntity)
+                                return false
+                            }
+                            
+                            // Verify API service configuration is valid
+                            guard let apiConfig = APIServiceManager.createAPIConfiguration(for: apiService) else {
+                                // If API configuration is invalid, delete the chat
+                                WardenLog.coreData.warning(
+                                    "Deleting chat \(chatEntity.id, privacy: .public) - invalid API configuration"
+                                )
+                                self.viewContext.delete(chatEntity)
+                                return false
+                            }
+                            
+                            return true
+                        }
+                        
+                        let chats = validChats.map { ChatBackup(chatEntity: $0) }
+                        
+                        // Save context if we deleted any invalid chats
+                        if validChats.count < chatEntities.count {
+                            do {
+                                try self.viewContext.save()
+                                WardenLog.coreData.info(
+                                    "Cleaned up \(chatEntities.count - validChats.count, privacy: .public) invalid chats"
+                                )
+                            } catch {
+                                WardenLog.coreData.error(
+                                    "Error saving after cleaning invalid chats: \(error.localizedDescription, privacy: .public)"
+                                )
+                            }
+                        }
+                        
                         continuation.resume(returning: .success(chats))
                     } catch {
                         continuation.resume(returning: .failure(error))
@@ -139,7 +179,6 @@ final class ChatStore: ObservableObject {
                             chatEntity.top_p = oldChat.top_p ?? 0.0
                             chatEntity.behavior = oldChat.behavior
                             chatEntity.newMessage = oldChat.newMessage ?? ""
-                            chatEntity.reasoningEffortRaw = oldChat.reasoningEffortRaw
                             chatEntity.createdDate = Date()
                             chatEntity.updatedDate = Date()
                             chatEntity.requestMessages = oldChat.requestMessages
@@ -218,47 +257,6 @@ final class ChatStore: ObservableObject {
     func deleteSelectedChats(_ chatIDs: Set<UUID>) {
         guard !chatIDs.isEmpty else { return }
         deleteEntities(ChatEntity.self, predicate: NSPredicate(format: "id IN %@", chatIDs))
-    }
-
-    func createNewChat(preferredModel: String) -> ChatEntity? {
-        let chat = ChatEntity(context: viewContext)
-        chat.id = UUID()
-        chat.newChat = true
-        chat.temperature = 0.8
-        chat.top_p = 1.0
-        chat.behavior = "default"
-        chat.newMessage = ""
-        chat.reasoningEffort = .off
-        chat.createdDate = Date()
-        chat.updatedDate = Date()
-        chat.systemMessage = AppConstants.chatGptSystemMessage
-        chat.gptModel = preferredModel
-        chat.name = "New Chat"
-
-        if let defaultService = getDefaultAPIService() {
-            chat.apiService = defaultService
-            chat.gptModel = defaultService.model ?? AppConstants.chatGptDefaultModel
-
-            if let defaultPersona = defaultService.defaultPersona {
-                chat.persona = defaultPersona
-
-                if let personaPreferredService = defaultPersona.defaultApiService {
-                    chat.apiService = personaPreferredService
-                    chat.gptModel = personaPreferredService.model ?? AppConstants.chatGptDefaultModel
-                }
-            }
-        }
-
-        do {
-            try viewContext.save()
-            return chat
-        } catch {
-            WardenLog.coreData.error(
-                "Error saving new chat: \(error.localizedDescription, privacy: .public)"
-            )
-            viewContext.rollback()
-            return nil
-        }
     }
 
     func deleteAllPersonas() {
@@ -437,7 +435,7 @@ final class ChatStore: ObservableObject {
                 return
             }
             
-            // Create API service configuration using centralized logic
+            // Verify the API configuration is valid before proceeding
             guard let apiConfig = APIServiceManager.createAPIConfiguration(for: apiServiceEntity) else {
                 WardenLog.app.error("Failed to create API configuration for title regeneration")
                 showError(message: "Failed to create API configuration. Please check your API service settings (URL, API Key).")
@@ -660,7 +658,6 @@ final class ChatStore: ObservableObject {
         newChat.updatedDate = Date()
         newChat.newMessage = ""
         newChat.name = "New Chat"
-        newChat.reasoningEffort = .off
         
         // Set default values logic
         newChat.temperature = Double(AppConstants.defaultTemperatureForChat)
@@ -671,18 +668,14 @@ final class ChatStore: ObservableObject {
         // Set Default API Service and Model
         if let defaultService = getDefaultAPIService() {
             newChat.apiService = defaultService
-            
-            // If the service has a preferred/default model, use it
-            // We need to check if we can get the default model from the service entity or config
-            // For now, we'll try to use the one stored in AppConstants or the service's default
-            
-            // Note: The logic to determine the "default model" might be split. 
-            // Often it's stored inUserDefaults or derived from the service.
-            // Here we ensure it uses the app-wide default if not set.
-             newChat.gptModel = AppConstants.chatGptDefaultModel
+            if let svcModel = defaultService.model, !svcModel.isEmpty {
+                newChat.gptModel = svcModel
+            } else {
+                newChat.gptModel = AppConstants.chatGptDefaultModel
+            }
         } else {
-             // Fallback if no service is found
-             newChat.gptModel = AppConstants.chatGptDefaultModel
+            // Fallback if no service is found
+            newChat.gptModel = AppConstants.chatGptDefaultModel
         }
         
         // Assign to project if provided
@@ -714,6 +707,55 @@ final class ChatStore: ObservableObject {
         
         messageManager.generateChatNameIfNeeded(chat: chat, force: true)
     }
+    
+    // MARK: - Cleanup Invalid Chats
+    
+    /// Clean up all chats with invalid API configurations
+    /// This can be called on app startup to prevent loading issues
+    func cleanupInvalidChats() {
+        viewContext.perform {
+            let fetchRequest = NSFetchRequest<ChatEntity>(entityName: "ChatEntity")
+            
+            do {
+                let chats = try self.viewContext.fetch(fetchRequest)
+                var invalidChatCount = 0
+                
+                for chat in chats {
+                    guard let apiService = chat.apiService else {
+                        // Chat has no API service - invalid
+                        self.viewContext.delete(chat)
+                        invalidChatCount += 1
+                        continue
+                    }
+                    
+                    // Verify API service configuration is valid
+                    guard APIServiceManager.createAPIConfiguration(for: apiService) != nil else {
+                        // API configuration is invalid - delete chat
+                        self.viewContext.delete(chat)
+                        invalidChatCount += 1
+                        continue
+                    }
+                }
+                
+                if invalidChatCount > 0 {
+                    do {
+                        try self.viewContext.save()
+                        WardenLog.coreData.info(
+                            "Cleaned up \(invalidChatCount, privacy: .public) invalid chats on startup"
+                        )
+                    } catch {
+                        WardenLog.coreData.error(
+                            "Error saving after cleaning invalid chats: \(error.localizedDescription, privacy: .public)"
+                        )
+                    }
+                }
+            } catch {
+                WardenLog.coreData.error(
+                    "Error fetching chats for cleanup: \(error.localizedDescription, privacy: .public)"
+                )
+            }
+        }
+    }
 }
 
 // MARK: - Extensions for Performance
@@ -725,3 +767,4 @@ extension Array {
         }
     }
 }
+

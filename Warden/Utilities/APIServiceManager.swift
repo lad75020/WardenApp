@@ -123,11 +123,7 @@ class APIServiceManager {
         
         // Use async/await with continuation to bridge callback-based API
         return try await withCheckedThrowingContinuation { continuation in
-	            apiServiceInstance.sendMessage(
-	                requestMessages,
-	                tools: nil,
-	                settings: GenerationSettings(temperature: temperature)
-	            ) { result in
+	            apiServiceInstance.sendMessage(requestMessages, tools: nil, temperature: temperature) { result in
 	                switch result {
 	                case .success(let (messageContent, _)):
 	                    guard let messageContent = messageContent else {
@@ -208,10 +204,16 @@ class APIServiceManager {
         apiService: APIService,
         messages: [[String: String]],
         tools: [[String: Any]]? = nil,
-        settings: GenerationSettings,
+        temperature: Float,
         onChunk: @MainActor @escaping (String) async -> Void
     ) async throws -> [ToolCall]? {
-        let stream = try await apiService.sendMessageStream(messages, tools: tools, settings: settings)
+        // Images/generations endpoint does not support streaming; enforce non-stream usage
+        let isImageGeneration = apiService.name.lowercased().contains("image") || apiService.model.lowercased().hasPrefix("gpt-image")
+        if isImageGeneration {
+            throw APIError.invalidResponse
+        }
+        
+        let stream = try await apiService.sendMessageStream(messages, tools: tools, temperature: temperature)
         var pendingChunkParts: [String] = []
         var pendingChunkCharacterCount = 0
         let updateInterval = AppConstants.streamedResponseUpdateUIInterval
@@ -361,6 +363,8 @@ class APIServiceManager {
         switch serviceType.lowercased() {
         case "chatgpt":
             return AppConstants.chatGptDefaultModel
+        case "chatgpt image":
+            return "gpt-image-1"
         case "claude":
             return "claude-3-5-sonnet-20241022"
         case "gemini":
@@ -395,3 +399,4 @@ class APIServiceManager {
         return cleaned
     }
 }
+

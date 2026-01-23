@@ -73,7 +73,7 @@ class ChatSharingService {
                 } catch {
                     WardenLog.app.error("Error saving chat export: \(error.localizedDescription, privacy: .public)")
                     // Show error alert
-                    Task { @MainActor in
+                    DispatchQueue.main.async {
                         let alert = NSAlert()
                         alert.messageText = "Export Failed"
                         alert.informativeText = "Could not save the chat export: \(error.localizedDescription)"
@@ -191,7 +191,10 @@ class ChatSharingService {
     }
     
     private func formatDate(_ date: Date) -> String {
-        date.formatted(date: .abbreviated, time: .shortened)
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
     }
     
     private func createTemporaryFile(content: String, filename: String) -> URL {

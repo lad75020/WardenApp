@@ -4,6 +4,7 @@ import os
 struct ChatListRow: View {
     // Removed Equatable conformance - it was preventing proper re-renders when selection changed
     @ObservedObject var chat: ChatEntity
+    let chatID: UUID  // Store the ID separately
     @Binding var selectedChat: ChatEntity?
     let viewContext: NSManagedObjectContext
     @EnvironmentObject private var store: ChatStore
@@ -11,18 +12,10 @@ struct ChatListRow: View {
     var isSelectionMode: Bool = false
     var isSelected: Bool = false
     var onSelectionToggle: ((UUID, Bool) -> Void)?
+    var onKeyboardSelection: ((UUID, Bool, Bool) -> Void)?
     @State private var showingMoveToProject = false
     @State private var isHovered = false
     @State private var isRegeneratingName = false
-
-    @MainActor
-    private func presentAlert(_ alert: NSAlert, handler: @escaping (NSApplication.ModalResponse) -> Void) {
-        if let window = NSApp.keyWindow ?? NSApp.mainWindow {
-            alert.beginSheetModal(for: window, completionHandler: handler)
-        } else {
-            handler(alert.runModal())
-        }
-    }
     
     init(
         chat: ChatEntity,
@@ -31,15 +24,18 @@ struct ChatListRow: View {
         searchText: String = "",
         isSelectionMode: Bool = false,
         isSelected: Bool = false,
-        onSelectionToggle: ((UUID, Bool) -> Void)? = nil
+        onSelectionToggle: ((UUID, Bool) -> Void)? = nil,
+        onKeyboardSelection: ((UUID, Bool, Bool) -> Void)? = nil
     ) {
         self._chat = ObservedObject(wrappedValue: chat)
+        self.chatID = chat.id
         self._selectedChat = selectedChat
         self.viewContext = viewContext
         self.searchText = searchText
         self.isSelectionMode = isSelectionMode
         self.isSelected = isSelected
         self.onSelectionToggle = onSelectionToggle
+        self.onKeyboardSelection = onKeyboardSelection
     }
 
     private var computedIsActive: Bool {
@@ -51,41 +47,61 @@ struct ChatListRow: View {
     }
 
     var body: some View {
-        MessageCell(
-            chat: chat,
-            timestamp: chat.lastMessage?.timestamp ?? Date(),
-            message: chat.lastMessage?.body ?? "",
-            isActive: Binding(get: { computedIsActive }, set: { _ in }),
-            viewContext: viewContext,
-            searchText: searchText,
-            isSelectionMode: isSelectionMode,
-            isSelected: isSelected,
-            onSelectionToggle: { selected in
-                onSelectionToggle?(chat.id, selected)
+        Button {
+            let currentEvent = NSApp.currentEvent
+            let isCommandPressed = currentEvent?.modifierFlags.contains(.command) ?? false
+            let isShiftPressed = currentEvent?.modifierFlags.contains(.shift) ?? false
+            
+            if isCommandPressed {
+                // Command+click: toggle selection of this item
+                onKeyboardSelection?(chatID, isCommandPressed, isShiftPressed)
+            } else if isShiftPressed {
+                // Shift+click: select range
+                onKeyboardSelection?(chatID, isCommandPressed, isShiftPressed)
+            } else if isSelectionMode {
+                // Regular click in selection mode: toggle selection
+                onSelectionToggle?(chatID, !isSelected)
+            } else {
+                // Regular click: set as selected chat
+                selectedChat = chat
             }
-        )
-        .overlay(alignment: .trailing) {
-            if isHovered && !isSelectionMode {
-                Menu {
-                    chatActionsMenuContent
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.primary)
-                        .padding(.vertical, 6)
-                        .padding(.horizontal, 8)
-                        .background(
-                            Capsule()
-                                .fill(Color.primary.opacity(0.08))
-                        )
+        } label: {
+            MessageCell(
+                chat: chat,
+                timestamp: chat.lastMessage?.timestamp ?? Date(),
+                message: chat.lastMessage?.body ?? "",
+                isActive: Binding(get: { computedIsActive }, set: { _ in }),
+                viewContext: viewContext,
+                searchText: searchText,
+                isSelectionMode: isSelectionMode,
+                isSelected: isSelected,
+                onSelectionToggle: { selected in
+                    onSelectionToggle?(chatID, selected)
                 }
-                .menuIndicator(.hidden)
-                .buttonStyle(.plain)
-                .accessibilityLabel("Chat actions")
-                .padding(.trailing, 4)
-                .transition(.opacity.combined(with: .move(edge: .trailing)))
+            )
+            .overlay(alignment: .trailing) {
+                if isHovered && !isSelectionMode {
+                    Menu {
+                        chatActionsMenuContent
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.primary)
+                            .padding(.vertical, 6)
+                            .padding(.horizontal, 8)
+                            .background(
+                                Capsule()
+                                    .fill(Color.primary.opacity(0.08))
+                            )
+                    }
+                    .menuIndicator(.hidden)
+                    .buttonStyle(.plain)
+                    .padding(.trailing, 4)
+                    .transition(.opacity.combined(with: .move(edge: .trailing)))
+                }
             }
         }
+        .buttonStyle(.plain)
         .onHover { hovering in
             isHovered = hovering
         }
@@ -145,7 +161,7 @@ struct ChatListRow: View {
         alert.addButton(withTitle: "Delete")
         alert.addButton(withTitle: "Cancel")
         alert.alertStyle = .warning
-        presentAlert(alert) { response in
+        alert.beginSheetModal(for: NSApp.keyWindow!) { response in
             if response == .alertFirstButtonReturn {
                 // Clear selectedChat to prevent accessing deleted item
                 if selectedChat?.id == chat.id {
@@ -175,14 +191,20 @@ struct ChatListRow: View {
         let textField = NSTextField(frame: NSRect(x: 0, y: 0, width: 200, height: 24))
         textField.stringValue = chat.name
         alert.accessoryView = textField
-        presentAlert(alert) { response in
+        alert.beginSheetModal(for: NSApp.keyWindow!) { response in
             if response == .alertFirstButtonReturn {
                 let newName = textField.stringValue.trimmingCharacters(in: .whitespaces)
                 guard !newName.isEmpty else { return }
                 
                 chat.name = newName
                 chat.updatedDate = Date()
-                viewContext.saveWithRetry(attempts: 3)
+                do {
+                    try viewContext.saveWithRetry(attempts: 3)
+                }
+
+                catch {
+                    WardenLog.coreData.error("Error renaming chat: \(error.localizedDescription, privacy: .public)")
+                }
             }
         }
     }
@@ -194,7 +216,7 @@ struct ChatListRow: View {
         alert.addButton(withTitle: "Clear")
         alert.addButton(withTitle: "Cancel")
         alert.alertStyle = .warning
-        presentAlert(alert) { response in
+        alert.beginSheetModal(for: NSApp.keyWindow!) { response in
             if response == .alertFirstButtonReturn {
                 chat.clearMessages()
                 do {

@@ -12,6 +12,7 @@ struct MessageParser {
         case formulaLine
         case thinking
         case imageUUID
+        case imageURL
         case fileUUID
     }
 
@@ -35,6 +36,9 @@ struct MessageParser {
         }
         else if trimmedLine.hasPrefix("<image-uuid>") {
             return .imageUUID
+        }
+        else if trimmedLine.hasPrefix("<image-url>") {
+            return .imageURL
         }
         else if trimmedLine.hasPrefix("<file-uuid>") {
             return .fileUUID
@@ -175,6 +179,18 @@ struct MessageParser {
             return nil
         }
 
+        func extractImageURL(_ line: String) -> String? {
+            let pattern = "<image-url>(.*?)</image-url>"
+            if let range = line.range(of: pattern, options: .regularExpression) {
+                let urlString = String(line[range])
+                    .replacingOccurrences(of: "<image-url>", with: "")
+                    .replacingOccurrences(of: "</image-url>", with: "")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                return urlString.isEmpty ? nil : urlString
+            }
+            return nil
+        }
+
         func extractFileUUID(_ line: String) -> UUID? {
             let pattern = "<file-uuid>(.*?)</file-uuid>"
             if let range = line.range(of: pattern, options: .regularExpression) {
@@ -266,6 +282,14 @@ struct MessageParser {
                     elements.append(.image(uuid))
                 }
                 else {
+                    textLines.append(line)
+                }
+
+            case .imageURL:
+                if let url = extractImageURL(line) {
+                    combineTextLinesIfNeeded()
+                    elements.append(.imageURL(url))
+                } else {
                     textLines.append(line)
                 }
 

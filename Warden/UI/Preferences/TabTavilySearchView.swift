@@ -12,11 +12,21 @@ struct TabTavilySearchView: View {
     
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 24) {
+                // Header
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Web Search")
+                        .font(.system(size: 24, weight: .bold))
+                    Text("Configure Tavily API for web search in conversations")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.bottom, 8)
+                
                 // API Configuration
                 GlassCard {
-                    VStack(alignment: .leading, spacing: 14) {
-                        SettingsSectionHeader(title: "Tavily API")
+                    VStack(alignment: .leading, spacing: 16) {
+                        SettingsSectionHeader(title: "API Configuration", icon: "key.fill", iconColor: .orange)
                         
                         VStack(alignment: .leading, spacing: 12) {
                             VStack(alignment: .leading, spacing: 6) {
@@ -56,8 +66,8 @@ struct TabTavilySearchView: View {
                 
                 // Search Settings
                 GlassCard {
-                    VStack(alignment: .leading, spacing: 14) {
-                        SettingsSectionHeader(title: "Search Settings")
+                    VStack(alignment: .leading, spacing: 16) {
+                        SettingsSectionHeader(title: "Search Settings", icon: "magnifyingglass", iconColor: .blue)
                         
                         VStack(spacing: 12) {
                             SettingsRow(
@@ -107,7 +117,7 @@ struct TabTavilySearchView: View {
                 // Usage Instructions
                 GlassCard {
                     VStack(alignment: .leading, spacing: 12) {
-                        SettingsSectionHeader(title: "How to Use")
+                        SettingsSectionHeader(title: "How to Use", icon: "lightbulb.fill", iconColor: .yellow)
                         
                         VStack(alignment: .leading, spacing: 8) {
                             HStack(alignment: .top, spacing: 12) {

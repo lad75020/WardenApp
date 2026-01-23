@@ -11,6 +11,7 @@ struct ProjectSummaryView: View {
     // State for sheet presentations
     @State private var showingMoveToProject = false
     @State private var selectedChatForMove: ChatEntity?
+    @State private var newChatButtonTapped = false
     
     private var projectColor: Color {
         Color(hex: project.colorCode ?? "#007AFF") ?? .accentColor
@@ -54,9 +55,8 @@ struct ProjectSummaryView: View {
             }
         }
 
-        .task(id: project.id) {
+        .task {
             // Must launch a new task to perform async work
-            // Using task(id:) to ensure data reloads when switching between projects
             await loadProjectData()
         }
     }
@@ -65,23 +65,24 @@ struct ProjectSummaryView: View {
     @MainActor
     private func loadProjectData() async {
         isLoadingStats = true
-
-        // Use project UUID for cross-context queries - more reliable than objectID
-        guard let projectUUID = project.id else {
-            isLoadingStats = false
-            return
-        }
-
+        
+        let projectURI = project.objectID.uriRepresentation()
+        
         // Do Core Data work on a background context and return objectIDs + primitives back to MainActor.
         let backgroundContext = PersistenceController.shared.container.newBackgroundContext()
         let result = await backgroundContext.perform { () -> (chatIDs: [NSManagedObjectID], count: Int, days: Int)? in
+            guard let projectId = backgroundContext.persistentStoreCoordinator?.managedObjectID(forURIRepresentation: projectURI) else {
+                return nil
+            }
+
+            let projectObject = backgroundContext.object(with: projectId)
+
             let request = NSFetchRequest<ChatEntity>(entityName: "ChatEntity")
-            // Use project.id comparison instead of object comparison for cross-context safety
-            request.predicate = NSPredicate(format: "project.id == %@", projectUUID as CVarArg)
+            request.predicate = NSPredicate(format: "project == %@", projectObject)
             request.sortDescriptors = [NSSortDescriptor(keyPath: \ChatEntity.updatedDate, ascending: false)]
 
             let oldestRequest = NSFetchRequest<ChatEntity>(entityName: "ChatEntity")
-            oldestRequest.predicate = NSPredicate(format: "project.id == %@", projectUUID as CVarArg)
+            oldestRequest.predicate = NSPredicate(format: "project == %@", projectObject)
             oldestRequest.sortDescriptors = [NSSortDescriptor(keyPath: \ChatEntity.createdDate, ascending: true)]
             oldestRequest.fetchLimit = 1
 
@@ -94,7 +95,7 @@ struct ProjectSummaryView: View {
                 chatIDs = chats.map(\.objectID)
 
                 let countRequest = NSFetchRequest<NSFetchRequestResult>(entityName: "MessageEntity")
-                countRequest.predicate = NSPredicate(format: "chat.project.id == %@", projectUUID as CVarArg)
+                countRequest.predicate = NSPredicate(format: "chat.project == %@", projectObject)
                 countRequest.resultType = .countResultType
                 count = try backgroundContext.count(for: countRequest)
 
@@ -110,7 +111,7 @@ struct ProjectSummaryView: View {
 
             return (chatIDs, count, days)
         }
-
+        
         if let data = result {
             let chats = data.chatIDs.compactMap { viewContext.object(with: $0) as? ChatEntity }
             allChats = chats
@@ -126,12 +127,23 @@ struct ProjectSummaryView: View {
              // Hero Icon on the left
              ZStack {
                  RoundedRectangle(cornerRadius: 16)
-                     .fill(projectColor.opacity(0.1))
+                     .fill(
+                         LinearGradient(
+                             colors: [projectColor.opacity(0.15), projectColor.opacity(0.05)],
+                             startPoint: .topLeading,
+                             endPoint: .bottomTrailing
+                         )
+                     )
                      .frame(width: 80, height: 80)
+                     .overlay(
+                         RoundedRectangle(cornerRadius: 16)
+                             .strokeBorder(projectColor.opacity(0.2), lineWidth: 1)
+                     )
                  
                  Image(systemName: "folder.fill")
                      .font(.system(size: 40))
-                     .foregroundStyle(projectColor)
+                     .foregroundStyle(projectColor.gradient)
+                     .shadow(color: projectColor.opacity(0.3), radius: 8, x: 0, y: 4)
              }
             
             // Project Identity
@@ -207,6 +219,11 @@ struct ProjectSummaryView: View {
         .background(
             RoundedRectangle(cornerRadius: 16)
                 .fill(Color(NSColor.controlBackgroundColor))
+                .shadow(color: Color.black.opacity(0.03), radius: 8, x: 0, y: 2)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .strokeBorder(Color(NSColor.separatorColor).opacity(0.5), lineWidth: 0.5)
         )
     }
     
@@ -228,7 +245,7 @@ struct ProjectSummaryView: View {
                     ForEach(recentChats, id: \.objectID) { chat in
                         ChatCard(chat: chat, projectColor: projectColor, showDate: false) {
                             NotificationCenter.default.post(
-                                name: .selectChatFromProjectSummary,
+                                name: NSNotification.Name("SelectChatFromProjectSummary"),
                                 object: chat
                             )
                         }
@@ -259,7 +276,7 @@ struct ProjectSummaryView: View {
                      ForEach(allChats, id: \.objectID) { chat in
                          Button(action: {
                              NotificationCenter.default.post(
-                                 name: .selectChatFromProjectSummary,
+                                 name: NSNotification.Name("SelectChatFromProjectSummary"),
                                  object: chat
                              )
                          }) {
@@ -318,23 +335,24 @@ struct ProjectSummaryView: View {
     
     private var newChatButton: some View {
         Button(action: {
+            newChatButtonTapped.toggle()
             createNewChatInProject()
         }) {
             HStack(spacing: 8) {
-                Image(systemName: "plus.bubble")
-                    .font(.system(size: 14, weight: .medium))
+                Image(systemName: "plus")
+                    .font(.system(size: 14, weight: .bold))
                 Text("New Chat")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: 14, weight: .bold))
             }
-            .foregroundColor(.white)
             .padding(.horizontal, 20)
-            .padding(.vertical, 9)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.accentColor)
-            )
+            .padding(.vertical, 12)
+            .background(projectColor)
+            .foregroundStyle(.white)
+            .clipShape(Capsule())
+            .shadow(color: projectColor.opacity(0.3), radius: 4, x: 0, y: 2)
         }
         .buttonStyle(.plain)
+        .symbolEffect(.bounce.down.wholeSymbol, options: .nonRepeating, value: newChatButtonTapped)
     }
     
     // MARK: - Helper Methods
@@ -352,7 +370,7 @@ struct ProjectSummaryView: View {
         
         // Post notification to select the new chat
         NotificationCenter.default.post(
-            name: .selectChatFromProjectSummary,
+            name: NSNotification.Name("SelectChatFromProjectSummary"),
             object: newChat
         )
     }
@@ -401,15 +419,6 @@ struct ProjectSummaryView: View {
     }
     
     // MARK: - Context Menu Actions
-
-    @MainActor
-    private func presentAlert(_ alert: NSAlert, handler: @escaping (NSApplication.ModalResponse) -> Void) {
-        if let window = NSApp.keyWindow ?? NSApp.mainWindow {
-            alert.beginSheetModal(for: window, completionHandler: handler)
-        } else {
-            handler(alert.runModal())
-        }
-    }
     
     private func togglePinChat(_ chat: ChatEntity) {
         chat.isPinned.toggle()
@@ -431,7 +440,7 @@ struct ProjectSummaryView: View {
         textField.stringValue = chat.name
         alert.accessoryView = textField
         
-        presentAlert(alert) { response in
+        alert.beginSheetModal(for: NSApp.keyWindow!) { response in
             if response == .alertFirstButtonReturn {
                 let newName = textField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !newName.isEmpty {
@@ -458,7 +467,7 @@ struct ProjectSummaryView: View {
         alert.addButton(withTitle: "Cancel")
         alert.alertStyle = .warning
         
-        presentAlert(alert) { response in
+        alert.beginSheetModal(for: NSApp.keyWindow!) { response in
             if response == .alertFirstButtonReturn {
                 chat.clearMessages()
                 do {
@@ -479,7 +488,7 @@ struct ProjectSummaryView: View {
         alert.addButton(withTitle: "Delete")
         alert.addButton(withTitle: "Cancel")
         
-        presentAlert(alert) { response in
+        alert.beginSheetModal(for: NSApp.keyWindow!) { response in
             if response == .alertFirstButtonReturn {
                 viewContext.delete(chat)
                 do {
@@ -544,6 +553,8 @@ struct ChatCard: View {
     var showDate: Bool = true
     let action: () -> Void
     
+    @State private var isHovered = false
+    
     var body: some View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 12) {
@@ -601,9 +612,17 @@ struct ChatCard: View {
             .background(
                 RoundedRectangle(cornerRadius: 16)
                     .fill(Color(NSColor.controlBackgroundColor))
+                    .shadow(color: Color.black.opacity(isHovered ? 0.08 : 0.04), radius: isHovered ? 12 : 6, x: 0, y: isHovered ? 4 : 2)
             )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .strokeBorder(isHovered ? projectColor.opacity(0.5) : Color(NSColor.separatorColor).opacity(0.5), lineWidth: isHovered ? 1 : 0.5)
+            )
+            .scaleEffect(isHovered ? 1.01 : 1.0)
+            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isHovered)
         }
         .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
     }
 }
 

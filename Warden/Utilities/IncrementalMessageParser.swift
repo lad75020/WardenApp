@@ -146,6 +146,14 @@ class IncrementalMessageParser {
                 appendTextLine(line)
             }
             
+        case .imageURL:
+            if let url = extractImageURL(line) {
+                finalizePendingBlock()
+                completedElements.append(.imageURL(url))
+            } else {
+                appendTextLine(line)
+            }
+            
         case .fileUUID:
             if let uuid = extractFileUUID(line) {
                 finalizePendingBlock()
@@ -162,7 +170,7 @@ class IncrementalMessageParser {
     // MARK: - Block Type Detection (reused from MessageParser)
     
     private enum BlockType {
-        case text, table, codeBlock, formulaBlock, formulaLine, thinking, imageUUID, fileUUID
+        case text, table, codeBlock, formulaBlock, formulaLine, thinking, imageUUID, imageURL, fileUUID
     }
     
     private func detectBlockType(line: String) -> BlockType {
@@ -180,6 +188,8 @@ class IncrementalMessageParser {
             return .formulaLine
         } else if trimmedLine.hasPrefix("<image-uuid>") {
             return .imageUUID
+        } else if trimmedLine.hasPrefix("<image-url>") {
+            return .imageURL
         } else if trimmedLine.hasPrefix("<file-uuid>") {
             return .fileUUID
         } else {
@@ -429,6 +439,18 @@ class IncrementalMessageParser {
                 .replacingOccurrences(of: "<image-uuid>", with: "")
                 .replacingOccurrences(of: "</image-uuid>", with: "")
             return UUID(uuidString: uuidString)
+        }
+        return nil
+    }
+    
+    private func extractImageURL(_ line: String) -> String? {
+        let pattern = "<image-url>(.*?)</image-url>"
+        if let range = line.range(of: pattern, options: .regularExpression) {
+            let urlString = String(line[range])
+                .replacingOccurrences(of: "<image-url>", with: "")
+                .replacingOccurrences(of: "</image-url>", with: "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return urlString.isEmpty ? nil : urlString
         }
         return nil
     }

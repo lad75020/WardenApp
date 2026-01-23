@@ -1,4 +1,3 @@
-
 import Combine
 import SwiftUI
 import os
@@ -67,8 +66,11 @@ final class APIServiceDetailViewModel: ObservableObject {
             imageUploadsAllowed = service.imageUploadsAllowed
             defaultAiPersona = service.defaultPersona
             defaultApiConfiguration = AppConstants.defaultApiConfigurations[type]
+            if type.lowercased() == "chatgpt image" {
+                useStreamResponse = false
+            }
+            selectedModel = model
             isCustomModel = !(defaultApiConfiguration?.models.contains(model) ?? false)
-            selectedModel = isCustomModel ? "custom" : model
 
             if let serviceIDString = service.id?.uuidString {
                 do {
@@ -98,32 +100,19 @@ final class APIServiceDetailViewModel: ObservableObject {
     }
 
     private func fetchModelsForService() {
-        // Skip model fetch for openai_custom type with empty URL - show guidance instead
-        guard !url.isEmpty else {
-            isLoadingModels = false
+        guard type.lowercased() == "ollama" || !apiKey.isEmpty else {
             fetchedModels = []
-            if type == "openai_custom" {
+            // Notify user if API key is missing for non-Ollama services
+            if type.lowercased() != "ollama" {
                 userNotification = UserNotification(
-                    type: .info,
-                    message: "Enter your API URL (and key if required) to fetch available models"
+                    type: .warning,
+                    message: "API key required to fetch models. Using default model list."
                 )
             }
             return
         }
-
-        let requiresApiKey = !(defaultApiConfiguration?.apiKeyRef.isEmpty ?? true)
-        guard !requiresApiKey || !apiKey.isEmpty else {
-            isLoadingModels = false
-            fetchedModels = []
-            userNotification = UserNotification(
-                type: .warning,
-                message: "API key required to fetch models. Using default model list."
-            )
-            return
-        }
-
+        
         guard let apiUrl = URL(string: url) else {
-            isLoadingModels = false
             fetchedModels = []
             userNotification = UserNotification(
                 type: .error,
@@ -260,11 +249,13 @@ final class APIServiceDetailViewModel: ObservableObject {
         self.selectedModel = self.model
         
         self.imageUploadsAllowed = self.defaultApiConfiguration?.imageUploadsSupported ?? false
-        
-        if type == "openai_custom" {
-            self.model = ""
-            self.selectedModel = "custom"
-            self.isCustomModel = true
+
+        // Images endpoint does not support streaming; force disable when selecting this type
+        if type.lowercased() == "chatgpt image" {
+            self.useStreamResponse = false
+        } else if self.useStreamResponse == false {
+            // Re-enable by default for other types unless user changed it explicitly
+            self.useStreamResponse = true
         }
 
         fetchModelsForService()
@@ -283,16 +274,18 @@ final class APIServiceDetailViewModel: ObservableObject {
         return AppConstants.defaultApiConfigurations[type]?.imageUploadsSupported ?? false
     }
     
-    func updateSelectedModels(_ selectedIds: Set<String>?) {
-        if let selectedIds {
-            selectedModelsManager.setSelectedModels(for: type, modelIds: selectedIds)
-        } else {
-            selectedModelsManager.clearCustomSelection(for: type)
-        }
+    func updateSelectedModels(_ selectedIds: Set<String>) {
+        selectedModelsManager.setSelectedModels(for: type, modelIds: selectedIds)
     }
     
     // MARK: - Error Handling
-    
+    private func validateSelectedModel() {
+        // If the current model is not in available models, keep it as custom selection
+        if !availableModels.contains(selectedModel) && !selectedModel.isEmpty {
+            isCustomModel = true
+            model = selectedModel
+        }
+    }
     /// Converts API errors to user-friendly messages
     private func getUserFriendlyErrorMessage(_ error: Error) -> String {
         if let apiError = error as? APIError {
@@ -322,7 +315,7 @@ final class APIServiceDetailViewModel: ObservableObject {
                 return apiError.localizedDescription
             }
         }
-        
+
         // Handle standard errors
         let nsError = error as NSError
         switch nsError.code {

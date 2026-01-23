@@ -126,7 +126,7 @@ struct ToastManager: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .padding(.top, 60)
         .allowsHitTesting(false)
-        .onReceive(NotificationCenter.default.publisher(for: AppConstants.showToastNotification)) { notification in
+        .onReceive(NotificationCenter.default.publisher(for: .showToast)) { notification in
             if let userInfo = notification.userInfo,
                let message = userInfo["message"] as? String,
                let icon = userInfo["icon"] as? String {
@@ -156,10 +156,14 @@ struct ToastItem: Identifiable {
     let icon: String
 }
 
+extension Notification.Name {
+    static let showToast = Notification.Name("showToast")
+}
+
 extension View {
     func showToast(_ message: String, icon: String = "checkmark.circle.fill") {
         NotificationCenter.default.post(
-            name: AppConstants.showToastNotification,
+            name: .showToast,
             object: nil,
             userInfo: ["message": message, "icon": icon]
         )

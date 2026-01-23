@@ -118,7 +118,7 @@ struct CodeView: View {
             if !isRendered {
                 isRendered = true
                 NotificationCenter.default.post(
-                    name: .codeBlockRendered,
+                    name: NSNotification.Name("CodeBlockRendered"),
                     object: nil
                 )
             }
@@ -127,11 +127,11 @@ struct CodeView: View {
             updateHighlightedCode(colorScheme: colorScheme)
         }
         .onChange(of: chatFontSize) { _ in
-            Task { await HighlighterManager.shared.invalidateCache() }
+            HighlighterManager.shared.invalidateCache()
             updateHighlightedCode(colorScheme: colorScheme)
         }
         .onChange(of: codeFont) { _ in
-            Task { await HighlighterManager.shared.invalidateCache() }
+            HighlighterManager.shared.invalidateCache()
             updateHighlightedCode(colorScheme: colorScheme)
         }
     }

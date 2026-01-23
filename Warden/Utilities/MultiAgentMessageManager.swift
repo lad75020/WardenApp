@@ -1,31 +1,39 @@
 import CoreData
 import Foundation
 
-/// Manages simultaneous communication with multiple AI services.
+/// Manages simultaneous communication with multiple AI services
 @MainActor
 final class MultiAgentMessageManager: ObservableObject {
-    private var groupTask: Task<Void, Never>?
-
+    private var viewContext: NSManagedObjectContext
+    private var lastUpdateTime = Date()
+    private let updateInterval = AppConstants.streamedResponseUpdateUIInterval
+    private var activeTasks: [Task<Void, Never>] = []
+    
     @Published var activeAgents: [AgentResponse] = []
     @Published var isProcessing = false
-
+    
     init(viewContext: NSManagedObjectContext) {
-        _ = viewContext
+        self.viewContext = viewContext
     }
-
+    
     func stopStreaming() {
-        groupTask?.cancel()
-        groupTask = nil
-
+        // Cancel all active tasks
+        activeTasks.forEach { $0.cancel() }
+        activeTasks.removeAll()
+        
+        // Update state
         isProcessing = false
-
-        for index in activeAgents.indices where !activeAgents[index].isComplete {
-            activeAgents[index].isComplete = true
-            activeAgents[index].error = APIError.unknown("Request cancelled by user")
+        
+        // Mark incomplete agents as cancelled
+        for index in activeAgents.indices {
+            if !activeAgents[index].isComplete {
+                activeAgents[index].isComplete = true
+                activeAgents[index].error = APIError.unknown("Request cancelled by user")
+            }
         }
     }
-
-    /// Represents a response from a single agent/service.
+    
+    /// Represents a response from a single agent/service
     struct AgentResponse: Identifiable {
         let id = UUID()
         let serviceName: String
@@ -35,13 +43,13 @@ final class MultiAgentMessageManager: ObservableObject {
         var isComplete: Bool = false
         var error: APIError?
         var timestamp: Date = Date()
-
+        
         var displayName: String {
-            "\(serviceName) (\(model))"
+            return "\(serviceName) (\(model))"
         }
     }
-
-    /// Sends a message to multiple AI services simultaneously.
+    
+    /// Sends a message to multiple AI services simultaneously
     func sendMessageToMultipleServices(
         _ message: String,
         chat: ChatEntity,
@@ -53,174 +61,166 @@ final class MultiAgentMessageManager: ObservableObject {
             completion(.failure(APIError.noApiService("No services selected")))
             return
         }
-
-        groupTask?.cancel()
-
-        // Limit to maximum 3 services for optimal UX.
+        
+        // Limit to maximum 3 services for optimal UX
         let limitedServices = Array(selectedServices.prefix(3))
-
+        
         isProcessing = true
-        activeAgents = limitedServices.map { service in
-            AgentResponse(
+        activeAgents = []
+        activeTasks.removeAll() // Clear any previous tasks
+        
+        let requestMessages = chat.constructRequestMessages(forUserMessage: message, contextSize: contextSize)
+        let temperature = (chat.persona?.temperature ?? AppConstants.defaultTemperatureForChat).roundedToOneDecimal()
+        
+        let dispatchGroup = DispatchGroup()
+        
+        // Create initial agent responses
+        for service in limitedServices {
+            let agentResponse = AgentResponse(
                 serviceName: service.name ?? "Unknown",
                 serviceType: service.type ?? "unknown",
                 model: service.model ?? "unknown"
             )
+            activeAgents.append(agentResponse)
         }
-
-        let requestMessages = chat.constructRequestMessages(forUserMessage: message, contextSize: contextSize)
-        let temperature = (chat.persona?.temperature ?? AppConstants.defaultTemperatureForChat).roundedToOneDecimal()
-        let settings = GenerationSettings(temperature: temperature, reasoningEffort: chat.reasoningEffort)
-
-        groupTask = Task { [weak self] in
-            guard let self else { return }
-
-            await withTaskGroup(of: Void.self) { group in
-                for (agentIndex, service) in limitedServices.enumerated() {
-                    group.addTask { [weak self] in
-                        guard let self else { return }
-                        await Self.sendRequest(
-                            service: service,
-                            requestMessages: requestMessages,
-                            settings: settings,
-                            updateAgent: { update in
-                                await MainActor.run { [weak self] in
-                                    guard let self, agentIndex < self.activeAgents.count else { return }
-                                    update(&self.activeAgents[agentIndex])
-                                }
-                            }
-                        )
-                    }
-                }
+        
+        // Send requests to all services concurrently
+        for (index, service) in limitedServices.enumerated() {
+            dispatchGroup.enter()
+            
+            guard let config = APIServiceManager.createAPIConfiguration(for: service) else {
+                activeAgents[index].error = APIError.noApiService("Invalid configuration")
+                activeAgents[index].isComplete = true
+                dispatchGroup.leave()
+                continue
             }
-
-            guard !Task.isCancelled else { return }
-            isProcessing = false
-            groupTask = nil
-            completion(.success(activeAgents))
+            
+            let apiService = APIServiceFactory.createAPIService(config: config)
+            
+            // Use streaming if supported
+            if service.useStreamResponse {
+                sendStreamRequest(
+                    apiService: apiService,
+                    requestMessages: requestMessages,
+                    temperature: temperature,
+                    agentIndex: index,
+                    dispatchGroup: dispatchGroup
+                )
+            } else {
+                sendRegularRequest(
+                    apiService: apiService,
+                    requestMessages: requestMessages,
+                    temperature: temperature,
+                    agentIndex: index,
+                    dispatchGroup: dispatchGroup
+                )
+            }
+        }
+        
+        // Wait for all requests to complete
+        dispatchGroup.notify(queue: .main) {
+            self.isProcessing = false
+            self.activeTasks.removeAll() // Clear completed tasks
+            completion(.success(self.activeAgents))
         }
     }
-}
-
-private extension MultiAgentMessageManager {
-    static func sendRequest(
-        service: APIServiceEntity,
+    
+    private func sendStreamRequest(
+        apiService: APIService,
         requestMessages: [[String: String]],
-        settings: GenerationSettings,
-        updateAgent: @Sendable @escaping (@Sendable (inout AgentResponse) -> Void) async -> Void
-    ) async {
-        guard let config = APIServiceManager.createAPIConfiguration(for: service) else {
-            await updateAgent { agent in
-                agent.error = APIError.noApiService("Invalid configuration")
-                agent.isComplete = true
-                agent.timestamp = Date()
-            }
-            return
-        }
-
-        let apiService = APIServiceFactory.createAPIService(config: config)
-
-        await updateAgent { agent in
-            agent.response = ""
-            agent.isComplete = false
-            agent.error = nil
-            agent.timestamp = Date()
-        }
-
-        do {
-            if service.useStreamResponse {
-                let updateInterval = AppConstants.streamedResponseUpdateUIInterval
-                var pendingParts: [String] = []
-                var pendingCharacterCount = 0
-                var lastFlushTime = Date.distantPast
-
-                func drainPendingParts() -> String {
-                    var result = String()
-                    result.reserveCapacity(pendingCharacterCount)
-                    for part in pendingParts {
-                        result.append(contentsOf: part)
-                    }
-                    pendingParts.removeAll(keepingCapacity: true)
-                    pendingCharacterCount = 0
-                    return result
-                }
-
-                func flushPendingParts(force: Bool) async {
-                    guard !pendingParts.isEmpty else { return }
-                    let now = Date()
-                    guard force || now.timeIntervalSince(lastFlushTime) >= updateInterval else { return }
-                    let chunk = drainPendingParts()
-                    lastFlushTime = now
-
-                    await updateAgent { agent in
-                        agent.response.append(contentsOf: chunk)
-                        agent.timestamp = Date()
+        temperature: Float,
+        agentIndex: Int,
+        dispatchGroup: DispatchGroup
+    ) {
+        let task = Task {
+            do {
+                await MainActor.run {
+                    if agentIndex < self.activeAgents.count {
+                        self.activeAgents[agentIndex].response = ""
+                        self.activeAgents[agentIndex].timestamp = Date()
                     }
                 }
 
                 _ = try await ChatService.shared.sendStream(
                     apiService: apiService,
                     messages: requestMessages,
-                    settings: settings
+                    temperature: temperature
                 ) { chunk in
-                    pendingParts.append(chunk)
-                    pendingCharacterCount += chunk.count
-                    await flushPendingParts(force: false)
+                    await MainActor.run {
+                        if agentIndex < self.activeAgents.count {
+                            self.activeAgents[agentIndex].response.append(contentsOf: chunk)
+                            self.activeAgents[agentIndex].timestamp = Date()
+                        }
+                    }
                 }
-
-                await flushPendingParts(force: true)
-            } else {
-                let responseText = try await sendMessage(
-                    apiService: apiService,
-                    requestMessages: requestMessages,
-                    settings: settings
-                )
-
-                await updateAgent { agent in
-                    agent.response = responseText ?? "No response"
-                    agent.timestamp = Date()
+                
+                // Only complete if not cancelled
+                if !Task.isCancelled {
+                    await MainActor.run {
+                        if agentIndex < self.activeAgents.count {
+                            self.activeAgents[agentIndex].isComplete = true
+                            self.activeAgents[agentIndex].timestamp = Date()
+                        }
+                    }
                 }
-            }
-
-            if !Task.isCancelled {
-                await updateAgent { agent in
-                    agent.isComplete = true
-                    agent.timestamp = Date()
+                
+                dispatchGroup.leave()
+            } catch is CancellationError {
+                await MainActor.run {
+                    if agentIndex < self.activeAgents.count {
+                        self.activeAgents[agentIndex].error = APIError.unknown("Request cancelled")
+                        self.activeAgents[agentIndex].isComplete = true
+                    }
                 }
-            }
-        } catch is CancellationError {
-            await updateAgent { agent in
-                agent.error = APIError.unknown("Request cancelled")
-                agent.isComplete = true
-                agent.timestamp = Date()
-            }
-        } catch {
-            await updateAgent { agent in
-                agent.error = error as? APIError ?? APIError.unknown(error.localizedDescription)
-                agent.isComplete = true
-                agent.timestamp = Date()
+                dispatchGroup.leave()
+            } catch {
+                await MainActor.run {
+                    if agentIndex < self.activeAgents.count {
+                        self.activeAgents[agentIndex].error = error as? APIError ?? APIError.unknown(error.localizedDescription)
+                        self.activeAgents[agentIndex].isComplete = true
+                    }
+                }
+                dispatchGroup.leave()
             }
         }
+        
+        // Track the task for potential cancellation
+        activeTasks.append(task)
     }
-
-    static func sendMessage(
+    
+    private func sendRegularRequest(
         apiService: APIService,
         requestMessages: [[String: String]],
-        settings: GenerationSettings
-    ) async throws -> String? {
-        try await withCheckedThrowingContinuation { continuation in
-            ChatService.shared.sendMessage(
-                apiService: apiService,
-                messages: requestMessages,
-                settings: settings
-            ) { result in
+        temperature: Float,
+        agentIndex: Int,
+        dispatchGroup: DispatchGroup
+    ) {
+        ChatService.shared.sendMessage(
+            apiService: apiService,
+            messages: requestMessages,
+            temperature: temperature
+        ) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self, agentIndex < self.activeAgents.count else {
+                    dispatchGroup.leave()
+                    return
+                }
+                
                 switch result {
                 case .success(let (responseText, _)):
-                    continuation.resume(returning: responseText)
+                    self.activeAgents[agentIndex].response = responseText ?? "No response"
+                    self.activeAgents[agentIndex].isComplete = true
+                    self.activeAgents[agentIndex].timestamp = Date()
+                    
                 case .failure(let error):
-                    continuation.resume(throwing: error)
+                    self.activeAgents[agentIndex].error = error as? APIError ?? APIError.unknown(error.localizedDescription)
+                    self.activeAgents[agentIndex].isComplete = true
                 }
+                
+                dispatchGroup.leave()
             }
         }
     }
-}
+    
+    
+    }

@@ -5,12 +5,25 @@ import os
 
 struct QuickChatView: View {
     @Environment(\.managedObjectContext) private var viewContext
+    @State private var text: String = ""
+    @State private var responseText: String = ""
     @State private var isStreaming: Bool = false
-    @State private var composerState = ComposerState()
+    @State private var isExpanded: Bool = false
+    @State private var selectedModel: String = AppConstants.chatGptDefaultModel
     @State private var clipboardContext: String?
+    @State private var contentHeight: CGFloat = 60 // Initial compact height
     
     // We'll use a dedicated ChatEntity for quick chat
     @State private var quickChatEntity: ChatEntity?
+    @StateObject private var modelCache = ModelCacheManager.shared
+    
+    // Paperclip Menu State
+    @State private var showingPlusMenu = false
+    @State private var attachedImages: [ImageAttachment] = []
+    @State private var attachedFiles: [FileAttachment] = []
+    @StateObject private var rephraseService = RephraseService()
+    @State private var showingRephraseError = false
+    @State private var rephraseErrorMessage = ""
     
     @FetchRequest(
         sortDescriptors: [NSSortDescriptor(keyPath: \APIServiceEntity.addedDate, ascending: false)],
@@ -20,7 +33,8 @@ struct QuickChatView: View {
     
     @AppStorage("defaultApiService") private var defaultApiServiceID: String?
     
-    @State private var currentStreamingTask: Task<Void, Never>?
+    // Focus state for the custom input
+    @FocusState private var isInputFocused: Bool
     
     var body: some View {
         VStack(spacing: 0) {
@@ -39,26 +53,56 @@ struct QuickChatView: View {
                     .background(Color.primary.opacity(0.1))
             }
             
-            MessageInputView(
-                state: $composerState,
-                chat: quickChatEntity,
-                imageUploadsAllowed: quickChatEntity?.apiService?.imageUploadsAllowed ?? false,
-                isStreaming: isStreaming,
-                enableMultiAgentMode: false,
-                showsWebSearchToggle: false,
-                showsMCPTools: false,
-                showsPersonas: false,
-                onEnter: {
-                    submitQuery()
-                },
-                onAddImage: selectAndAddImages,
-                onAddFile: selectAndAddFiles,
-                onStopStreaming: stopCurrentStream,
-                inputPlaceholderText: "Ask anything...",
-                cornerRadius: 20.0
-            )
+            // Attachment Previews
+            if !attachedImages.isEmpty || !attachedFiles.isEmpty {
+                attachmentPreviewsSection
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+            }
+            
+            // Main Input Area
+            HStack(spacing: 12) {
+                // Paperclip Icon (Menu)
+                Button(action: {
+                    showingPlusMenu.toggle()
+                }) {
+                    Image(systemName: "paperclip")
+                        .font(.system(size: 18, weight: .regular))
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+                .popover(isPresented: $showingPlusMenu, arrowEdge: .bottom) {
+                    paperclipMenu
+                }
+                
+                // Text Input
+                TextField("", text: $text)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 16))
+                    .foregroundColor(.primary) // Adaptive color
+                    .focused($isInputFocused)
+                    .onSubmit {
+                        submitQuery()
+                    }
+                    .overlay(alignment: .leading) {
+                        if text.isEmpty {
+                            Text("Start typing here to ask your question...")
+                                .font(.system(size: 16))
+                                .foregroundColor(.secondary)
+                                .allowsHitTesting(false)
+                        }
+                    }
+                
+                Spacer()
+                
+                // Model Selector
+                if let chat = quickChatEntity {
+                    CompactModelSelector(chat: chat)
+                }
+            }
             .padding(.horizontal, 16)
-            .padding(.vertical, 12)
+            .padding(.vertical, 14)
+            .background(Color(nsColor: .windowBackgroundColor)) // Dark background
         }
         .background(Color(nsColor: .windowBackgroundColor))
         .cornerRadius(20) // High corner radius
@@ -71,20 +115,127 @@ struct QuickChatView: View {
         .gesture(WindowDragGesture())
         .onAppear {
             ensureQuickChatEntity()
-            checkClipboard()
+            isInputFocused = true
         }
-        .onReceive(NotificationCenter.default.publisher(for: .resetQuickChat)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ResetQuickChat"))) { _ in
             resetChat()
         }
+        .alert("Rephrase Error", isPresented: $showingRephraseError) {
+            Button("OK") { }
+        } message: {
+            Text(rephraseErrorMessage)
+        }
+    }
+    
+    private var selectedModelName: String {
+        // Simple mapping or just use the ID
+        if selectedModel.contains("gpt-4") { return "ChatGPT 4" }
+        if selectedModel.contains("gpt-3.5") { return "ChatGPT 3.5" }
+        if selectedModel.contains("claude") { return "Claude" }
+        return "AI"
+    }
+    
+    // MARK: - Subviews
+    
+    private var paperclipMenu: some View {
+        VStack(spacing: 8) {
+            // Rephrase option
+            Button(action: {
+                showingPlusMenu = false
+                rephraseText()
+            }) {
+                HStack {
+                    if rephraseService.isRephrasing {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                            .frame(width: 14, height: 14)
+                    } else {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 14))
+                    }
+                    Text("Rephrase")
+                    Spacer()
+                }
+                .foregroundColor(.primary)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+            }
+            .buttonStyle(PlainButtonStyle())
+            .disabled(text.isEmpty)
+            
+            // Add Image option
+            Button(action: {
+                showingPlusMenu = false
+                selectAndAddImages()
+            }) {
+                HStack {
+                    Image(systemName: "photo.badge.plus")
+                        .font(.system(size: 14))
+                    Text("Add Image")
+                    Spacer()
+                }
+                .foregroundColor(.primary)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+            }
+            .buttonStyle(PlainButtonStyle())
+            
+            // Add File option
+            Button(action: {
+                showingPlusMenu = false
+                selectAndAddFiles()
+            }) {
+                HStack {
+                    Image(systemName: "doc.badge.plus")
+                        .font(.system(size: 14))
+                    Text("Add File")
+                    Spacer()
+                }
+                .foregroundColor(.primary)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+            }
+            .buttonStyle(PlainButtonStyle())
+        }
+        .padding(.vertical, 8)
+        .frame(minWidth: 160)
+    }
+    
+    private var attachmentPreviewsSection: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(attachedImages) { attachment in
+                    ImagePreviewView(attachment: attachment) { _ in
+                        if let index = attachedImages.firstIndex(where: { $0.id == attachment.id }) {
+                            withAnimation {
+                                attachedImages.remove(at: index)
+                            }
+                        }
+                    }
+                }
+                ForEach(attachedFiles) { attachment in
+                    FilePreviewView(attachment: attachment) { _ in
+                        if let index = attachedFiles.firstIndex(where: { $0.id == attachment.id }) {
+                            withAnimation {
+                                attachedFiles.remove(at: index)
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(.bottom, 6)
+        }
+        .frame(height: 80)
     }
     
     private func updateWindowHeight(contentHeight: CGFloat) {
         DispatchQueue.main.async {
-            var baseHeight: CGFloat = 120
-            if !composerState.attachedImages.isEmpty || !composerState.attachedFiles.isEmpty {
+            // Base height (input) + content height + attachment height
+            var baseHeight: CGFloat = 60
+            if !attachedImages.isEmpty || !attachedFiles.isEmpty {
                 baseHeight += 90
             }
-
+            
             let newHeight = baseHeight + contentHeight
             FloatingPanelManager.shared.updateHeight(newHeight)
         }
@@ -124,6 +275,7 @@ struct QuickChatView: View {
                     if let defaultService = try viewContext.existingObject(with: objectID) as? APIServiceEntity {
                         newChat.apiService = defaultService
                         newChat.gptModel = defaultService.model ?? AppConstants.chatGptDefaultModel
+                        selectedModel = newChat.gptModel
                     }
                 } catch {
                     WardenLog.coreData.error(
@@ -131,11 +283,13 @@ struct QuickChatView: View {
                     )
                     // Fall back to first available service
                     fallbackServiceSelectionFor(chat: newChat)
+                    selectedModel = newChat.gptModel.isEmpty ? AppConstants.chatGptDefaultModel : newChat.gptModel
                 }
             } else {
                 // No default set, fall back to first available service
                 fallbackServiceSelectionFor(chat: newChat)
                 newChat.gptModel = newChat.apiService?.model ?? AppConstants.chatGptDefaultModel
+                selectedModel = newChat.gptModel
             }
             
             quickChatEntity = newChat
@@ -144,27 +298,17 @@ struct QuickChatView: View {
     }
     
     private func submitQuery() {
-        let trimmedText = composerState.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedText.isEmpty
-            || !composerState.attachedImages.isEmpty
-            || !composerState.attachedFiles.isEmpty,
-            quickChatEntity != nil
-        else { return }
+        guard !text.isEmpty || !attachedImages.isEmpty || !attachedFiles.isEmpty, let _ = quickChatEntity else { return }
         
         isStreaming = true
+        responseText = ""
         
-        var fullPrompt = trimmedText
-        if let context = clipboardContext, !context.isEmpty {
+        var fullPrompt = text
+        if let context = clipboardContext {
             fullPrompt += "\n\nContext:\n\(context)"
         }
         
         fetchServiceAndSend(message: fullPrompt)
-    }
-    
-    private func stopCurrentStream() {
-        currentStreamingTask?.cancel()
-        currentStreamingTask = nil
-        isStreaming = false
     }
     
     private func fetchServiceAndSend(message: String) {
@@ -188,21 +332,41 @@ struct QuickChatView: View {
             messageContents.append(MessageContent(text: message))
         }
         
-        for attachment in composerState.attachedImages {
+        for attachment in attachedImages {
             attachment.saveToEntity(context: viewContext)
             messageContents.append(MessageContent(imageAttachment: attachment))
         }
         
-        for attachment in composerState.attachedFiles {
+        for attachment in attachedFiles {
             attachment.saveToEntity(context: viewContext)
             messageContents.append(MessageContent(fileAttachment: attachment))
         }
         
         let messageBody = messageContents.toString()
         
+        // Build messages: for image models, only the current prompt; otherwise include context
+        var messages: [[String: String]] = []
+        let isImageGeneration = (apiService.type?.lowercased() == "chatgpt image") || (chat.gptModel.lowercased().hasPrefix("gpt-image"))
+        if isImageGeneration {
+            if !messageBody.isEmpty {
+                messages.append(["role": "user", "content": messageBody])
+            }
+        } else {
+            if !chat.systemMessage.isEmpty {
+                messages.append(["role": "system", "content": chat.systemMessage])
+            }
+            let sortedMessages = chat.messagesArray.sorted { ($0.timestamp ?? Date.distantPast) < ($1.timestamp ?? Date.distantPast) }
+            for msg in sortedMessages {
+                let role = msg.own ? "user" : "assistant"
+                if !msg.body.isEmpty {
+                    messages.append(["role": role, "content": msg.body])
+                }
+            }
+        }
+        
         // Create User Message Entity
         let userMessage = MessageEntity(context: viewContext)
-        userMessage.id = chat.nextMessageID()
+        userMessage.id = Int64(chat.messages.count + 1)
         userMessage.body = messageBody
         userMessage.timestamp = Date()
         userMessage.own = true
@@ -212,13 +376,13 @@ struct QuickChatView: View {
         try? viewContext.save()
         
         // Clear input
-        composerState.text = ""
-        composerState.attachedImages = []
-        composerState.attachedFiles = []
+        text = ""
+        attachedImages = []
+        attachedFiles = []
         
         // Create AI Message Entity
         let aiMessage = MessageEntity(context: viewContext)
-        aiMessage.id = chat.nextMessageID()
+        aiMessage.id = Int64(chat.messages.count + 1)
         aiMessage.body = ""
         aiMessage.timestamp = Date()
         aiMessage.own = false
@@ -238,54 +402,61 @@ struct QuickChatView: View {
         
         let handler = APIServiceFactory.createAPIService(config: config)
         
-        var messages: [[String: String]] = []
-        if !chat.systemMessage.isEmpty {
-            messages.append(["role": "system", "content": chat.systemMessage])
-        }
+        // Respect service streaming capability
+        let isImageService = (apiService.type?.lowercased() == "chatgpt image") || chat.gptModel.lowercased().hasPrefix("gpt-image")
+        let useStream = (apiService.useStreamResponse) && !isImageService
         
-        let sortedMessages = chat.messagesArray.sorted {
-            ($0.timestamp ?? Date.distantPast) < ($1.timestamp ?? Date.distantPast)
-        }
-        for msg in sortedMessages {
-            let role = msg.own ? "user" : "assistant"
-            if !msg.body.isEmpty {
-                messages.append(["role": role, "content": msg.body])
-            }
-        }
-        
-        currentStreamingTask = Task { @MainActor in
-            do {
-                let stream = try await handler.sendMessageStream(
-                    messages,
-                    tools: nil,
-                    settings: GenerationSettings(temperature: 0.7)
-                )
-                aiMessage.waitingForResponse = false
-                try? viewContext.save()
-                
-                var currentBody = ""
-                for try await chunk in stream {
-                    try Task.checkCancellation()
-                    if let text = chunk.0 {
-                        currentBody += text
-                        aiMessage.body = currentBody
+        if useStream {
+            isStreaming = true
+            Task {
+                do {
+                    let stream = try await handler.sendMessageStream(messages, tools: nil, temperature: 0.7)
+                    await MainActor.run {
+                        aiMessage.waitingForResponse = false
+                        try? viewContext.save()
+                    }
+                    var currentBody = ""
+                    for try await chunk in stream {
+                        await MainActor.run {
+                            if let text = chunk.0 {
+                                currentBody += text
+                                aiMessage.body = currentBody
+                                try? viewContext.save()
+                            }
+                        }
+                    }
+                    await MainActor.run {
+                        isStreaming = false
+                        try? viewContext.save()
+                        // Auto-rename chat
+                        generateChatNameIfNeeded(chat: chat, apiService: apiService)
+                    }
+                } catch {
+                    await MainActor.run {
+                        aiMessage.body += "\nError: \(error.localizedDescription)"
+                        aiMessage.waitingForResponse = false
+                        isStreaming = false
                         try? viewContext.save()
                     }
                 }
-                
-                isStreaming = false
-                currentStreamingTask = nil
-                try? viewContext.save()
-                generateChatNameIfNeeded(chat: chat, apiService: apiService)
-            } catch is CancellationError {
-                isStreaming = false
-                currentStreamingTask = nil
-            } catch {
-                aiMessage.body += "\nError: \(error.localizedDescription)"
-                aiMessage.waitingForResponse = false
-                isStreaming = false
-                currentStreamingTask = nil
-                try? viewContext.save()
+            }
+        } else {
+            // Non-streaming path (required for endpoints like images/generations)
+            handler.sendMessage(messages, tools: nil, temperature: 0.7) { result in
+                DispatchQueue.main.async {
+                    switch result {
+                    case .success(let (messageText, _)):
+                        aiMessage.waitingForResponse = false
+                        aiMessage.body = messageText ?? ""
+                        try? viewContext.save()
+                        // Auto-rename chat
+                        generateChatNameIfNeeded(chat: chat, apiService: apiService)
+                    case .failure(let error):
+                        aiMessage.body += "\nError: \(error.localizedDescription)"
+                        aiMessage.waitingForResponse = false
+                        try? viewContext.save()
+                    }
+                }
             }
         }
     }
@@ -300,19 +471,19 @@ struct QuickChatView: View {
         guard let config = APIServiceManager.createAPIConfiguration(for: apiService) else { return }
         let handler = APIServiceFactory.createAPIService(config: config)
         
-	        let instruction = AppConstants.chatGptGenerateChatInstruction
-	        let requestMessages = chat.constructRequestMessages(forUserMessage: instruction, contextSize: 3)
-	        
-	        handler.sendMessage(
-	            requestMessages,
-	            tools: nil,
-	            settings: GenerationSettings(temperature: AppConstants.defaultTemperatureForChatNameGeneration)
-	        ) { result in
-	            DispatchQueue.main.async {
-	                switch result {
-	                case .success(let (messageText, _)):
-	                    guard let name = messageText else { return }
-	                    let sanitized = name.replacingOccurrences(of: "\"", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let instruction = AppConstants.chatGptGenerateChatInstruction
+        let requestMessages = chat.constructRequestMessages(forUserMessage: instruction, contextSize: 3)
+        
+        handler.sendMessage(
+            requestMessages,
+            tools: nil,
+            temperature: AppConstants.defaultTemperatureForChatNameGeneration
+        ) { result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let (messageText, _)):
+                    guard let name = messageText else { return }
+                    let sanitized = name.replacingOccurrences(of: "\"", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
                     if !sanitized.isEmpty {
                         chat.name = sanitized
                         try? viewContext.save()
@@ -364,6 +535,7 @@ struct QuickChatView: View {
                 if let defaultService = try viewContext.existingObject(with: objectID) as? APIServiceEntity {
                     newChat.apiService = defaultService
                     newChat.gptModel = defaultService.model ?? AppConstants.chatGptDefaultModel
+                    selectedModel = newChat.gptModel
                 }
             } catch {
                 WardenLog.coreData.error(
@@ -371,19 +543,22 @@ struct QuickChatView: View {
                 )
                 fallbackServiceSelectionFor(chat: newChat)
                 newChat.gptModel = newChat.apiService?.model ?? AppConstants.chatGptDefaultModel
+                selectedModel = newChat.gptModel
             }
         } else {
             fallbackServiceSelectionFor(chat: newChat)
             newChat.gptModel = newChat.apiService?.model ?? AppConstants.chatGptDefaultModel
+            selectedModel = newChat.gptModel
         }
         
         quickChatEntity = newChat
         try? viewContext.save()
         
+        text = ""
         isStreaming = false
-        composerState.text = ""
-        composerState.attachedImages = []
-        composerState.attachedFiles = []
+        responseText = ""
+        attachedImages = []
+        attachedFiles = []
         
         DispatchQueue.main.async {
             FloatingPanelManager.shared.updateHeight(60)
@@ -402,6 +577,30 @@ struct QuickChatView: View {
         }
     }
     
+    // MARK: - Actions
+    
+    private func rephraseText() {
+        guard let apiService = quickChatEntity?.apiService else {
+            rephraseErrorMessage = "No AI service selected."
+            showingRephraseError = true
+            return
+        }
+        
+        rephraseService.rephraseText(text, using: apiService) { result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let rephrased):
+                    withAnimation {
+                        self.text = rephrased
+                    }
+                case .failure(let error):
+                    self.rephraseErrorMessage = error.localizedDescription
+                    self.showingRephraseError = true
+                }
+            }
+        }
+    }
+    
     private func selectAndAddImages() {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = true
@@ -413,9 +612,7 @@ struct QuickChatView: View {
             if response == .OK {
                 for url in panel.urls {
                     let attachment = ImageAttachment(url: url, context: viewContext)
-                    DispatchQueue.main.async {
-                        composerState.attachedImages.append(attachment)
-                    }
+                    attachedImages.append(attachment)
                 }
             }
         }
@@ -432,9 +629,7 @@ struct QuickChatView: View {
             if response == .OK {
                 for url in panel.urls {
                     let attachment = FileAttachment(url: url, context: viewContext)
-                    DispatchQueue.main.async {
-                        composerState.attachedFiles.append(attachment)
-                    }
+                    attachedFiles.append(attachment)
                 }
             }
         }
@@ -518,7 +713,7 @@ struct QuickChatContentView: View {
                                             NSApp.activate(ignoringOtherApps: true)
                                             // Post notification to open chat
                                             NotificationCenter.default.post(
-                                                name: .selectChatFromProjectSummary,
+                                                name: NSNotification.Name("SelectChatFromProjectSummary"),
                                                 object: chat
                                             )
                                         }) {
@@ -614,7 +809,6 @@ struct QuickChatProviderLogo: View {
                 } else {
                     Image(iconName)
                         .resizable()
-                        .renderingMode(.template)
                         .aspectRatio(contentMode: .fit)
                         .frame(width: 14, height: 14)
                         .foregroundColor(.accentColor)
@@ -709,24 +903,15 @@ struct CompactModelSelector: View {
     @ObservedObject var chat: ChatEntity
     @Environment(\.managedObjectContext) private var viewContext
     
-    @ObservedObject private var modelCache = ModelCacheManager.shared
-    @ObservedObject private var favoriteManager = FavoriteModelsManager.shared
-    @ObservedObject private var selectedModelsManager = SelectedModelsManager.shared
-    @ObservedObject private var metadataCache = ModelMetadataCache.shared
-    
+    @StateObject private var modelCache = ModelCacheManager.shared
     @FetchRequest(
         sortDescriptors: [NSSortDescriptor(keyPath: \APIServiceEntity.addedDate, ascending: false)],
         animation: .default
     )
     private var apiServices: FetchedResults<APIServiceEntity>
     
+    @State private var isExpanded = false
     @State private var isHovered = false
-    
-    private static let providerNames: [String: String] = [
-        "chatgpt": "OpenAI", "claude": "Anthropic", "gemini": "Google",
-        "xai": "xAI", "perplexity": "Perplexity", "deepseek": "DeepSeek",
-        "groq": "Groq", "openrouter": "OpenRouter", "ollama": "Ollama", "mistral": "Mistral"
-    ]
     
     private var currentProviderType: String {
         chat.apiService?.type ?? AppConstants.defaultApiType
@@ -738,68 +923,14 @@ struct CompactModelSelector: View {
         return ModelMetadata.formatModelDisplayName(modelId: modelId, provider: currentProviderType)
     }
     
-    private var availableModels: [(provider: String, models: [String])] {
-        var result: [(provider: String, models: [String])] = []
-        for service in apiServices {
-            guard let serviceType = service.type else { continue }
-            let serviceModels = modelCache.getModels(for: serviceType)
-            
-            let visibleModels = serviceModels.filter { model in
-                if selectedModelsManager.hasCustomSelection(for: serviceType) {
-                    return selectedModelsManager.getSelectedModelIds(for: serviceType).contains(model.id)
-                }
-                return true
-            }
-            
-            if !visibleModels.isEmpty {
-                result.append((provider: serviceType, models: visibleModels.map { $0.id }))
-            }
-        }
-        return result
-    }
-    
-    private var favoriteModels: [(provider: String, modelId: String)] {
-        availableModels.flatMap { provider, models in
-            models.compactMap { model in
-                favoriteManager.isFavorite(provider: provider, model: model) ? (provider, model) : nil
-            }
-        }
-    }
-    
-    @MainActor
-    private func selectModel(provider: String, modelId: String) {
-        if let service = apiServices.first(where: { $0.type == provider }) {
-            chat.apiService = service
-        }
-        chat.gptModel = modelId
-        chat.updatedDate = Date()
-        chat.objectWillChange.send()
-        
-        NotificationCenter.default.post(
-            name: .recreateMessageManager,
-            object: nil,
-            userInfo: ["chatId": chat.id]
-        )
-    }
-    
     var body: some View {
-        Menu {
-            if !favoriteModels.isEmpty {
-                Section("Favorites") {
-                    ForEach(favoriteModels, id: \.modelId) { item in
-                        modelMenuItem(provider: item.provider, modelId: item.modelId)
-                    }
-                }
+        Button(action: {
+            isExpanded = true
+            let services = Array(apiServices)
+            if !services.isEmpty {
+                modelCache.fetchAllModels(from: services)
             }
-            
-            ForEach(availableModels, id: \.provider) { providerModels in
-                Section(Self.providerNames[providerModels.provider] ?? providerModels.provider.capitalized) {
-                    ForEach(providerModels.models, id: \.self) { modelId in
-                        modelMenuItem(provider: providerModels.provider, modelId: modelId)
-                    }
-                }
-            }
-        } label: {
+        }) {
             HStack(spacing: 5) {
                 Image("logo_\(currentProviderType)")
                     .resizable()
@@ -823,81 +954,20 @@ struct CompactModelSelector: View {
                     .stroke(isHovered ? Color.accentColor.opacity(0.25) : Color.primary.opacity(0.06), lineWidth: 1)
             )
         }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .onHover { isHovered = $0 }
-        .task {
-            let services = Array(apiServices)
-            if !services.isEmpty {
-                modelCache.fetchAllModels(from: services)
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            withAnimation(.easeInOut(duration: 0.1)) {
+                isHovered = hovering
             }
+        }
+        .popover(isPresented: $isExpanded, arrowEdge: .top) {
+            StandaloneModelSelector(chat: chat, isExpanded: true, onDismiss: {
+                isExpanded = false
+            })
+            .environment(\.managedObjectContext, viewContext)
+            .frame(minWidth: 320, idealWidth: 360, maxWidth: 420, minHeight: 260, maxHeight: 320)
         }
         .help(currentModelLabel)
     }
-    
-    @ViewBuilder
-    private func modelMenuItem(provider: String, modelId: String) -> some View {
-        let isSelected = chat.apiService?.type == provider && chat.gptModel == modelId
-        let displayName = ModelMetadata.formatModelDisplayName(modelId: modelId, provider: provider)
-        let isFavorite = favoriteManager.isFavorite(provider: provider, model: modelId)
-        let metadata = metadataCache.getMetadata(provider: provider, modelId: modelId)
-        
-        Menu {
-            if let meta = metadata {
-                if meta.hasReasoning {
-                    Label("Reasoning", systemImage: "brain")
-                }
-                if meta.hasVision {
-                    Label("Vision", systemImage: "eye")
-                }
-                if meta.hasFunctionCalling {
-                    Label("Function Calling", systemImage: "wrench")
-                }
-                if let context = meta.maxContextTokens {
-                    Label("\(context.formatted()) tokens", systemImage: "text.alignleft")
-                }
-                if let pricing = meta.pricing, let input = pricing.inputPer1M {
-                    if let output = pricing.outputPer1M {
-                        Label("$\(String(format: "%.2f", input)) / $\(String(format: "%.2f", output)) per 1M", systemImage: "dollarsign.circle")
-                    } else {
-                        Label("$\(String(format: "%.2f", input)) per 1M", systemImage: "dollarsign.circle")
-                    }
-                }
-                if let latency = meta.latency {
-                    Label(latency.rawValue.capitalized, systemImage: "speedometer")
-                }
-                
-                Divider()
-            }
-            
-            Button {
-                favoriteManager.toggleFavorite(provider: provider, model: modelId)
-            } label: {
-                Label(isFavorite ? "Remove from Favorites" : "Add to Favorites", systemImage: isFavorite ? "star.slash" : "star")
-            }
-        } label: {
-            HStack {
-                if isSelected {
-                    Image(systemName: "checkmark")
-                }
-                Text(displayName)
-                
-                Spacer()
-                
-                if metadata?.hasReasoning == true {
-                    Image(systemName: "brain")
-                }
-                if metadata?.hasVision == true {
-                    Image(systemName: "eye")
-                }
-                if isFavorite {
-                    Image(systemName: "star.fill")
-                        .foregroundStyle(.yellow)
-                }
-            }
-        } primaryAction: {
-            selectModel(provider: provider, modelId: modelId)
-        }
-    }
 }
+

@@ -1,4 +1,3 @@
-
 import Foundation
 import os
 
@@ -10,10 +9,15 @@ class APIServiceFactory {
     
     private static func makeSessionConfiguration(for purpose: SessionPurpose) -> URLSessionConfiguration {
         let configuration = URLSessionConfiguration.default
+        
+        // IMPORTANT: Set resource timeout to match request timeout for streaming
+        // The default resource timeout is 60s, which can kill long-running streaming responses
         configuration.timeoutIntervalForRequest = AppConstants.requestTimeout
         configuration.timeoutIntervalForResource = AppConstants.requestTimeout
         
-        configuration.waitsForConnectivity = false
+        // ENABLE waitsForConnectivity - critical for local servers like Ollama
+        // Without this, the session will fail immediately if the connection isn't ready
+        configuration.waitsForConnectivity = true
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
         configuration.urlCache = nil
         
@@ -24,6 +28,10 @@ class APIServiceFactory {
         case .streaming:
             configuration.httpMaximumConnectionsPerHost = 2
         }
+        
+        #if DEBUG
+        WardenLog.app.debug("Created URLSession configuration: purpose=\(purpose == .standard ? "standard" : "streaming"), waitsForConnectivity=true, timeoutForRequest=\(Int(AppConstants.requestTimeout))s")
+        #endif
         
         return configuration
     }
@@ -59,6 +67,8 @@ class APIServiceFactory {
             return MistralHandler(config: config, session: standardSession, streamingSession: streamingSession)
         case "lmstudio":
             return LMStudioHandler(config: config, session: standardSession, streamingSession: streamingSession)
+        case "huggingface":
+            return HuggingFaceService(model: config.model)
         default:
             // Fall back to ChatGPT handler for unknown services
             WardenLog.app.warning(

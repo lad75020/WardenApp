@@ -1,6 +1,6 @@
-
 import SwiftUI
 import CoreData
+import Hub
 
 struct APIServiceDetailView: View {
     @StateObject private var viewModel: APIServiceDetailViewModel
@@ -13,6 +13,9 @@ struct APIServiceDetailView: View {
         animation: .default
     )
     private var personas: FetchedResults<PersonaEntity>
+
+    // New state variables for HuggingFace model download
+
 
     init(viewContext: NSManagedObjectContext, apiService: APIServiceEntity?) {
         let viewModel = APIServiceDetailViewModel(viewContext: viewContext, apiService: apiService)
@@ -27,7 +30,7 @@ struct APIServiceDetailView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("Service Name:")
+                Text("Service name:")
                     .frame(width: 100, alignment: .leading)
 
                 TextField("API Name", text: $viewModel.name)
@@ -49,10 +52,11 @@ struct APIServiceDetailView: View {
                                 .frame(width: 14, height: 14)
 
                             Picker("", selection: $viewModel.type) {
-                                ForEach(types, id: \.self) {
-                                    Text(AppConstants.defaultApiConfigurations[$0]?.name ?? $0)
+                                ForEach(types, id: \.self) { type in
+                                    Text(AppConstants.defaultApiConfigurations[type]?.name ?? type)
                                 }
-                            }.onChange(of: viewModel.type) { newValue in
+                            }
+                            .onChange(of: viewModel.type) { oldValue, newValue in
                                 viewModel.onChangeApiType(newValue)
                             }
                         }
@@ -81,8 +85,7 @@ struct APIServiceDetailView: View {
                             TextField("Paste your token here", text: $viewModel.apiKey)
                                 .textFieldStyle(RoundedBorderTextFieldStyle())
                                 .focused($isFocused)
-                                .blur(radius: !viewModel.apiKey.isEmpty && !isFocused ? 3 : 0.0, opaque: false)
-                                .onChange(of: viewModel.apiKey) { newValue in
+                                .onChange(of: viewModel.apiKey) { oldValue, newValue in
                                     viewModel.onChangeApiKey(newValue)
                                 }
                         }
@@ -100,22 +103,30 @@ struct APIServiceDetailView: View {
                             }
                         }
                     }
+                    
 
                     HStack {
                         Text("LLM Model:")
                             .frame(width: 94, alignment: .leading)
 
                         Picker("", selection: $viewModel.selectedModel) {
+                            // First, check if the current selected model exists in available models
+                            // If not, add it as a custom option
+                            if !viewModel.availableModels.contains(viewModel.selectedModel) && !viewModel.selectedModel.isEmpty {
+                                Text(viewModel.selectedModel).tag(viewModel.selectedModel)
+                            }
+                            
                             ForEach(viewModel.availableModels.sorted(), id: \.self) { modelName in
                                 Text(modelName).tag(modelName)
                             }
                             Text("Enter custom model").tag("custom")
                         }
-                        .onChange(of: viewModel.selectedModel) { newValue in
+                        .onChange(of: viewModel.selectedModel) { oldValue, newValue in
                             if newValue == "custom" {
                                 viewModel.isCustomModel = true
-                            }
-                            else {
+                                // Set a placeholder for custom model input
+                                viewModel.model = ""
+                            } else {
                                 viewModel.isCustomModel = false
                                 viewModel.model = newValue
                             }
@@ -207,11 +218,12 @@ struct APIServiceDetailView: View {
                         }
                         .disabled(viewModel.contextSizeUnlimited)
 
-                        Text(String(format: ("%.0f messages"), viewModel.contextSize))
+                        Text(String(format: "%.0f messages", viewModel.contextSize))
                             .frame(width: 90)
                     }
                 }
-            }.padding(.top, 16)
+            }
+            .padding(.top, 16)
 
             VStack {
                 Toggle(isOn: $viewModel.generateChatNames) {
@@ -327,4 +339,14 @@ struct APIServiceDetailView: View {
             )
         }
     }
+    
+    // MARK: - HuggingFace Model Download
+    
+
+    
+
 }
+
+// Download status enum
+
+

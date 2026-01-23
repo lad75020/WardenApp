@@ -103,7 +103,7 @@ struct FavoriteQuickAccessBar: View {
             try viewContext.save()
             
             NotificationCenter.default.post(
-                name: .recreateMessageManager,
+                name: NSNotification.Name("RecreateMessageManager"),
                 object: nil,
                 userInfo: ["chatId": chat.id]
             )

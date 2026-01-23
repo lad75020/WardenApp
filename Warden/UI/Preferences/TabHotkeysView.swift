@@ -9,14 +9,28 @@ struct TabHotkeysView: View {
     
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 24) {
+                // Header
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Keyboard Shortcuts")
+                        .font(.system(size: 24, weight: .bold))
+                    Text("Customize keyboard shortcuts for quick actions")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.bottom, 8)
+                
                 // Shortcuts by Category
                 ForEach(HotkeyAction.HotkeyCategory.allCases, id: \.self) { category in
                     let actionsInCategory = hotkeyManager.availableActions.filter { $0.category == category }
                     if !actionsInCategory.isEmpty {
                         GlassCard {
-                            VStack(alignment: .leading, spacing: 14) {
-                                SettingsSectionHeader(title: category.rawValue)
+                            VStack(alignment: .leading, spacing: 16) {
+                                SettingsSectionHeader(
+                                    title: category.rawValue,
+                                    icon: category.icon,
+                                    iconColor: categoryColor(for: category)
+                                )
                                 
                                 VStack(spacing: 0) {
                                     ForEach(Array(actionsInCategory.enumerated()), id: \.element.id) { index, action in
@@ -175,11 +189,17 @@ struct TabHotkeysView: View {
     private func formatShortcutWithPlus(_ shortcut: String) -> String {
         guard !shortcut.isEmpty else { return shortcut }
         
-        var parts: [String] = []
+        var result = ""
         for char in shortcut {
-            parts.append(String(char))
+            if ["⌘", "⇧", "⌥", "⌃"].contains(String(char)) {
+                if !result.isEmpty { result += " " }
+                result += String(char)
+            } else {
+                if !result.isEmpty { result += " " }
+                result += String(char)
+            }
         }
-        return parts.joined(separator: " + ")
+        return result
     }
     
     private func handleKeyPress(

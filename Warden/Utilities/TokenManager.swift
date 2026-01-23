@@ -4,7 +4,7 @@ import Foundation
 import KeychainAccess
 
 class TokenManager {
-    private static let keychain = Keychain(service: "notfullin.com.macai")
+    private static let keychain = Keychain(service: "fr.dubertrand.WardenAI")
     private static let tokenPrefix = "api_token_"
     
     enum TokenError: Error {

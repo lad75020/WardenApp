@@ -1,4 +1,3 @@
-
 import CommonCrypto
 import CoreData
 import Foundation
@@ -32,51 +31,34 @@ extension Data {
 }
 
 extension Date {
-    @MainActor
     func formattedTimestamp() -> String {
+        let formatter = DateFormatter()
         let now = Date()
         let calendar = Calendar.current
         
         // Check if it's today
         if calendar.isDate(self, inSameDayAs: now) {
-            return TimestampFormatters.todayTime.string(from: self)
+            formatter.dateFormat = "HH:mm"
+            return formatter.string(from: self)
         }
         
         // Check if it's yesterday
         if calendar.isDate(self, inSameDayAs: calendar.date(byAdding: .day, value: -1, to: now) ?? now) {
-            return "Yesterday \(TimestampFormatters.todayTime.string(from: self))"
+            formatter.dateFormat = "HH:mm"
+            return "Yesterday \(formatter.string(from: self))"
         }
         
         // Check if it's within the current week
         let weekAgo = calendar.date(byAdding: .weekOfYear, value: -1, to: now) ?? now
         if self > weekAgo {
-            return TimestampFormatters.weekdayTime.string(from: self)
+            formatter.dateFormat = "E HH:mm"
+            return formatter.string(from: self)
         }
         
         // For older messages, show date and time
-        return TimestampFormatters.monthDayTime.string(from: self)
-    }
-}
-
-@MainActor
-private enum TimestampFormatters {
-    static let todayTime: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm"
-        return formatter
-    }()
-
-    static let weekdayTime: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "E HH:mm"
-        return formatter
-    }()
-
-    static let monthDayTime: DateFormatter = {
-        let formatter = DateFormatter()
         formatter.dateFormat = "MMM d, HH:mm"
-        return formatter
-    }()
+        return formatter.string(from: self)
+    }
 }
 
 extension String {
@@ -190,7 +172,7 @@ extension Color {
         self.init(
             red: Double((rgb & 0xFF0000) >> 16) / 255.0,
             green: Double((rgb & 0x00FF00) >> 8) / 255.0,
-            blue: Double(rgb & 0x0000FF) / 255.0
+            blue: Double((rgb & 0x0000FF)) / 255.0
         )
     }
 
@@ -310,8 +292,10 @@ extension ChatEntity {
             historyMessages = []
         } else if orderedMessages.count > contextSize {
             historyMessages = Array(orderedMessages.suffix(contextSize))
-        } else {
+        } else if orderedMessages.count > 0 {
             historyMessages = orderedMessages
+        } else {
+            historyMessages = []
         }
 
         // Add conversation history
@@ -323,13 +307,22 @@ extension ChatEntity {
         }
 
         // Add new user message if provided
-        let lastMessage = messages.last?["content"] ?? ""
-        if lastMessage != userMessage {
-            if let userMessage = userMessage {
+        // Only add if the message is not empty and is not already the last message in history
+        let lastMessageContent = messages.last?["content"]
+        if let userMessage = userMessage, !userMessage.isEmpty {
+            // Only add if it's different from the last message in history
+            if lastMessageContent != userMessage {
                 messages.append([
                     "role": "user",
                     "content": userMessage,
                 ])
+                #if DEBUG
+                WardenLog.app.debug("Added new user message to request (count: \(userMessage.count, privacy: .public) chars)")
+                #endif
+            } else {
+                #if DEBUG
+                WardenLog.app.debug("Skipping duplicate user message in request")
+                #endif
             }
         }
 

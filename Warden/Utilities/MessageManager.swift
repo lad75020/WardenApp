@@ -12,7 +12,7 @@ final class MessageManager: ObservableObject {
     private let streamUpdateInterval = AppConstants.streamedResponseUpdateUIInterval
     
     // Debounce saving to Core Data
-    private var saveDebounceTask: Task<Void, Never>?
+    private var saveDebounceWorkItem: DispatchWorkItem?
     
     // Published property for search status updates
     @Published var searchStatus: SearchStatus?
@@ -53,34 +53,34 @@ final class MessageManager: ObservableObject {
         streamingAssistantText = ""
         
         // Force save if pending
-        flushPendingSave()
+        if let workItem = saveDebounceWorkItem {
+            workItem.perform()
+            saveDebounceWorkItem?.cancel()
+            saveDebounceWorkItem = nil
+        }
     }
     
     private func debounceSave() {
-        saveDebounceTask?.cancel()
-        saveDebounceTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 2_000_000_000)
-            guard let self else { return }
-            self.viewContext.performSaveWithRetry(attempts: 1)
+        saveDebounceWorkItem?.cancel()
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.viewContext.performSaveWithRetry(attempts: 1)
         }
-    }
-
-    private func flushPendingSave() {
-        saveDebounceTask?.cancel()
-        saveDebounceTask = nil
-        viewContext.performSaveWithRetry(attempts: 1)
+        saveDebounceWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0, execute: workItem)
     }
     
     // MARK: - Tavily Search Support
     
     func executeSearch(_ query: String) async throws -> (formattedResults: String, urls: [String]) {
-        let (context, urls, sources) = try await tavilyService.performSearch(query: query) { [weak self] status in
-            self?.searchStatus = status
-            if case .completed(let sources) = status {
-                self?.lastSearchSources = sources
-                self?.lastSearchQuery = query
-            } else if case .failed(let error) = status {
-                 // Handle error if needed, though performSearch throws
+        let (context, urls, sources) = try await tavilyService.performSearch(query: query) { status in
+            DispatchQueue.main.async { [weak self] in
+                self?.searchStatus = status
+                if case .completed(let sources) = status {
+                    self?.lastSearchSources = sources
+                    self?.lastSearchQuery = query
+                } else if case .failed = status {
+                    // no-op; performSearch throws
+                }
             }
         }
         return (context, urls)
@@ -241,7 +241,21 @@ final class MessageManager: ObservableObject {
         searchUrls: [String]? = nil,
         completion: @escaping (Result<Void, Error>) -> Void
     ) {
-        let requestMessages = prepareRequestMessages(userMessage: message, chat: chat, contextSize: contextSize)
+        let forceSinglePrompt = UserDefaults.standard.bool(forKey: "imageGenMode_\(chat.id.uuidString)")
+        let isImageGeneration = forceSinglePrompt
+            || (apiService.model.localizedCaseInsensitiveContains("image"))
+            || apiService.name.localizedCaseInsensitiveContains("image")
+        let requestMessages: [[String: String]]
+        if isImageGeneration {
+            // Image generation models expect only the current prompt
+            requestMessages = [["role": "user", "content": message]]
+            #if DEBUG
+            WardenLog.app.debug("Image generation mode active (single-prompt). Model=\(self.apiService.model, privacy: .public) Service=\(self.apiService.name, privacy: .public)")
+            #endif
+        } else {
+            let built = prepareRequestMessages(userMessage: message, chat: chat, contextSize: contextSize)
+            requestMessages = sanitizeRequestMessagesForText(built)
+        }
         chat.waitingForResponse = true
         let temperature = (chat.persona?.temperature ?? AppConstants.defaultTemperatureForChat).roundedToOneDecimal()
         
@@ -281,37 +295,39 @@ final class MessageManager: ObservableObject {
             #endif
             
             ChatService.shared.sendMessage(
-                apiService: apiService,
+                apiService: self.apiService,
                 messages: requestMessages,
                 tools: toolDefinitions.isEmpty ? nil : toolDefinitions,
-                settings: GenerationSettings(temperature: temperature, reasoningEffort: chat.reasoningEffort)
+                temperature: temperature
             ) { [weak self] result in
                 guard let self = self else { return }
-
-                switch result {
-                case .success(let (messageBody, toolCalls)):
-                    chat.waitingForResponse = false
-                    
-                    if let messageBody = messageBody {
-                        addMessageToChat(chat: chat, message: messageBody, searchUrls: searchUrls)
-                        addNewMessageToRequestMessages(chat: chat, content: messageBody, role: AppConstants.defaultRole)
-                    }
-                    
-                    if let toolCalls = toolCalls, !toolCalls.isEmpty {
-                        // Handle tool calls
-                        Task {
-                            await self.handleToolCalls(toolCalls, in: chat, contextSize: contextSize, completion: completion)
+                
+                DispatchQueue.main.async {
+                    switch result {
+                    case .success(let (messageBody, toolCalls)):
+                        chat.waitingForResponse = false
+                        
+                        if let messageBody = messageBody {
+                            self.addMessageToChat(chat: chat, message: messageBody, searchUrls: searchUrls)
+                            self.addNewMessageToRequestMessages(chat: chat, content: messageBody, role: RequestMessageRole.assistant.rawValue)
                         }
-                        return
+                        
+                        if let toolCalls = toolCalls, !toolCalls.isEmpty {
+                            // Handle tool calls
+                            Task {
+                                await self.handleToolCalls(toolCalls, in: chat, contextSize: contextSize, completion: completion)
+                            }
+                            return
+                        }
+                        
+                        self.debounceSave()
+                        // Auto-rename chat if needed
+                        self.generateChatNameIfNeeded(chat: chat)
+                        completion(.success(()))
+                        
+                    case .failure(let error):
+                        completion(.failure(error))
                     }
-                    
-                    self.debounceSave()
-                    // Auto-rename chat if needed
-                    generateChatNameIfNeeded(chat: chat)
-                    completion(.success(()))
-
-                case .failure(let error):
-                    completion(.failure(error))
                 }
             }
         }
@@ -325,10 +341,32 @@ final class MessageManager: ObservableObject {
         searchUrls: [String]? = nil,
         completion: @escaping (Result<Void, Error>) -> Void
     ) {
-        // Cancel any existing streaming task first
+        // Hard reset any leftover streaming state before starting a new stream
         stopStreaming()
+        self.streamingAssistantText = ""
         
-        let requestMessages = prepareRequestMessages(userMessage: message, chat: chat, contextSize: contextSize)
+        let forceSinglePrompt = UserDefaults.standard.bool(forKey: "imageGenMode_\(chat.id.uuidString)")
+        let isImageGeneration = forceSinglePrompt
+            || (apiService.model.localizedCaseInsensitiveContains("image"))
+            || apiService.name.localizedCaseInsensitiveContains("image")
+        let requestMessages: [[String: String]]
+        if isImageGeneration {
+            // Image generation models expect only the current prompt
+            requestMessages = [["role": "user", "content": message]]
+            #if DEBUG
+            WardenLog.app.debug("Image generation mode active (single-prompt). Model=\(self.apiService.model, privacy: .public) Service=\(self.apiService.name, privacy: .public)")
+            #endif
+        } else {
+            let built = prepareRequestMessages(userMessage: message, chat: chat, contextSize: contextSize)
+            requestMessages = sanitizeRequestMessagesForText(built)
+        }
+        
+        // For image generation models, avoid streaming entirely and use non-streaming send
+        if isImageGeneration {
+            sendMessage(message, in: chat, contextSize: contextSize, searchUrls: searchUrls, completion: completion)
+            return
+        }
+        
         let temperature = (chat.persona?.temperature ?? AppConstants.defaultTemperatureForChat).roundedToOneDecimal()
 
         let streamTaskID = UUID()
@@ -342,6 +380,13 @@ final class MessageManager: ObservableObject {
             var deferredResponseParts: [String] = []
             var deferredResponseCharacterCount = 0
             let updateInterval = self.streamUpdateInterval
+            
+            // Ensure per-stream buffers start empty
+            self.streamingAssistantText = ""
+            chunkBufferParts.removeAll(keepingCapacity: true)
+            chunkBufferCharacterCount = 0
+            deferredResponseParts.removeAll(keepingCapacity: true)
+            deferredResponseCharacterCount = 0
             
             self.streamingAssistantText = ""
             chat.waitingForResponse = true
@@ -437,37 +482,35 @@ final class MessageManager: ObservableObject {
                 chat.waitingForResponse = true
                 
                 let toolCalls = try await ChatService.shared.sendStream(
-                    apiService: apiService,
+                    apiService: self.apiService,
                     messages: requestMessages,
                     tools: toolDefinitions.isEmpty ? nil : toolDefinitions,
-                    settings: GenerationSettings(temperature: temperature, reasoningEffort: chat.reasoningEffort)
+                    temperature: temperature
                 ) { chunk in
-                    chunkCount += 1
-                    guard !chunk.isEmpty else { return }
-
-                    let containsDeferredAttachmentTag =
-                        chunk.contains("<image-uuid>") || chunk.contains("<file-uuid>")
-
-                    if containsDeferredAttachmentTag, !deferImageResponse {
-                        flushChunkBuffer(force: true)
-                        if !self.streamingAssistantText.isEmpty {
-                            deferredResponseParts = [self.streamingAssistantText]
-                            deferredResponseCharacterCount = self.streamingAssistantText.count
+                    Task { @MainActor in
+                        chunkCount += 1
+                        guard !chunk.isEmpty else { return }
+                        let containsDeferredAttachmentTag =
+                            chunk.contains("<image-uuid>") || chunk.contains("<file-uuid>")
+                        if containsDeferredAttachmentTag, !deferImageResponse {
+                            flushChunkBuffer(force: true)
+                            if !self.streamingAssistantText.isEmpty {
+                                deferredResponseParts = [self.streamingAssistantText]
+                                deferredResponseCharacterCount = self.streamingAssistantText.count
+                            }
+                            deferImageResponse = true
+                            chunkBufferParts.removeAll(keepingCapacity: true)
+                            chunkBufferCharacterCount = 0
+                            self.streamingAssistantText = ""
                         }
-
-                        deferImageResponse = true
-                        chunkBufferParts.removeAll(keepingCapacity: true)
-                        chunkBufferCharacterCount = 0
-                        self.streamingAssistantText = ""
+                        if deferImageResponse {
+                            appendDeferredResponse(chunk)
+                            return
+                        }
+                        chunkBufferParts.append(chunk)
+                        chunkBufferCharacterCount += chunk.count
+                        flushChunkBuffer()
                     }
-                    if deferImageResponse {
-                        appendDeferredResponse(chunk)
-                        return
-                    }
-
-                    chunkBufferParts.append(chunk)
-                    chunkBufferCharacterCount += chunk.count
-                    flushChunkBuffer()
                 }
                 let elapsed = Date().timeIntervalSince(streamStart)
                 #if DEBUG
@@ -478,28 +521,29 @@ final class MessageManager: ObservableObject {
                 flushChunkBuffer(force: true)
 
                 let finalResponse = deferImageResponse ? drainDeferredResponse() : self.streamingAssistantText
-                // Normal completion path - stream finished successfully
-                if !finalResponse.isEmpty {
-                    if deferImageResponse {
-                        addMessageToChat(chat: chat, message: finalResponse, searchUrls: searchUrls)
-                    } else {
-                        addMessageToChat(chat: chat, message: finalResponse, searchUrls: searchUrls)
+                // Persist only the latest assistant response once
+                await MainActor.run {
+                    if !finalResponse.isEmpty {
+                        self.addMessageToChat(chat: chat, message: finalResponse, searchUrls: searchUrls)
+                        self.addNewMessageToRequestMessages(chat: chat, content: finalResponse, role: RequestMessageRole.assistant.rawValue)
                     }
-                    addNewMessageToRequestMessages(chat: chat, content: finalResponse, role: AppConstants.defaultRole)
                 }
                 
                 // Handle tool calls if any
                 if let toolCalls = toolCalls, !toolCalls.isEmpty {
-                    self.streamingAssistantText = ""
+                    await MainActor.run {
+                        self.streamingAssistantText = ""
+                    }
                     try Task.checkCancellation()
                     await self.handleToolCalls(toolCalls, in: chat, contextSize: contextSize, completion: completion)
                     return
                 }
                 
-                // Auto-rename chat if needed
-                generateChatNameIfNeeded(chat: chat)
-                chat.waitingForResponse = false
-                self.streamingAssistantText = ""
+                await MainActor.run {
+                    self.generateChatNameIfNeeded(chat: chat)
+                    chat.waitingForResponse = false
+                    self.streamingAssistantText = ""
+                }
                 completion(.success(()))
             }
             catch is CancellationError {
@@ -513,30 +557,31 @@ final class MessageManager: ObservableObject {
                 // Save partial response even when cancelled via exception
                 flushChunkBuffer(force: true)
                 let partialResponse = deferImageResponse ? drainDeferredResponse() : self.streamingAssistantText
-                if !partialResponse.isEmpty {
-                    if deferImageResponse {
-                        addMessageToChat(chat: chat, message: partialResponse, searchUrls: searchUrls)
-                    } else {
-                        addMessageToChat(chat: chat, message: partialResponse, searchUrls: searchUrls)
+                // Persist partial response only once on cancellation
+                await MainActor.run {
+                    if !partialResponse.isEmpty {
+                        self.addMessageToChat(chat: chat, message: partialResponse, searchUrls: searchUrls)
+                        self.addNewMessageToRequestMessages(
+                            chat: chat,
+                            content: partialResponse,
+                            role: RequestMessageRole.assistant.rawValue
+                        )
+                        #if DEBUG
+                        WardenLog.streaming.debug("Partial response saved after cancellation")
+                        #endif
                     }
-                    addNewMessageToRequestMessages(
-                        chat: chat,
-                        content: partialResponse,
-                        role: AppConstants.defaultRole
-                    )
-                    #if DEBUG
-                    WardenLog.streaming.debug("Partial response saved after cancellation")
-                    #endif
+                    
+                    chat.waitingForResponse = false
+                    self.streamingAssistantText = ""
                 }
-                
-                chat.waitingForResponse = false
-                self.streamingAssistantText = ""
                 completion(.failure(CancellationError()))
             }
             catch {
                 WardenLog.streaming.error("Streaming error: \(error.localizedDescription, privacy: .public)")
-                chat.waitingForResponse = false
-                self.streamingAssistantText = ""
+                await MainActor.run {
+                    chat.waitingForResponse = false
+                    self.streamingAssistantText = ""
+                }
                 completion(.failure(error))
             }
         }
@@ -674,31 +719,31 @@ final class MessageManager: ObservableObject {
         let temperature = (chat.persona?.temperature ?? AppConstants.defaultTemperatureForChat).roundedToOneDecimal()
         
         ChatService.shared.sendMessage(
-            apiService: apiService,
+            apiService: self.apiService,
             messages: requestMessages,
             tools: nil, // Don't provide tools again to avoid loops
-            settings: GenerationSettings(temperature: temperature, reasoningEffort: chat.reasoningEffort)
+            temperature: temperature
         ) { [weak self] result in
             guard let self = self else { return }
             
-            Task { @MainActor [weak self] in
-                guard let self else { return }
+            // Ensure all UI updates happen on main thread
+            DispatchQueue.main.async {
                 switch result {
-                case .success(let (fullMessage, _)):
+                case .success(let (fullMessage, toolCalls)):
                     if let messageText = fullMessage {
                         // Store the tool calls with this message for persistence
                         let toolCallsToStore = self.activeToolCalls
                         self.addMessageToChat(chat: chat, message: messageText, searchUrls: nil, toolCalls: toolCallsToStore)
-                        self.addNewMessageToRequestMessages(chat: chat, content: messageText, role: AppConstants.defaultRole)
+                        self.addNewMessageToRequestMessages(chat: chat, content: messageText, role: RequestMessageRole.assistant.rawValue)
                     }
                     self.debounceSave()
                     self.generateChatNameIfNeeded(chat: chat)
-
+                    
                     // Clear active tool calls for next message (they're now stored with the message)
                     self.activeToolCalls.removeAll()
-
+                    
                     completion(.success(()))
-
+                    
                 case .failure(let error):
                     // Keep tool calls visible on error for debugging
                     completion(.failure(error))
@@ -722,6 +767,28 @@ final class MessageManager: ObservableObject {
             #endif
             return
         }
+        
+        // Skip chat name generation for image-generation models or image-only responses to avoid re-sending huge payloads/base64
+        if let service = chat.apiService {
+            let isImageService =
+                (service.model?.localizedCaseInsensitiveContains("image") ?? false) ||
+            ((service.name?.localizedCaseInsensitiveContains("image")) != nil)
+            if isImageService {
+                #if DEBUG
+                    WardenLog.app.debug("Chat name generation skipped for image-generation service")
+                #endif
+                return
+            }
+        }
+        // Also skip if the latest assistant message appears to be an image-only payload
+        if let messages = chat.messages as? Set<MessageEntity>,
+           let lastAssistant = messages.filter({ $0.own == false }).sorted(by: { ($0.id) < ($1.id) }).last,
+           lastAssistant.body.contains("<image-url>") {
+            #if DEBUG
+                WardenLog.app.debug("Chat name generation skipped due to image response in last assistant message")
+            #endif
+            return
+        }
 
         let requestMessages = prepareRequestMessages(
             userMessage: AppConstants.chatGptGenerateChatInstruction,
@@ -732,10 +799,10 @@ final class MessageManager: ObservableObject {
         // Use a timeout-based approach to prevent hanging
         let deadline = Date(timeIntervalSinceNow: 30.0) // 30 second timeout
         
-	        apiService.sendMessage(
+	        self.apiService.sendMessage(
 	            requestMessages,
 	            tools: nil,
-	            settings: GenerationSettings(temperature: AppConstants.defaultTemperatureForChatNameGeneration)
+	            temperature: AppConstants.defaultTemperatureForChatNameGeneration
 	        ) {
 	            [weak self] result in
 	            guard let self = self else { return }
@@ -750,13 +817,7 @@ final class MessageManager: ObservableObject {
 
             switch result {
             case .success(let (messageText, _)):
-                guard let messageText = messageText else {
-                    #if DEBUG
-                    WardenLog.app.debug("Generated chat name message was empty, skipping")
-                    #endif
-                    return
-                }
-                
+                guard let messageText = messageText else { return }
                 let chatName = self.sanitizeChatName(messageText)
                 guard !chatName.isEmpty else {
                     #if DEBUG
@@ -813,11 +874,7 @@ final class MessageManager: ObservableObject {
             RequestMessage(role: .user, content: "This is a test message.").dictionary
         )
 
-	        apiService.sendMessage(
-	            requestMessages,
-	            tools: nil,
-	            settings: GenerationSettings(temperature: temperature)
-	        ) { result in
+	        self.apiService.sendMessage(requestMessages, tools: nil, temperature: temperature) { result in
 	            switch result {
 	            case .success(_):
 	                completion(.success(()))
@@ -831,8 +888,50 @@ final class MessageManager: ObservableObject {
     private func prepareRequestMessages(userMessage: String, chat: ChatEntity, contextSize: Int) -> [[String: String]] {
         return chat.constructRequestMessages(forUserMessage: userMessage, contextSize: contextSize)
     }
+    
+    private func sanitizeRequestMessagesForText(_ messages: [[String: String]]) -> [[String: String]] {
+        // Redact image tags and large base64 blobs so they don't leak into text-only prompts
+        let base64LikePattern = "[A-Za-z0-9+/=]{512,}"
+        let regex = try? NSRegularExpression(pattern: base64LikePattern, options: [])
+        return messages.compactMap { msg in
+            var sanitized = msg
+            guard var content = msg["content"] else { return msg }
+            // Remove obvious image markers
+            if content.contains("<image-url>") || content.contains("<image-uuid>") || content.contains("data:image/") {
+                content = content.replacingOccurrences(of: "<image-url>", with: "[image omitted]")
+                content = content.replacingOccurrences(of: "<image-uuid>", with: "[image omitted]")
+                // Redact data URL header quickly
+                if let range = content.range(of: "data:image/") {
+                    content.replaceSubrange(range.lowerBound..<content.endIndex, with: "[image data omitted]")
+                }
+            }
+            // Redact long base64-like sequences
+            if let regex = regex {
+                let ns = content as NSString
+                let range = NSRange(location: 0, length: ns.length)
+                var result = content
+                var offset = 0
+                regex.enumerateMatches(in: content, options: [], range: range) { match, _, _ in
+                    guard let match = match else { return }
+                    let r = NSRange(location: match.range.location + offset, length: match.range.length)
+                    if let swiftRange = Range(r, in: result) {
+                        result.replaceSubrange(swiftRange, with: "[base64 omitted]")
+                        offset += "[base64 omitted]".count - match.range.length
+                    }
+                }
+                content = result
+            }
+            // If after redaction it's effectively empty or only an omission marker, keep the marker
+            if content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                content = "[omitted image response]"
+            }
+            sanitized["content"] = content
+            return sanitized
+        }
+    }
 
     private func addMessageToChat(chat: ChatEntity, message: String, searchUrls: [String]? = nil, toolCalls: [WardenToolCallStatus]? = nil, isStreaming: Bool = false) {
+        assert(Thread.isMainThread, "addMessageToChat must be called on main thread")
         #if DEBUG
         WardenLog.app.debug("AI response received: \(message.count, privacy: .public) char(s)")
         #endif
@@ -846,11 +945,17 @@ final class MessageManager: ObservableObject {
         }
         
         #if DEBUG
+        if finalMessage.contains("<image-url>") {
+            WardenLog.app.debug("Appending message with <image-url> tag (length: \(finalMessage.count, privacy: .public))")
+        }
+        #endif
+        
+        #if DEBUG
         WardenLog.app.debug("AI response after conversion: \(finalMessage.count, privacy: .public) char(s)")
         #endif
         
         let newMessage = MessageEntity(context: self.viewContext)
-        newMessage.id = chat.nextMessageID()
+        newMessage.id = Int64(chat.messages.count + 1)
         newMessage.body = finalMessage
         newMessage.timestamp = Date()
         newMessage.own = false
@@ -858,10 +963,10 @@ final class MessageManager: ObservableObject {
         newMessage.chat = chat
         
         // Snapshot provider metadata for this message
-        if !newMessage.isMultiAgentResponse, let service = chat.apiService {
+        if !(newMessage.isMultiAgentResponse ?? false), let service = chat.apiService {
             newMessage.agentServiceName = service.name
             newMessage.agentServiceType = service.type
-            newMessage.agentModel = chat.gptModel
+            newMessage.agentModel = chat.gptModel ?? service.model
         }
         
         // Store tool calls associated with this message
@@ -882,10 +987,13 @@ final class MessageManager: ObservableObject {
             WardenLog.app.debug("Saved search metadata: \(sources.count, privacy: .public) source(s)")
             #endif
         }
+        
+        #if DEBUG
+        WardenLog.app.debug("Persisting assistant message. isStreaming=\(isStreaming, privacy: .public) bodyLength=\(finalMessage.count, privacy: .public)")
+        #endif
 
         chat.updatedDate = Date()
         chat.addToMessages(newMessage)
-        viewContext.processPendingChanges()
         if isStreaming {
             chat.waitingForResponse = true
         }
@@ -893,7 +1001,7 @@ final class MessageManager: ObservableObject {
     }
     
     private func addNewMessageToRequestMessages(chat: ChatEntity, content: String, role: String) {
-        let roleEnum = RequestMessageRole(rawValue: role) ?? .user
+        let roleEnum = RequestMessageRole(rawValue: role) ?? .assistant
         chat.requestMessages.append(RequestMessage(role: roleEnum, content: content).dictionary)
         self.debounceSave()
     }
@@ -907,6 +1015,7 @@ final class MessageManager: ObservableObject {
         save: Bool = false,
         isFinalUpdate: Bool = false
     ) {
+        assert(Thread.isMainThread, "updateLastMessage must be called on main thread")
         #if DEBUG
         WardenLog.streaming.debug("Streaming update: \(accumulatedResponse.count, privacy: .public) char(s) accumulated")
         #endif

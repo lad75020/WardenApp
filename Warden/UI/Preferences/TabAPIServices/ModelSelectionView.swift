@@ -4,9 +4,7 @@ import CoreData
 struct ModelSelectionView: View {
     let serviceType: String
     let availableModels: [AIModel]
-    /// `nil` means "no custom selection" (show all models).
-    /// A (possibly-empty) set means a custom selection.
-    let onSelectionChanged: (Set<String>?) -> Void
+    let onSelectionChanged: (Set<String>) -> Void
     
     @StateObject private var selectedModelsManager = SelectedModelsManager.shared
     @StateObject private var favoriteManager = FavoriteModelsManager.shared
@@ -302,7 +300,7 @@ struct ModelSelectionView: View {
     
     private func resetToAllModels() {
         selectedModelsManager.clearCustomSelection(for: serviceType)
-        onSelectionChanged(nil)
+        onSelectionChanged(Set())
     }
 }
 

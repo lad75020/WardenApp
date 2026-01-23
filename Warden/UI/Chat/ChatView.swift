@@ -5,18 +5,21 @@ import os
 
 struct ChatView: View {
     let viewContext: NSManagedObjectContext
-    @ObservedObject var chat: ChatEntity
+    @State var chat: ChatEntity
     @State private var waitingForResponse = false
     @AppStorage("gptToken") var gptToken = ""
     @AppStorage("gptModel") var gptModel = AppConstants.chatGptDefaultModel
     @AppStorage("chatContext") var chatContext = AppConstants.chatGptContextSize
     @AppStorage("lastOpenedChatId") var lastOpenedChatId = ""
     @State var messageCount: Int = 0
+    @State private var messageField = ""
+    @State private var newMessage: String = ""
     @State private var editSystemMessage: Bool = false
     @State private var isStreaming: Bool = false
     @State private var isHovered = false
     @State private var currentStreamingMessage: String = ""
-    @State private var composerState = ComposerState()
+    @State private var attachedImages: [ImageAttachment] = []
+    @State private var attachedFiles: [FileAttachment] = []
     @EnvironmentObject private var store: ChatStore
     @AppStorage("useChatGptForNames") var useChatGptForNames: Bool = false
     @AppStorage("useStream") var useStream: Bool = true
@@ -35,15 +38,16 @@ struct ChatView: View {
     @State private var userIsScrolling = false
     @State private var scrollDebounceWorkItem: DispatchWorkItem?
     
-    @State private var messageBeingEdited: MessageEntity?
-    @State private var editMessageDraft: String = ""
-    @State private var messageListRefreshToken = UUID()
-    
+    // Web search functionality
+    @State private var webSearchEnabled = false
     @State private var isSearchingWeb = false
     
     @State private var showAgentSelector = false
     
-    // Multi-agent UI state is stored in `composerState`.
+    // Multi-agent functionality
+    @State private var isMultiAgentMode = false
+    @State private var showServiceSelector = false
+    @State private var selectedMultiAgentServices: [APIServiceEntity] = []
     @StateObject private var multiAgentManager: MultiAgentMessageManager
     
     @FetchRequest(
@@ -54,7 +58,7 @@ struct ChatView: View {
 
     init(viewContext: NSManagedObjectContext, chat: ChatEntity) {
         self.viewContext = viewContext
-        self._chat = ObservedObject(wrappedValue: chat)
+        self._chat = State(initialValue: chat)
 
         self._chatViewModel = StateObject(
             wrappedValue: ChatViewModel(chat: chat, viewContext: viewContext)
@@ -66,38 +70,158 @@ struct ChatView: View {
     }
 
     var body: some View {
+        // Check if this is a new chat (no messages)
+        let isNewChat = chat.messages.count == 0 && !chat.waitingForResponse && currentError == nil
+        
         Group {
-            if isNewChat, chatViewModel.sortedMessages.isEmpty, !isStreaming {
-                newChatComposer
+            if isNewChat {
+                if chatViewModel.sortedMessages.isEmpty && !isStreaming {
+                    CenteredInputView(
+                        newMessage: $newMessage,
+                        attachedImages: $attachedImages,
+                        attachedFiles: $attachedFiles,
+                        webSearchEnabled: $webSearchEnabled,
+                        selectedMCPAgents: $chatViewModel.selectedMCPAgents,
+                        chat: chat,
+                        imageUploadsAllowed: chat.apiService?.imageUploadsAllowed ?? false,
+                        isStreaming: isStreaming,
+                        isMultiAgentMode: $isMultiAgentMode,
+                        selectedMultiAgentServices: $selectedMultiAgentServices,
+                        showServiceSelector: $showServiceSelector,
+                        enableMultiAgentMode: enableMultiAgentMode,
+                        onSendMessage: {
+                            if enableMultiAgentMode && isMultiAgentMode {
+                                self.sendMultiAgentMessage()
+                            } else {
+                                self.sendMessage()
+                            }
+                        },
+                        onAddImage: {
+                            selectAndAddImages()
+                        },
+                        onAddFile: {
+                            selectAndAddFiles()
+                        },
+                        onAddAssistant: {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                isBottomContainerExpanded.toggle()
+                            }
+                        },
+                        onStopStreaming: {
+                            self.stopStreaming()
+                        }
+                    )
+                    .background(.clear)
+                }
             } else {
+                // Show normal chat layout for chats with messages
                 VStack(spacing: 0) {
                     mainChatContent
-                    searchResultsPreview
-                    chatComposer
+                    
+                    // Show search results preview above input when available
+                    if let sources = chatViewModel.messageManager?.lastSearchSources,
+                       let query = chatViewModel.messageManager?.lastSearchQuery,
+                       !sources.isEmpty {
+                        SearchResultsPreviewView(sources: sources, query: query)
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 8)
+                    }
+
+                    // Chat input container
+                    ChatBottomContainerView(
+                        chat: chat,
+                        newMessage: $newMessage,
+                        isExpanded: $isBottomContainerExpanded,
+                        attachedImages: $attachedImages,
+                        attachedFiles: $attachedFiles,
+                        webSearchEnabled: $webSearchEnabled,
+                        selectedMCPAgents: $chatViewModel.selectedMCPAgents,
+                        imageUploadsAllowed: chat.apiService?.imageUploadsAllowed ?? false,
+                        isStreaming: isStreaming,
+                        isMultiAgentMode: $isMultiAgentMode,
+                        selectedMultiAgentServices: $selectedMultiAgentServices,
+                        showServiceSelector: $showServiceSelector,
+                        enableMultiAgentMode: enableMultiAgentMode,
+                        onSendMessage: {
+                            if editSystemMessage {
+                                chat.systemMessage = newMessage
+                                newMessage = ""
+                                editSystemMessage = false
+                                store.saveInCoreData()
+                            }
+                            else if newMessage != "" && newMessage != " " {
+                                if enableMultiAgentMode && isMultiAgentMode {
+                                    self.sendMultiAgentMessage()
+                                } else {
+                                    self.sendMessage()
+                                }
+                            }
+                        },
+                        onExpandToggle: {
+                            // Handle expand toggle if needed
+                        },
+                        onAddImage: {
+                            selectAndAddImages()
+                        },
+                        onAddFile: {
+                            selectAndAddFiles()
+                        },
+                        onStopStreaming: {
+                            self.stopStreaming()
+                        },
+                        onExpandedStateChange: { isExpanded in
+                            // Handle expanded state change if needed
+                        }
+                    )
+                    .background(Color(nsColor: .controlBackgroundColor))
                 }
                 .background(.clear)
                 .overlay(alignment: .bottom) {
-                    ChatSearchOverlaysView(
-                        searchStatus: chatViewModel.messageManager?.searchStatus,
-                        onRetry: {
-                            chatViewModel.messageManager?.searchStatus = nil
-                            sendMessage()
-                        },
-                        onDismiss: {
-                            chatViewModel.messageManager?.searchStatus = nil
-                        },
-                        onGoToSettings: {
-                            NotificationCenter.default.post(
-                                name: .openPreferences,
-                                object: nil,
-                                userInfo: ["tab": "webSearch"]
+                    VStack(spacing: 8) {
+                        // Show search error if failed
+                        if case .failed(let error) = chatViewModel.messageManager?.searchStatus {
+                            SearchErrorView(
+                                error: error,
+                                onRetry: {
+                                    // Clear error and retry
+                                    chatViewModel.messageManager?.searchStatus = nil
+                                    sendMessage()
+                                },
+                                onDismiss: {
+                                    chatViewModel.messageManager?.searchStatus = nil
+                                },
+                                onGoToSettings: {
+                                    // Open preferences to Web Search tab
+                                    NotificationCenter.default.post(
+                                        name: NSNotification.Name("OpenPreferences"),
+                                        object: nil,
+                                        userInfo: ["tab": "webSearch"]
+                                    )
+                                    chatViewModel.messageManager?.searchStatus = nil
+                                }
                             )
-                            chatViewModel.messageManager?.searchStatus = nil
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
                         }
-                    )
+                        // Show search progress above input when searching (not completed)
+                        else if let status = chatViewModel.messageManager?.searchStatus,
+                                !isSearchCompleted(status) {
+                            SearchProgressView(status: status)
+                                .transition(.move(edge: .bottom).combined(with: .opacity))
+                        }
+                        
+                        Spacer()
+                    }
                 }
-                .onChange(of: chatViewModel.messageManager?.searchStatus) { _, newValue in
-                    autoDismissSearchStatusIfNeeded(newValue)
+                // Auto-dismiss completed search status
+                .onChange(of: chatViewModel.messageManager?.searchStatus) { oldValue, newValue in
+                    if case .completed = newValue {
+                        // Auto-dismiss after 2 seconds
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                            if case .completed = chatViewModel.messageManager?.searchStatus {
+                                chatViewModel.messageManager?.searchStatus = nil
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -105,23 +229,10 @@ struct ChatView: View {
         .toolbarBackground(.clear, for: .automatic)
         .toolbarBackground(.visible, for: .windowToolbar)
         .toolbarColorScheme(colorScheme, for: .windowToolbar)
-        
-        // Common modifiers and event handlers
         .onAppear(perform: {
             self.lastOpenedChatId = chat.id.uuidString
-            composerState.selectedMCPAgents = chatViewModel.selectedMCPAgents
         })
-        .onChange(of: composerState.selectedMCPAgents) { _, newValue in
-            if chatViewModel.selectedMCPAgents != newValue {
-                chatViewModel.selectedMCPAgents = newValue
-            }
-        }
-        .onChange(of: chatViewModel.selectedMCPAgents) { _, newValue in
-            if composerState.selectedMCPAgents != newValue {
-                composerState.selectedMCPAgents = newValue
-            }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .recreateMessageManager)) {
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("RecreateMessageManager"))) {
             notification in
             if let chatId = notification.userInfo?["chatId"] as? UUID,
                 chatId == chat.id
@@ -134,124 +245,24 @@ struct ChatView: View {
                 chatViewModel.recreateMessageManager()
             }
         }
-        .sheet(isPresented: $composerState.showServiceSelector) {
+        .sheet(isPresented: $showServiceSelector) {
             MultiAgentServiceSelector(
-                selectedServices: $composerState.selectedMultiAgentServices,
-                isVisible: $composerState.showServiceSelector,
+                selectedServices: $selectedMultiAgentServices,
+                isVisible: $showServiceSelector,
                 availableServices: Array(apiServices)
             )
             .frame(minWidth: 500, minHeight: 400)
         }
-        .sheet(item: $messageBeingEdited) { _ in
-            EditUserMessageSheet(
-                draft: $editMessageDraft,
-                onCancel: { messageBeingEdited = nil },
-                onSaveAndRegenerate: { saveEditedMessageAndRegenerate() }
-            )
-        }
 
         .onChange(of: enableMultiAgentMode) { oldValue, newValue in
             // Automatically disable multi-agent mode if the setting is turned off
-            if !newValue && composerState.isMultiAgentMode {
-                composerState.isMultiAgentMode = false
+            if !newValue && isMultiAgentMode {
+                isMultiAgentMode = false
                 multiAgentManager.activeAgents.removeAll()
             }
         }
     }
     
-    private var isNewChat: Bool {
-        chat.messages.count == 0 && !chat.waitingForResponse && currentError == nil
-    }
-
-    private var newChatComposer: some View {
-        CenteredInputView(
-            composerState: $composerState,
-            chat: chat,
-            imageUploadsAllowed: chat.apiService?.imageUploadsAllowed ?? false,
-            isStreaming: isStreaming,
-            enableMultiAgentMode: enableMultiAgentMode,
-            onSendMessage: {
-                if enableMultiAgentMode && composerState.isMultiAgentMode {
-                    sendMultiAgentMessage()
-                } else {
-                    sendMessage()
-                }
-            },
-            onAddImage: {
-                selectAndAddImages()
-            },
-            onAddFile: {
-                selectAndAddFiles()
-            },
-            onAddAssistant: {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    isBottomContainerExpanded.toggle()
-                }
-            },
-            onStopStreaming: {
-                stopStreaming()
-            }
-        )
-        .background(.clear)
-    }
-
-    @ViewBuilder
-    private var searchResultsPreview: some View {
-        if let sources = chatViewModel.messageManager?.lastSearchSources,
-           let query = chatViewModel.messageManager?.lastSearchQuery,
-           !sources.isEmpty {
-            SearchResultsPreviewView(sources: sources, query: query)
-                .padding(.horizontal, 20)
-                .padding(.vertical, 8)
-        }
-    }
-
-    private var chatComposer: some View {
-        ChatBottomContainerView(
-            chat: chat,
-            composerState: $composerState,
-            isExpanded: $isBottomContainerExpanded,
-            imageUploadsAllowed: chat.apiService?.imageUploadsAllowed ?? false,
-            isStreaming: isStreaming,
-            enableMultiAgentMode: enableMultiAgentMode,
-            onSendMessage: {
-                if editSystemMessage {
-                    chat.systemMessage = composerState.text
-                    composerState.text = ""
-                    editSystemMessage = false
-                    store.saveInCoreData()
-                } else if !composerState.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                    || !composerState.attachedImages.isEmpty
-                    || !composerState.attachedFiles.isEmpty {
-                    if enableMultiAgentMode && composerState.isMultiAgentMode {
-                        sendMultiAgentMessage()
-                    } else {
-                        sendMessage()
-                    }
-                }
-            },
-            onAddImage: {
-                selectAndAddImages()
-            },
-            onAddFile: {
-                selectAndAddFiles()
-            },
-            onStopStreaming: {
-                stopStreaming()
-            }
-        )
-        .background(Color(nsColor: .controlBackgroundColor))
-    }
-
-    private func autoDismissSearchStatusIfNeeded(_ status: SearchStatus?) {
-        guard case .completed = status else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-            if case .completed = chatViewModel.messageManager?.searchStatus {
-                chatViewModel.messageManager?.searchStatus = nil
-            }
-        }
-    }
-
     private var mainChatContent: some View {
         GeometryReader { geometry in
             ZStack {
@@ -264,27 +275,24 @@ struct ChatView: View {
                     ScrollViewReader { scrollView in
                         MessageListView(
                             chat: chat,
+                            sortedMessages: chatViewModel.sortedMessages,
                             isStreaming: isStreaming,
                             streamingAssistantText: chatViewModel.streamingAssistantText,
                             currentError: currentError,
                             enableMultiAgentMode: enableMultiAgentMode,
-                            isMultiAgentMode: composerState.isMultiAgentMode,
+                            isMultiAgentMode: isMultiAgentMode,
                             multiAgentManager: multiAgentManager,
                             activeToolCalls: chatViewModel.messageManager?.activeToolCalls ?? [],
                             messageToolCalls: chatViewModel.messageManager?.messageToolCalls ?? [:],
                             userIsScrolling: $userIsScrolling,
                             onRetryMessage: {
                                 // Retry logic: Find the last user message and re-send it
-                                let messages = chat.messagesArray.sorted { $0.id < $1.id }
-                                if let lastUserMessage = messages.last(where: { $0.own }) {
+                                if let lastUserMessage = chatViewModel.sortedMessages.last(where: { $0.own }) {
                                     sendMessage(retryContent: lastUserMessage.body)
                                 }
                             },
                             onIgnoreError: {
                                 currentError = nil
-                            },
-                            onEditMessage: { message in
-                                beginEditing(message)
                             },
                             onContinueWithAgent: { response in
                                 continueWithSelectedAgent(response)
@@ -292,7 +300,6 @@ struct ChatView: View {
                             scrollView: scrollView,
                             viewWidth: min(geometry.size.width, 1000) // Match input box width exactly
                         )
-                        .id(messageListRefreshToken)
                         .frame(maxWidth: 1000) // Match input box width exactly
                         .frame(maxWidth: .infinity) // Center the constrained list
                         .padding(.horizontal, 24)
@@ -358,7 +365,7 @@ struct ChatView: View {
                                 }
                             }
                         }
-                        .onReceive(NotificationCenter.default.publisher(for: .codeBlockRendered)) {
+                        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("CodeBlockRendered"))) {
                             _ in
                             if pendingCodeBlocks > 0 {
                                 pendingCodeBlocks -= 1
@@ -390,39 +397,6 @@ struct ChatView: View {
         }
         .padding(.bottom, 0) // Remove extra padding as we handle it in ScrollView
         .background(.clear)
-    }
-}
-
-private struct ChatSearchOverlaysView: View {
-    let searchStatus: SearchStatus?
-    let onRetry: () -> Void
-    let onDismiss: () -> Void
-    let onGoToSettings: () -> Void
-
-    var body: some View {
-        VStack(spacing: 8) {
-            if case .failed(let error) = searchStatus {
-                SearchErrorView(
-                    error: error,
-                    onRetry: onRetry,
-                    onDismiss: onDismiss,
-                    onGoToSettings: onGoToSettings
-                )
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-            } else if let status = searchStatus, !isCompleted(status) {
-                SearchProgressView(status: status)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
-
-            Spacer()
-        }
-    }
-
-    private func isCompleted(_ status: SearchStatus) -> Bool {
-        if case .completed = status {
-            return true
-        }
-        return false
     }
 }
 
@@ -466,11 +440,12 @@ extension ChatView {
         userIsScrolling = false
         
         #if DEBUG
-        WardenLog.app.debug("Sending message. webSearchEnabled: \(composerState.webSearchEnabled, privacy: .public)")
+        WardenLog.app.debug("Sending message. webSearchEnabled: \(webSearchEnabled, privacy: .public)")
         WardenLog.app.debug("useStreamResponse: \(chat.apiService?.useStreamResponse ?? false, privacy: .public)")
         #endif
         
-        let useStream = chat.apiService?.useStreamResponse ?? false
+        let isImageService = (chat.apiService?.type?.lowercased() == "chatgpt image") || chat.gptModel.lowercased().contains("image") || (chat.apiService?.name?.lowercased().contains("image") ?? false)
+        let useStream = (chat.apiService?.useStreamResponse ?? false) && !isImageService
         
         // Unified sending logic
         if useStream {
@@ -478,13 +453,13 @@ extension ChatView {
             WardenLog.streaming.debug("Using STREAMING path")
             #endif
             self.isStreaming = true
-            if composerState.webSearchEnabled { self.isSearchingWeb = true }
+            if webSearchEnabled { self.isSearchingWeb = true }
             
             Task { @MainActor in
                 await chatViewModel.sendMessageStreamWithSearch(
                     messageBody,
                     contextSize: Int(chat.apiService?.contextSize ?? Int16(AppConstants.chatGptContextSize)),
-                    useWebSearch: composerState.webSearchEnabled
+                    useWebSearch: webSearchEnabled
                 ) { result in
                     handleSendResult(result)
                 }
@@ -494,13 +469,13 @@ extension ChatView {
             WardenLog.streaming.debug("Using NON-STREAMING path")
             #endif
             self.waitingForResponse = true
-            if composerState.webSearchEnabled { self.isSearchingWeb = true }
+            if webSearchEnabled { self.isSearchingWeb = true }
             
             Task { @MainActor in
                 await chatViewModel.sendMessageWithSearch(
                     messageBody,
                     contextSize: Int(chat.apiService?.contextSize ?? Int16(AppConstants.chatGptContextSize)),
-                    useWebSearch: composerState.webSearchEnabled
+                    useWebSearch: webSearchEnabled
                 ) { result in
                     handleSendResult(result)
                 }
@@ -532,31 +507,31 @@ extension ChatView {
     private func prepareMessageBody(clearInput: Bool) -> String {
         var messageContents: [MessageContent] = []
         
-        if !composerState.text.isEmpty {
-            messageContents.append(MessageContent(text: composerState.text))
+        if !newMessage.isEmpty {
+            messageContents.append(MessageContent(text: newMessage))
         }
 
-        for attachment in composerState.attachedImages {
+        for attachment in attachedImages {
             attachment.saveToEntity(context: viewContext)
             messageContents.append(MessageContent(imageAttachment: attachment))
         }
         
-        for attachment in composerState.attachedFiles {
+        for attachment in attachedFiles {
             attachment.saveToEntity(context: viewContext)
             messageContents.append(MessageContent(fileAttachment: attachment))
         }
 
         let messageBody: String
-        if !composerState.attachedImages.isEmpty || !composerState.attachedFiles.isEmpty {
+        if !attachedImages.isEmpty || !attachedFiles.isEmpty {
             messageBody = messageContents.toString()
         } else {
-            messageBody = composerState.text
+            messageBody = newMessage
         }
         
         if clearInput {
-            composerState.text = ""
-            composerState.attachedImages = []
-            composerState.attachedFiles = []
+            newMessage = ""
+            attachedImages = []
+            attachedFiles = []
         }
         
         return messageBody
@@ -564,7 +539,7 @@ extension ChatView {
 
     private func saveNewMessageInStore(with messageBody: String) {
         let newMessageEntity = MessageEntity(context: viewContext)
-        newMessageEntity.id = chat.nextMessageID()
+        newMessageEntity.id = Int64(chat.messages.count + 1)
         newMessageEntity.body = messageBody
         newMessageEntity.timestamp = Date()
         newMessageEntity.own = true
@@ -573,7 +548,6 @@ extension ChatView {
         chat.updatedDate = Date()
         chat.addToMessages(newMessageEntity)
         chat.objectWillChange.send()
-        chatViewModel.reloadMessages()
     }
 
     private func selectAndAddImages() {
@@ -616,10 +590,10 @@ extension ChatView {
                         withAnimation {
                             if isImage {
                                 let attachment = ImageAttachment(url: url, context: self.viewContext)
-                                self.composerState.attachedImages.append(attachment)
+                                self.attachedImages.append(attachment)
                             } else {
                                 let attachment = FileAttachment(url: url, context: self.viewContext)
-                                self.composerState.attachedFiles.append(attachment)
+                                self.attachedFiles.append(attachment)
                             }
                         }
                     }
@@ -661,41 +635,6 @@ extension ChatView {
         currentError = nil
     }
     
-    private func beginEditing(_ message: MessageEntity) {
-        editMessageDraft = message.body
-        messageBeingEdited = message
-    }
-    
-    private func saveEditedMessageAndRegenerate() {
-        guard let message = messageBeingEdited else { return }
-        let editedBody = editMessageDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !editedBody.isEmpty else { return }
-        
-        resetError()
-        stopStreaming()
-
-        Task { @MainActor in
-            do {
-                try await ChatHistoryEditor(viewContext: viewContext).editUserMessageAndTruncateFuture(
-                    message,
-                    newBody: editedBody
-                )
-                chatViewModel.reloadMessages()
-                messageBeingEdited = nil
-                messageListRefreshToken = UUID()
-                
-                await Task.yield()
-                if enableMultiAgentMode && composerState.isMultiAgentMode {
-                    sendMultiAgentMessage(regenerateContent: editedBody)
-                } else {
-                    sendMessage(retryContent: editedBody)
-                }
-            } catch {
-                currentError = ErrorMessage(apiError: .unknown(error.localizedDescription), timestamp: Date())
-            }
-        }
-    }
-    
     private func convertToAPIError(_ error: Error) -> APIError {
         // If it's already an APIError, return it as-is
         if let apiError = error as? APIError {
@@ -720,8 +659,8 @@ extension ChatView {
         return .unknown(error.localizedDescription)
     }
 
-    func sendMultiAgentMessage(regenerateContent: String? = nil) {
-        guard !composerState.selectedMultiAgentServices.isEmpty else {
+    func sendMultiAgentMessage() {
+        guard !selectedMultiAgentServices.isEmpty else {
             currentError = ErrorMessage(
                 apiError: .noApiService("No AI services selected for multi-agent mode. Please select up to 3 services first."),
                 timestamp: Date()
@@ -730,27 +669,20 @@ extension ChatView {
         }
         
         // Ensure we don't exceed the 3-service limit
-        let limitedServices = Array(composerState.selectedMultiAgentServices.prefix(3))
-        if limitedServices.count != composerState.selectedMultiAgentServices.count {
+        let limitedServices = Array(selectedMultiAgentServices.prefix(3))
+        if limitedServices.count != selectedMultiAgentServices.count {
             // Update the selection to reflect the limit
-            composerState.selectedMultiAgentServices = limitedServices
+            selectedMultiAgentServices = limitedServices
         }
         
         resetError()
         
-        let messageBody: String
-        if let regenerateContent {
-            messageBody = regenerateContent
-        } else {
-            // Use centralized message preparation to handle input and potential attachments (even if multi-agent currently only uses text content)
-            messageBody = prepareMessageBody(clearInput: true)
-        }
+        // Use centralized message preparation to handle input and potential attachments (even if multi-agent currently only uses text content)
+        let messageBody = prepareMessageBody(clearInput: true)
         guard !messageBody.isEmpty else { return }
         
-        if regenerateContent == nil {
-            // Save user message (with attachments if any)
-            saveNewMessageInStore(with: messageBody)
-        }
+        // Save user message (with attachments if any)
+        saveNewMessageInStore(with: messageBody)
         
         // Create a group ID to link all responses from this multi-agent request
         let groupId = UUID()
@@ -768,14 +700,12 @@ extension ChatView {
             DispatchQueue.main.async {
                 switch result {
                 case .success(let responses):
-                    var nextMessageID = self.chat.nextMessageID()
                     // Save all 3 responses to chat history
                     for response in responses {
                         // Only save successful responses (skip errors)
                         if response.isComplete && response.error == nil && !response.response.isEmpty {
                             let assistantMessage = MessageEntity(context: self.viewContext)
-                            assistantMessage.id = nextMessageID
-                            nextMessageID += 1
+                            assistantMessage.id = Int64(self.chat.messages.count + 1)
                             assistantMessage.body = response.response
                             assistantMessage.timestamp = response.timestamp
                             assistantMessage.own = false
@@ -820,7 +750,7 @@ extension ChatView {
         let titlePrompt = "Based on this conversation, generate a short, descriptive title (max 5 words): \(response.prefix(200))"
         
         // Find the service that generated this response to use for title generation
-        if let titleService = composerState.selectedMultiAgentServices.first(where: { $0.name == serviceName }) {
+        if let titleService = selectedMultiAgentServices.first(where: { $0.name == serviceName }) {
             guard let config = APIServiceManager.createAPIConfiguration(for: titleService) else { return }
             let apiService = APIServiceFactory.createAPIService(config: config)
             
@@ -829,11 +759,7 @@ extension ChatView {
                 ["role": "user", "content": titlePrompt]
             ]
             
-	            apiService.sendMessage(
-	                titleMessages,
-	                tools: nil,
-	                settings: GenerationSettings(temperature: 0.3)
-	            ) { result in
+	            apiService.sendMessage(titleMessages, tools: nil, temperature: 0.3) { result in
 	                DispatchQueue.main.async {
 	                    switch result {
 	                    case .success(let (titleText, _)):
@@ -859,7 +785,7 @@ extension ChatView {
     /// Switch to the selected agent's service and continue the conversation
     private func continueWithSelectedAgent(_ agentResponse: MultiAgentMessageManager.AgentResponse) {
         // Find the corresponding API service
-        guard let selectedService = composerState.selectedMultiAgentServices.first(where: {
+        guard let selectedService = selectedMultiAgentServices.first(where: {
             $0.name == agentResponse.serviceName && $0.model == agentResponse.model
         }) else {
             #if DEBUG
@@ -872,7 +798,7 @@ extension ChatView {
         chat.apiService = selectedService
         
         // Exit multi-agent mode
-        composerState.isMultiAgentMode = false
+        isMultiAgentMode = false
         
         // Clear multi-agent responses
         multiAgentManager.activeAgents.removeAll()
@@ -940,9 +866,10 @@ extension ChatView {
     
     private func showTemporaryFeedback(_ message: String, icon: String = "checkmark.circle.fill") {
         NotificationCenter.default.post(
-            name: AppConstants.showToastNotification,
+            name: .showToast,
             object: nil,
             userInfo: ["message": message, "icon": icon]
         )
     }
 }
+

@@ -1,6 +1,8 @@
 import CoreData
 import SwiftUI
 import os
+import Hub
+import Foundation
 
 struct TabAPIServicesView: View {
     @Environment(\.managedObjectContext) private var viewContext
@@ -64,7 +66,7 @@ struct TabAPIServicesView: View {
                         LazyVStack(spacing: 4) {
                             ForEach(apiServices, id: \.objectID) { service in
                                 GlassListRow(
-                                    iconImage: service.type == "openai_custom" ? "logo_chatgpt" : "logo_\(service.type ?? "openai")",
+                                    iconImage: "logo_\(service.type ?? "openai")",
                                     title: service.name ?? "Untitled",
                                     subtitle: service.model ?? "No model",
                                     isSelected: selectedServiceID == service.objectID,
@@ -110,19 +112,16 @@ struct TabAPIServicesView: View {
     }
 
     private func addNewService() {
-        let defaultType = AppConstants.defaultApiType
-        let defaultConfig = AppConstants.defaultApiConfigurations[defaultType]
-
         let newService = APIServiceEntity(context: viewContext)
         newService.id = UUID()
         newService.name = "New API Service"
-        newService.type = defaultType
-        newService.url = defaultConfig.flatMap { URL(string: $0.url) }
-        newService.model = defaultConfig?.defaultModel ?? ""
+        newService.type = "openai"
+        newService.url = URL(string: AppConstants.defaultApiConfigurations["openai"]?.url ?? "")
+        newService.model = "gpt-4o"
         newService.contextSize = 20
         newService.generateChatNames = true
         newService.useStreamResponse = true
-        newService.imageUploadsAllowed = defaultConfig?.imageUploadsSupported ?? false
+        newService.imageUploadsAllowed = false
         newService.addedDate = Date()
         
         do {
@@ -177,6 +176,11 @@ struct APIServiceDetailContent: View {
     let isDefault: Bool
     
     @StateObject private var viewModel: APIServiceDetailViewModel
+    
+    @AppStorage("hfModelsStore") private var hfModelsStoreRaw: String = "[]"
+    @State private var hfModels: [HFLocalModel] = []
+    @State private var showingFolderPicker = false
+
     @State private var lampColor: Color = .gray
     @State private var showingDeleteConfirmation = false
     @FocusState private var isTokenFocused: Bool
@@ -187,7 +191,48 @@ struct APIServiceDetailContent: View {
     private var personas: FetchedResults<PersonaEntity>
     
     private let types = AppConstants.apiTypes
-
+    
+    struct HFLocalModel: Identifiable, Codable, Equatable {
+        let id: UUID
+        var name: String
+        var path: String
+        
+        init(id: UUID = UUID(), name: String, path: String) {
+            self.id = id
+            self.name = name
+            self.path = path
+        }
+    }
+    
+    private func loadHFModels() {
+        if let data = hfModelsStoreRaw.data(using: .utf8) {
+            if let decoded = try? JSONDecoder().decode([HFLocalModel].self, from: data) {
+                hfModels = decoded
+            }
+        }
+    }
+    
+    private func saveHFModels() {
+        if let data = try? JSONEncoder().encode(hfModels),
+           let json = String(data: data, encoding: .utf8) {
+            hfModelsStoreRaw = json
+        }
+    }
+    
+    private func addHFModel(from url: URL) {
+        let name = url.lastPathComponent
+        let model = HFLocalModel(name: name, path: url.path)
+        if !hfModels.contains(where: { $0.path == model.path }) {
+            hfModels.append(model)
+            saveHFModels()
+        }
+    }
+    
+    private func removeHFModel(at offsets: IndexSet) {
+        hfModels.remove(atOffsets: offsets)
+        saveHFModels()
+    }
+    
     init(service: APIServiceEntity, viewContext: NSManagedObjectContext, onDelete: @escaping () -> Void, onSetDefault: @escaping () -> Void, isDefault: Bool) {
         self.service = service
         self.viewContext = viewContext
@@ -196,13 +241,13 @@ struct APIServiceDetailContent: View {
         self.isDefault = isDefault
         _viewModel = StateObject(wrappedValue: APIServiceDetailViewModel(viewContext: viewContext, apiService: service))
     }
-
+    
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 // Header
                 HStack(spacing: 16) {
-                    Image(service.type == "openai_custom" ? "logo_chatgpt" : "logo_\(service.type ?? "openai")")
+                    Image("logo_\(service.type ?? "openai")")
                         .resizable()
                         .renderingMode(.template)
                         .frame(width: 32, height: 32)
@@ -228,8 +273,8 @@ struct APIServiceDetailContent: View {
                 
                 // Basic Settings
                 GlassCard {
-                    VStack(alignment: .leading, spacing: 14) {
-                        SettingsSectionHeader(title: "Connection")
+                    VStack(alignment: .leading, spacing: 16) {
+                        SettingsSectionHeader(title: "Basic Settings", icon: "slider.horizontal.3", iconColor: .blue)
                         
                         VStack(spacing: 12) {
                             SettingsRow(title: "Service Name") {
@@ -242,7 +287,7 @@ struct APIServiceDetailContent: View {
                             
                             SettingsRow(title: "API Type") {
                                 HStack(spacing: 8) {
-                                    Image(viewModel.type == "openai_custom" ? "logo_chatgpt" : "logo_\(viewModel.type)")
+                                    Image("logo_\(viewModel.type)")
                                         .resizable()
                                         .renderingMode(.template)
                                         .frame(width: 14, height: 14)
@@ -265,23 +310,15 @@ struct APIServiceDetailContent: View {
                             
                             SettingsRow(title: "API URL") {
                                 HStack(spacing: 8) {
-                                    TextField(
-                                        viewModel.type == "openai_custom" ? "https://api.example.com/v1/chat/completions" : "",
-                                        text: $viewModel.url
-                                    )
-                                    .textFieldStyle(.roundedBorder)
-                                    .frame(minWidth: 180, maxWidth: 250)
-
-                                    if viewModel.type != "openai_custom" {
-                                        Button {
-                                            viewModel.url = viewModel.defaultApiConfiguration?.url ?? ""
-                                        } label: {
-                                            Image(systemName: "arrow.counterclockwise")
-                                                .font(.system(size: 11))
-                                        }
-                                        .buttonStyle(.borderless)
-                                        .help("Reset to default")
+                                    TextField("", text: $viewModel.url)
+                                        .textFieldStyle(.roundedBorder)
+                                        .frame(width: 250)
+                                    
+                                    Button("Reset") {
+                                        viewModel.url = viewModel.defaultApiConfiguration?.url ?? ""
                                     }
+                                    .buttonStyle(.borderless)
+                                    .font(.system(size: 11))
                                 }
                             }
                         }
@@ -289,11 +326,11 @@ struct APIServiceDetailContent: View {
                 }
                 
                 // Authentication
-                if (viewModel.defaultApiConfiguration?.apiKeyRef ?? "") != "" || viewModel.type == "openai_custom" {
+                if (viewModel.defaultApiConfiguration?.apiKeyRef ?? "") != "" {
                     GlassCard {
-                        VStack(alignment: .leading, spacing: 14) {
-                            SettingsSectionHeader(title: "Authentication")
-
+                        VStack(alignment: .leading, spacing: 16) {
+                            SettingsSectionHeader(title: "Authentication", icon: "key.fill", iconColor: .orange)
+                            
                             VStack(spacing: 12) {
                                 SettingsRow(title: "API Token") {
                                     TextField("", text: $viewModel.apiKey)
@@ -305,10 +342,8 @@ struct APIServiceDetailContent: View {
                                             viewModel.onChangeApiKey(newValue)
                                         }
                                 }
-
-                                if viewModel.type != "openai_custom",
-                                   let apiKeyRef = viewModel.defaultApiConfiguration?.apiKeyRef,
-                                   !apiKeyRef.isEmpty,
+                                
+                                if let apiKeyRef = viewModel.defaultApiConfiguration?.apiKeyRef,
                                    let url = URL(string: apiKeyRef) {
                                     HStack {
                                         Spacer()
@@ -323,9 +358,60 @@ struct APIServiceDetailContent: View {
                 
                 // Model Selection
                 GlassCard {
-                    VStack(alignment: .leading, spacing: 14) {
-                        SettingsSectionHeader(title: "Model")
-                        
+                    VStack(alignment: .leading, spacing: 16) {
+                        SettingsSectionHeader(title: "Model", icon: "brain", iconColor: .purple)
+                        if (service.type?.lowercased() == "huggingface") {
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack {
+                                    Text("Local HF Models")
+                                        .font(.system(size: 13, weight: .semibold))
+                                    Spacer()
+                                    Button("Add Model Folder") {
+                                        let panel = NSOpenPanel()
+                                        panel.allowsMultipleSelection = false
+                                        panel.canChooseDirectories = true
+                                        panel.canChooseFiles = false
+                                        panel.canCreateDirectories = false
+                                        panel.title = "Select Model Folder"
+                                        if panel.runModal() == .OK, let url = panel.url {
+                                            addHFModel(from: url)
+                                        }
+                                    }
+                                }
+                                if hfModels.isEmpty {
+                                    Text("No local HuggingFace models added.")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                } else {
+                                    List {
+                                        ForEach(hfModels) { model in
+                                            HStack {
+                                                VStack(alignment: .leading) {
+                                                    Text(model.name)
+                                                        .font(.body)
+                                                    Text(model.path)
+                                                        .font(.caption)
+                                                        .foregroundStyle(.secondary)
+                                                }
+                                                Spacer()
+                                                Button(role: .destructive) {
+                                                    if let idx = hfModels.firstIndex(of: model) {
+                                                        hfModels.remove(at: idx)
+                                                        saveHFModels()
+                                                    }
+                                                } label: {
+                                                    Image(systemName: "trash")
+                                                }
+                                                .buttonStyle(.borderless)
+                                            }
+                                        }
+                                        .onDelete(perform: removeHFModel)
+                                    }
+                                    .frame(maxHeight: 160)
+                                }
+                            }
+                            .padding(.top, 8)
+                        }
                         VStack(spacing: 12) {
                             SettingsRow(title: "LLM Model") {
                                 HStack(spacing: 8) {
@@ -336,7 +422,7 @@ struct APIServiceDetailContent: View {
                                         Text("Custom...").tag("custom")
                                     }
                                     .pickerStyle(.menu)
-                                    .frame(minWidth: 160, maxWidth: 200)
+                                    .frame(width: 200)
                                     .labelsHidden()
                                     .disabled(viewModel.isLoadingModels)
                                     .onChange(of: viewModel.selectedModel) { _, newValue in
@@ -347,21 +433,15 @@ struct APIServiceDetailContent: View {
                                     }
                                     
                                     if AppConstants.defaultApiConfigurations[viewModel.type]?.modelsFetching ?? false {
-                                        Button {
-                                            viewModel.onUpdateModelsList()
-                                        } label: {
-                                            if viewModel.isLoadingModels {
-                                                ProgressView()
-                                                    .scaleEffect(0.6)
-                                                    .frame(width: 14, height: 14)
-                                            } else {
-                                                Image(systemName: "arrow.clockwise")
-                                                    .font(.system(size: 11))
-                                            }
-                                        }
-                                        .buttonStyle(.borderless)
-                                        .disabled(viewModel.isLoadingModels)
-                                        .help(viewModel.modelFetchError != nil ? "Can't fetch models" : "Refresh models")
+                                        ButtonWithStatusIndicator(
+                                            title: "Refresh",
+                                            action: { viewModel.onUpdateModelsList() },
+                                            isLoading: viewModel.isLoadingModels,
+                                            hasError: viewModel.modelFetchError != nil,
+                                            errorMessage: "Can't fetch models",
+                                            successMessage: "Click to refresh",
+                                            isSuccess: !viewModel.isLoadingModels && viewModel.modelFetchError == nil && viewModel.availableModels.count > 0
+                                        )
                                     }
                                 }
                             }
@@ -404,8 +484,8 @@ struct APIServiceDetailContent: View {
                 // Model Visibility
                 if !viewModel.fetchedModels.isEmpty {
                     GlassCard {
-                        VStack(alignment: .leading, spacing: 14) {
-                            SettingsSectionHeader(title: "Model Visibility")
+                        VStack(alignment: .leading, spacing: 16) {
+                            SettingsSectionHeader(title: "Model Visibility", icon: "eye", iconColor: .cyan)
                             
                             ModelSelectionView(
                                 serviceType: viewModel.type,
@@ -420,8 +500,8 @@ struct APIServiceDetailContent: View {
                 
                 // Context & Features
                 GlassCard {
-                    VStack(alignment: .leading, spacing: 14) {
-                        SettingsSectionHeader(title: "Behavior")
+                    VStack(alignment: .leading, spacing: 16) {
+                        SettingsSectionHeader(title: "Behavior", icon: "gearshape.2.fill", iconColor: .gray)
                         
                         VStack(spacing: 12) {
                             SettingsRow(
@@ -478,8 +558,8 @@ struct APIServiceDetailContent: View {
                 
                 // Default Assistant
                 GlassCard {
-                    VStack(alignment: .leading, spacing: 14) {
-                        SettingsSectionHeader(title: "Default Assistant")
+                    VStack(alignment: .leading, spacing: 16) {
+                        SettingsSectionHeader(title: "Default Assistant", icon: "person.fill", iconColor: .green)
                         
                         Picker("", selection: $viewModel.defaultAiPersona) {
                             ForEach(personas) { persona in
@@ -532,6 +612,9 @@ struct APIServiceDetailContent: View {
                 Spacer(minLength: 20)
             }
             .padding(24)
+            .onAppear {
+                loadHFModels()
+            }
         }
         .alert("Delete Service", isPresented: $showingDeleteConfirmation) {
             Button("Cancel", role: .cancel) { }
@@ -544,7 +627,6 @@ struct APIServiceDetailContent: View {
         }
     }
 }
-
 
 struct APIServiceRowView: View {
     let service: APIServiceEntity
@@ -564,3 +646,4 @@ struct APIServiceRowView: View {
     TabAPIServicesView()
         .frame(width: 800, height: 600)
 }
+

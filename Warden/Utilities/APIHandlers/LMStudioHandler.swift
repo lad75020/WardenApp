@@ -26,7 +26,7 @@ class LMStudioHandler: ChatGPTHandler {
         requestMessages: [[String: String]],
         tools: [[String: Any]]?,
         model: String, 
-        settings: GenerationSettings,
+        temperature: Float, 
         stream: Bool
     ) throws -> URLRequest {
         var request = URLRequest(url: baseURL)
@@ -41,7 +41,7 @@ class LMStudioHandler: ChatGPTHandler {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
         // LM Studio doesn't have reasoning models, so use temperature as provided
-        let temperatureOverride = settings.temperature
+        let temperatureOverride = temperature
 
         var processedMessages: [[String: Any]] = []
 
@@ -148,7 +148,6 @@ class LMStudioHandler: ChatGPTHandler {
         }
     }
     
-
 }
 
 // MARK: - Private helper for ChatGPTModelsResponse
@@ -159,3 +158,4 @@ private struct ChatGPTModelsResponse: Codable {
 private struct ChatGPTModel: Codable {
     let id: String
 } 
+

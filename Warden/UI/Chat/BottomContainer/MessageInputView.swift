@@ -3,29 +3,21 @@ import SwiftUI
 import UniformTypeIdentifiers
 import CoreData
 
-struct ComposerState {
-    var text: String = ""
-    var attachedImages: [ImageAttachment] = []
-    var attachedFiles: [FileAttachment] = []
-    var webSearchEnabled: Bool = false
-    var selectedMCPAgents: Set<UUID> = []
-    var isMultiAgentMode: Bool = false
-    var selectedMultiAgentServices: [APIServiceEntity] = []
-    var showServiceSelector: Bool = false
-}
-
 struct MessageInputView: View {
-    @Binding var state: ComposerState
+    @Binding var text: String
+    @Binding var attachedImages: [ImageAttachment]
+    @Binding var attachedFiles: [FileAttachment]
+    @Binding var webSearchEnabled: Bool
+    @Binding var selectedMCPAgents: Set<UUID>
     var chat: ChatEntity?
     var imageUploadsAllowed: Bool
     var isStreaming: Bool = false
     
-    // Multi-agent mode parameters (controlled by `state`)
+    // Multi-agent mode parameters
+    @Binding var isMultiAgentMode: Bool
+    @Binding var selectedMultiAgentServices: [APIServiceEntity]
+    @Binding var showServiceSelector: Bool
     var enableMultiAgentMode: Bool
-    var showsWebSearchToggle: Bool = true
-    var showsRephraseButton: Bool = true
-    var showsMCPTools: Bool = true
-    var showsPersonas: Bool = true
     
     var onEnter: () -> Void
     var onAddImage: () -> Void
@@ -38,11 +30,11 @@ struct MessageInputView: View {
     @StateObject private var mcpManager = MCPManager.shared
 
     @Environment(\.managedObjectContext) private var viewContext
-    @Environment(\.wardenTheme) private var theme
     @State var frontReturnKeyType = OmenTextField.ReturnKeyType.next
     @State var isFocused: Focus?
     @State var dynamicHeight: CGFloat = 16
     @State private var isHoveringDropZone = false
+    @State private var showingMCPMenu = false
     @State private var showingPersonaPopover = false
     @StateObject private var rephraseService = RephraseService()
 
@@ -65,15 +57,18 @@ struct MessageInputView: View {
     }
     
     private var canSend: Bool {
-        let hasText = !state.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        let hasAttachments = !state.attachedImages.isEmpty || !state.attachedFiles.isEmpty
-        return (hasText || hasAttachments) && !isStreaming
+        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isStreaming
     }
     
     private var canRephrase: Bool {
-        !state.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && 
         chat?.apiService != nil && 
         !rephraseService.isRephrasing
+    }
+    
+    private var isImageGenEnabled: Bool {
+        guard let chat = chat else { return false }
+        return UserDefaults.standard.bool(forKey: "imageGenMode_\(chat.id.uuidString)")
     }
 
     enum Focus {
@@ -95,61 +90,73 @@ struct MessageInputView: View {
                         attachmentMenu
                         
                         // Web Search
-                        if showsWebSearchToggle {
+                        Button(action: {
+                            webSearchEnabled.toggle()
+                        }) {
+                            Image(systemName: "globe")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(webSearchEnabled ? .accentColor : .secondary)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .help("Web Search")
+
+                        // Image Generation (single-prompt) toggle
+                        if let chat = chat {
                             Button(action: {
-                                state.webSearchEnabled.toggle()
+                                let key = "imageGenMode_\(chat.id.uuidString)"
+                                let current = UserDefaults.standard.bool(forKey: key)
+                                let next = !current
+                                UserDefaults.standard.set(next, forKey: key)
                             }) {
-                                Image(systemName: "globe")
+                                Image(systemName: isImageGenEnabled ? "photo.on.rectangle.fill" : "photo.on.rectangle")
                                     .font(.system(size: 14, weight: .medium))
-                                    .foregroundColor(state.webSearchEnabled ? .accentColor : .secondary)
+                                    .foregroundColor(isImageGenEnabled ? .accentColor : .secondary)
                             }
                             .buttonStyle(PlainButtonStyle())
-                            .help("Web Search")
-                            .accessibilityLabel("Web Search")
+                            .help("Image Generation: when enabled, only the last prompt is sent (no chat history)")
                         }
                         
                         // Rephrase (Text tool icon)
-                        if showsRephraseButton {
-                            Button(action: rephraseText) {
-                                ZStack {
-                                    if rephraseService.isRephrasing {
-                                        ProgressView()
-                                            .scaleEffect(0.5)
-                                            .frame(width: 14, height: 14)
-                                    } else {
-                                        Image(systemName: "wand.and.stars")
-                                            .font(.system(size: 12))
-                                            .foregroundColor(rephraseService.isRephrasing ? .white : .secondary)
-                                    }
+                        Button(action: rephraseText) {
+                            ZStack {
+                                if rephraseService.isRephrasing {
+                                    ProgressView()
+                                        .scaleEffect(0.5)
+                                        .frame(width: 14, height: 14)
+                                } else {
+                                    Image(systemName: "pencil.and.outline")
+                                        .font(.system(size: 12))
+                                        .foregroundColor(rephraseService.isRephrasing ? .white : .secondary)
                                 }
-                                .frame(width: 24, height: 24)
-                                .background(rephraseService.isRephrasing ? Color.accentColor : Color.clear)
-                                .cornerRadius(6)
                             }
-                            .buttonStyle(PlainButtonStyle())
-                            .help("Rephrase Message")
-                            .accessibilityLabel("Rephrase Message")
-                            .disabled(!canRephrase)
+                            .frame(width: 24, height: 24)
+                            .background(rephraseService.isRephrasing ? Color.accentColor : Color.clear)
+                            .cornerRadius(6)
                         }
+                        .buttonStyle(PlainButtonStyle())
+                        .help("Rephrase Message")
+                        
+                        // MCP Agents (Tool icon)
+                        mcpMenuButton
                         
                         // Multi-Agent Mode
                         if enableMultiAgentMode {
                             HStack(spacing: 8) {
                                 Button(action: {
-                                    state.isMultiAgentMode.toggle()
+                                    isMultiAgentMode.toggle()
                                 }) {
-                                    Image(systemName: state.isMultiAgentMode ? "person.3.fill" : "person.3")
+                                    Image(systemName: isMultiAgentMode ? "person.3.fill" : "person.3")
                                         .font(.system(size: 13))
-                                        .foregroundColor(state.isMultiAgentMode ? .accentColor : .secondary)
+                                        .foregroundColor(isMultiAgentMode ? .accentColor : .secondary)
                                 }
                                 .buttonStyle(PlainButtonStyle())
                                 .help("Multi-Agent Mode")
                                 
-                                if state.isMultiAgentMode {
+                                if isMultiAgentMode {
                                     Button(action: {
-                                        state.showServiceSelector = true
+                                        showServiceSelector = true
                                     }) {
-                                        Text("\(state.selectedMultiAgentServices.count)/3")
+                                        Text("\(selectedMultiAgentServices.count)/3")
                                             .font(.system(size: 10, weight: .bold))
                                             .foregroundColor(.secondary)
                                             .padding(.horizontal, 4)
@@ -162,27 +169,24 @@ struct MessageInputView: View {
                         }
                         
                         // Personas (Persona icon)
-                        if showsPersonas {
-                            Button(action: {
-                                showingPersonaPopover.toggle()
-                            }) {
-                                Image(systemName: chat?.persona != nil ? "person.circle.fill" : "person.circle")
-                                    .font(.system(size: 14))
-                                    .foregroundColor(chat?.persona != nil ? .accentColor : .secondary)
-                            }
-                            .buttonStyle(PlainButtonStyle())
-                            .help("Assistant Personas")
-                            .accessibilityLabel("Assistant Personas")
-                            .popover(isPresented: $showingPersonaPopover, arrowEdge: .top) {
-                                if let chat = chat {
-                                    PersonaSelectorView(chat: chat)
-                                        .environment(\.managedObjectContext, viewContext)
-                                        .frame(width: 400, height: 80)
-                                        .background(Color(nsColor: .windowBackgroundColor))
-                                } else {
-                                    Text("Persona selection only available in active chats")
-                                        .padding()
-                                }
+                        Button(action: {
+                            showingPersonaPopover.toggle()
+                        }) {
+                            Image(systemName: chat?.persona != nil ? "person.circle.fill" : "person.circle")
+                                .font(.system(size: 14))
+                                .foregroundColor(chat?.persona != nil ? .accentColor : .secondary)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .help("Assistant Personas")
+                        .popover(isPresented: $showingPersonaPopover, arrowEdge: .top) {
+                            if let chat = chat {
+                                PersonaSelectorView(chat: chat)
+                                    .environment(\.managedObjectContext, viewContext)
+                                    .frame(width: 400, height: 80)
+                                    .background(Color(nsColor: .windowBackgroundColor))
+                            } else {
+                                Text("Persona selection only available in active chats")
+                                    .padding()
                             }
                         }
                     }
@@ -193,7 +197,6 @@ struct MessageInputView: View {
                         // Model Selector
                         if let chat = chat {
                             BetterCompactModelSelector(chat: chat)
-                            ReasoningEffortMenu(chat: chat)
                         }
                         
                         sendStopButton
@@ -203,11 +206,11 @@ struct MessageInputView: View {
             .padding(.horizontal, 16)
             .padding(.top, 10)
             .padding(.bottom, 10)
-            .background(theme.surfaceBackground)
+            .background(Color(nsColor: .controlBackgroundColor))
             .cornerRadius(cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius)
-                    .stroke(theme.surfaceBorder, lineWidth: 1)
+                    .stroke(Color.primary.opacity(0.1), lineWidth: 1)
             )
         }
         .onDrop(of: [.image, .fileURL], isTargeted: $isHoveringDropZone) { providers in
@@ -235,99 +238,77 @@ struct MessageInputView: View {
             Button(action: onAddFile) {
                 Label("Add File", systemImage: "doc")
             }
-            
-            if showsMCPTools {
-                Divider()
-                
-                if mcpManager.configs.isEmpty {
-                    Text("No MCP Agents configured")
-                        .foregroundColor(.secondary)
-                } else {
-                    ForEach(mcpManager.configs) { config in
-                        mcpAgentButton(for: config)
-                    }
-                }
-            }
         } label: {
-            HStack(spacing: 4) {
-                Image(systemName: "plus")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(state.selectedMCPAgents.isEmpty ? .secondary : .accentColor)
-                
-                if !state.selectedMCPAgents.isEmpty {
-                    Text("\(state.selectedMCPAgents.count)")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 1)
-                        .background(Capsule().fill(Color.accentColor))
-                }
-            }
+            Image(systemName: "paperclip")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(.secondary)
         }
-        .menuIndicator(.hidden)
         .menuStyle(.borderlessButton)
         .fixedSize()
-        .help("Add attachments & tools")
-        .accessibilityLabel("Add attachments and tools")
+        .help("Add attachments")
     }
-    
-    @ViewBuilder
-    private func mcpAgentButton(for config: MCPServerConfig) -> some View {
-        let isSelected = state.selectedMCPAgents.contains(config.id)
-        let status = mcpManager.serverStatuses[config.id] ?? .disconnected
-        
+
+    private var mcpMenuButton: some View {
         Button(action: {
-            if isSelected {
-                state.selectedMCPAgents.remove(config.id)
-            } else {
-                state.selectedMCPAgents.insert(config.id)
-            }
+            showingMCPMenu.toggle()
         }) {
-            HStack {
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .foregroundColor(isSelected ? .accentColor : .secondary)
-                
-                Circle()
-                    .fill(statusColor(for: status))
-                    .frame(width: 6, height: 6)
-                
-                Text(config.name)
+            ZStack {
+                Image(systemName: "wrench.and.screwdriver.fill")
+                    .font(.system(size: 11))
+                    .foregroundColor(!selectedMCPAgents.isEmpty ? .white : .secondary)
             }
+            .frame(width: 24, height: 24)
+            .background(!selectedMCPAgents.isEmpty ? Color.accentColor : Color.clear)
+            .cornerRadius(6)
         }
-        .disabled(!config.enabled)
-    }
-    
-    private func statusColor(for status: MCPManager.ServerStatus) -> Color {
-        switch status {
-        case .connected: return .green
-        case .disconnected: return .gray
-        case .error: return .red
-        case .connecting: return .orange
+        .buttonStyle(PlainButtonStyle())
+        .help("MCP Tools")
+        .popover(isPresented: $showingMCPMenu, arrowEdge: .bottom) {
+            if !mcpManager.configs.isEmpty {
+                MCPAgentMenuSection(
+                    configs: mcpManager.configs,
+                    selectedAgents: $selectedMCPAgents,
+                    statuses: mcpManager.serverStatuses
+                )
+                .padding(.vertical, 8)
+                .frame(minWidth: 200)
+            } else {
+                VStack(spacing: 12) {
+                    Text("No MCP Agents configured")
+                        .font(.headline)
+                    Text("Configure MCP servers in Settings to use them here.")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+                .padding()
+                .frame(width: 220)
+            }
         }
     }
 
     private var attachmentPreviewsSection: some View {
-        let hasAttachments = !state.attachedImages.isEmpty || !state.attachedFiles.isEmpty
+        let hasAttachments = !attachedImages.isEmpty || !attachedFiles.isEmpty
         
         return ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 // Image previews
-                ForEach(state.attachedImages) { attachment in
+                ForEach(attachedImages) { attachment in
                     ImagePreviewView(attachment: attachment) { index in
-                        if let index = state.attachedImages.firstIndex(where: { $0.id == attachment.id }) {
+                        if let index = attachedImages.firstIndex(where: { $0.id == attachment.id }) {
                             withAnimation {
-                                state.attachedImages.remove(at: index)
+                                attachedImages.remove(at: index)
                             }
                         }
                     }
                 }
                 
                 // File previews
-                ForEach(state.attachedFiles) { attachment in
+                ForEach(attachedFiles) { attachment in
                     FilePreviewView(attachment: attachment) { index in
-                        if let index = state.attachedFiles.firstIndex(where: { $0.id == attachment.id }) {
+                        if let index = attachedFiles.firstIndex(where: { $0.id == attachment.id }) {
                             withAnimation {
-                                state.attachedFiles.remove(at: index)
+                                attachedFiles.remove(at: index)
                             }
                         }
                     }
@@ -358,7 +339,6 @@ struct MessageInputView: View {
             }
             .buttonStyle(PlainButtonStyle())
             .help("Stop generating")
-            .accessibilityLabel("Stop generating")
             .transition(.scale.combined(with: .opacity))
         } else {
             // Send button
@@ -380,7 +360,6 @@ struct MessageInputView: View {
             .buttonStyle(PlainButtonStyle())
             .disabled(!canSend)
             .help("Send message")
-            .accessibilityLabel("Send message")
             .transition(.scale.combined(with: .opacity))
         }
     }
@@ -393,16 +372,16 @@ struct MessageInputView: View {
         
         // Store original text if this is the first rephrase
         if originalText.isEmpty {
-            originalText = state.text
+            originalText = text
         }
         
-        rephraseService.rephraseText(state.text, using: apiService) { [self] result in
+        rephraseService.rephraseText(text, using: apiService) { [self] result in
             DispatchQueue.main.async {
                 switch result {
                 case .success(let rephrasedText):
                     // Animate the text change
                     withAnimation(.easeInOut(duration: 0.3)) {
-                        state.text = rephrasedText
+                        text = rephrasedText
                     }
                     
                 case .failure(let error):
@@ -449,13 +428,13 @@ struct MessageInputView: View {
                             if imageUploadsAllowed && isValidImageFile(url: url) {
                                 let attachment = ImageAttachment(url: url)
                                 withAnimation {
-                                    state.attachedImages.append(attachment)
+                                    attachedImages.append(attachment)
                                 }
                             } else if !isValidImageFile(url: url) {
                                 // Treat as file attachment
                                 let attachment = FileAttachment(url: url)
                                 withAnimation {
-                                    state.attachedFiles.append(attachment)
+                                    attachedFiles.append(attachment)
                                 }
                             }
                         }
@@ -472,13 +451,13 @@ struct MessageInputView: View {
                             if imageUploadsAllowed && isValidImageFile(url: url) {
                                 let attachment = ImageAttachment(url: url)
                                 withAnimation {
-                                    state.attachedImages.append(attachment)
+                                    attachedImages.append(attachment)
                                 }
                             } else {
                                 // Treat as file attachment
                                 let attachment = FileAttachment(url: url)
                                 withAnimation {
-                                    state.attachedFiles.append(attachment)
+                                    attachedFiles.append(attachment)
                                 }
                             }
                         }
@@ -503,7 +482,7 @@ struct MessageInputView: View {
 
     private var textInputArea: some View {
         ZStack(alignment: .topLeading) {
-            if state.text.isEmpty {
+            if text.isEmpty {
                 Text(inputPlaceholderText)
                     .font(.system(size: effectiveFontSize))
                     .foregroundColor(.secondary)
@@ -512,7 +491,7 @@ struct MessageInputView: View {
             }
             
             SubmitTextEditor(
-                text: $state.text,
+                text: $text,
                 dynamicHeight: $dynamicHeight,
                 onSubmit: {
                     if canSend {
@@ -587,104 +566,46 @@ struct BetterCompactModelSelector: View {
     @ObservedObject var chat: ChatEntity
     @Environment(\.managedObjectContext) private var viewContext
     
-    @ObservedObject private var modelCache = ModelCacheManager.shared
-    @ObservedObject private var favoriteManager = FavoriteModelsManager.shared
-    @ObservedObject private var selectedModelsManager = SelectedModelsManager.shared
-    @ObservedObject private var metadataCache = ModelMetadataCache.shared
-    
+    @StateObject private var modelCache = ModelCacheManager.shared
     @FetchRequest(
         sortDescriptors: [NSSortDescriptor(keyPath: \APIServiceEntity.addedDate, ascending: false)],
         animation: .default
     )
     private var apiServices: FetchedResults<APIServiceEntity>
     
+    @State private var isExpanded = false
     @State private var isHovered = false
-    
-    private static let providerNames: [String: String] = [
-        "chatgpt": "OpenAI", "claude": "Anthropic", "gemini": "Google",
-        "xai": "xAI", "perplexity": "Perplexity", "deepseek": "DeepSeek",
-        "groq": "Groq", "openrouter": "OpenRouter", "ollama": "Ollama", "mistral": "Mistral"
-    ]
     
     private var currentProviderType: String {
         chat.apiService?.type ?? AppConstants.defaultApiType
     }
     
-    private var shortModelLabel: String {
+    private var currentModelLabel: String {
         let modelId = chat.gptModel
         if modelId.isEmpty { return "Select Model" }
-        let label = ModelMetadata.formatModelDisplayName(modelId: modelId, provider: currentProviderType)
+        return ModelMetadata.formatModelDisplayName(modelId: modelId, provider: currentProviderType)
+    }
+
+    private var shortModelLabel: String {
+        let label = currentModelLabel
+        // If label is "Gemini-3-Flash/Google", we want "Gemini-3-Flash"
         return label.components(separatedBy: "/").first ?? label
     }
     
-    private var availableModels: [(provider: String, models: [String])] {
-        var result: [(provider: String, models: [String])] = []
-        for service in apiServices {
-            guard let serviceType = service.type else { continue }
-            let serviceModels = modelCache.getModels(for: serviceType)
-            
-            let visibleModels = serviceModels.filter { model in
-                if selectedModelsManager.hasCustomSelection(for: serviceType) {
-                    return selectedModelsManager.getSelectedModelIds(for: serviceType).contains(model.id)
-                }
-                return true
-            }
-            
-            if !visibleModels.isEmpty {
-                result.append((provider: serviceType, models: visibleModels.map { $0.id }))
-            }
-        }
-        return result
-    }
-    
-    private var favoriteModels: [(provider: String, modelId: String)] {
-        availableModels.flatMap { provider, models in
-            models.compactMap { model in
-                favoriteManager.isFavorite(provider: provider, model: model) ? (provider, model) : nil
-            }
-        }
-    }
-    
-    @MainActor
-    private func selectModel(provider: String, modelId: String) {
-        if let service = apiServices.first(where: { $0.type == provider }) {
-            chat.apiService = service
-        }
-        chat.gptModel = modelId
-        chat.updatedDate = Date()
-        chat.objectWillChange.send()
-        
-        NotificationCenter.default.post(
-            name: .recreateMessageManager,
-            object: nil,
-            userInfo: ["chatId": chat.id]
-        )
-    }
-    
     var body: some View {
-        Menu {
-            if !favoriteModels.isEmpty {
-                Section("Favorites") {
-                    ForEach(favoriteModels, id: \.modelId) { item in
-                        modelMenuItem(provider: item.provider, modelId: item.modelId)
-                    }
-                }
+        Button(action: {
+            isExpanded = true
+            let services = Array(apiServices)
+            if !services.isEmpty {
+                modelCache.fetchAllModels(from: services)
             }
-            
-            ForEach(availableModels, id: \.provider) { providerModels in
-                Section(Self.providerNames[providerModels.provider] ?? providerModels.provider.capitalized) {
-                    ForEach(providerModels.models, id: \.self) { modelId in
-                        modelMenuItem(provider: providerModels.provider, modelId: modelId)
-                    }
-                }
-            }
-        } label: {
-            HStack(spacing: 4) {
+        }) {
+            HStack(spacing: 6) {
                 Image("logo_\(currentProviderType)")
                     .resizable()
                     .renderingMode(.template)
                     .interpolation(.high)
-                    .frame(width: 10, height: 10)
+                    .frame(width: 14, height: 14)
                     .foregroundStyle(isHovered ? Color.accentColor : .secondary)
                 
                 Text(shortModelLabel)
@@ -692,7 +613,7 @@ struct BetterCompactModelSelector: View {
                     .foregroundStyle(isHovered ? Color.accentColor : .secondary)
                     .lineLimit(1)
                 
-                Image(systemName: "chevron.down")
+                Image(systemName: "chevron.up.chevron.down")
                     .font(.system(size: 8, weight: .bold))
                     .foregroundStyle(.tertiary)
             }
@@ -703,82 +624,20 @@ struct BetterCompactModelSelector: View {
                     .fill(isHovered ? Color.accentColor.opacity(0.1) : Color.primary.opacity(0.03))
             )
         }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .onHover { isHovered = $0 }
-        .task {
-            let services = Array(apiServices)
-            if !services.isEmpty {
-                modelCache.fetchAllModels(from: services)
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            withAnimation(.easeInOut(duration: 0.1)) {
+                isHovered = hovering
             }
         }
-        .help(shortModelLabel)
-    }
-    
-    @ViewBuilder
-    private func modelMenuItem(provider: String, modelId: String) -> some View {
-        let isSelected = chat.apiService?.type == provider && chat.gptModel == modelId
-        let displayName = ModelMetadata.formatModelDisplayName(modelId: modelId, provider: provider)
-        let isFavorite = favoriteManager.isFavorite(provider: provider, model: modelId)
-        let metadata = metadataCache.getMetadata(provider: provider, modelId: modelId)
-        
-        Menu {
-            if let meta = metadata {
-                if meta.hasReasoning {
-                    Label("Reasoning", systemImage: "brain")
-                }
-                if meta.hasVision {
-                    Label("Vision", systemImage: "eye")
-                }
-                if meta.hasFunctionCalling {
-                    Label("Function Calling", systemImage: "wrench")
-                }
-                if let context = meta.maxContextTokens {
-                    Label("\(context.formatted()) tokens", systemImage: "text.alignleft")
-                }
-                if let pricing = meta.pricing, let input = pricing.inputPer1M {
-                    if let output = pricing.outputPer1M {
-                        Label("$\(String(format: "%.2f", input)) / $\(String(format: "%.2f", output)) per 1M", systemImage: "dollarsign.circle")
-                    } else {
-                        Label("$\(String(format: "%.2f", input)) per 1M", systemImage: "dollarsign.circle")
-                    }
-                }
-                if let latency = meta.latency {
-                    Label(latency.rawValue.capitalized, systemImage: "speedometer")
-                }
-                
-                Divider()
-            }
-            
-            Button {
-                favoriteManager.toggleFavorite(provider: provider, model: modelId)
-            } label: {
-                Label(isFavorite ? "Remove from Favorites" : "Add to Favorites", systemImage: isFavorite ? "star.slash" : "star")
-            }
-        } label: {
-            HStack {
-                if isSelected {
-                    Image(systemName: "checkmark")
-                }
-                Text(displayName)
-                
-                Spacer()
-                
-                if metadata?.hasReasoning == true {
-                    Image(systemName: "brain")
-                }
-                if metadata?.hasVision == true {
-                    Image(systemName: "eye")
-                }
-                if isFavorite {
-                    Image(systemName: "star.fill")
-                        .foregroundStyle(.yellow)
-                }
-            }
-        } primaryAction: {
-            selectModel(provider: provider, modelId: modelId)
+        .popover(isPresented: $isExpanded, arrowEdge: .top) {
+            StandaloneModelSelector(chat: chat, isExpanded: true, onDismiss: {
+                isExpanded = false
+            })
+            .environment(\.managedObjectContext, viewContext)
+            .frame(minWidth: 320, idealWidth: 360, maxWidth: 420, minHeight: 260, maxHeight: 320)
         }
+        .help(currentModelLabel)
     }
 }
 

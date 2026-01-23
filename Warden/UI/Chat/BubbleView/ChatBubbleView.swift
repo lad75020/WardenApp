@@ -9,10 +9,11 @@ enum MessageElements {
     case formula(String)
     case thinking(String, isExpanded: Bool)
     case image(UUID)
+    case imageURL(String)
     case file(UUID)
 }
 
-struct ChatBubbleContent {
+struct ChatBubbleContent: Equatable {
     let message: String
     let own: Bool
     let waitingForResponse: Bool?
@@ -20,9 +21,15 @@ struct ChatBubbleContent {
     let systemMessage: Bool
     let isStreaming: Bool
     let isLatestMessage: Bool
+
+    static func == (lhs: ChatBubbleContent, rhs: ChatBubbleContent) -> Bool {
+        return lhs.message == rhs.message && lhs.own == rhs.own && lhs.waitingForResponse == rhs.waitingForResponse
+            && lhs.systemMessage == rhs.systemMessage && lhs.isStreaming == rhs.isStreaming
+            && lhs.isLatestMessage == rhs.isLatestMessage
+    }
 }
 
-struct ChatBubbleView: View {
+struct ChatBubbleView: View, Equatable {
     let content: ChatBubbleContent
     var message: MessageEntity?
     var color: String?
@@ -43,6 +50,10 @@ struct ChatBubbleView: View {
 
     private var effectiveFontSize: Double {
         chatFontSize
+    }
+
+    static func == (lhs: ChatBubbleView, rhs: ChatBubbleView) -> Bool {
+        lhs.content == rhs.content
     }
     
     // Timestamp formatting
@@ -252,16 +263,10 @@ struct ChatBubbleView: View {
                     onEdit?()
                 }
             }
-            
-            if content.own && !content.systemMessage, message != nil {
-                ToolbarButton(icon: "pencil", text: "Edit") {
-                    onEdit?()
-                }
-            }
 
             if content.isLatestMessage && !content.systemMessage {
                 ToolbarButton(icon: "arrow.clockwise", text: "Retry") {
-                    NotificationCenter.default.post(name: .retryMessage, object: nil)
+                    NotificationCenter.default.post(name: NSNotification.Name("RetryMessage"), object: nil)
                 }
             }
 
@@ -314,24 +319,35 @@ struct ChatBubbleView: View {
             if case .user = self { return true }
             return false
         }
-        
-        var isAssistant: Bool {
-            if case .assistant = self { return true }
-            return false
-        }
     }
     
     @ViewBuilder
     private func unifiedBubble(role: BubbleRole) -> some View {
         VStack(alignment: .leading, spacing: 4) {
+            // Model header above assistant response
+            if !content.own && !content.systemMessage, let modelName = modelDisplayName {
+                HStack(spacing: 6) {
+                    if let messageEntity = message, let snapshotType = messageEntity.agentServiceType, !snapshotType.isEmpty {
+                        Image("logo_\(snapshotType)")
+                            .resizable()
+                            .renderingMode(.template)
+                            .interpolation(.high)
+                            .frame(width: 12, height: 12)
+                            .foregroundColor(AppConstants.textTertiary)
+                    }
+                    Text(modelName)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(AppConstants.textTertiary)
+                }
+            }
             bubbleContent(for: role)
         }
-        .padding(.horizontal, role.isAssistant ? 4 : 14)
-        .padding(.vertical, role.isAssistant ? 6 : 10)
+        .padding(.horizontal, 14) // Slightly increased padding
+        .padding(.vertical, 10)
         .background(bubbleBackground(for: role))
-        .clipShape(role.isAssistant ? AnyShape(RoundedRectangle(cornerRadius: 8)) : AnyShape(BubbleShape(myMessage: role.isUser)))
-        .shadow(color: role.isAssistant ? Color.clear : Color.black.opacity(0.05), radius: 2, x: 0, y: 1)
-        .contentShape(Rectangle())
+        .clipShape(BubbleShape(myMessage: role.isUser)) // Custom shape
+        .shadow(color: Color.black.opacity(0.05), radius: 2, x: 0, y: 1)
+        .contentShape(Rectangle()) // Stable content shape
     }
     
     @ViewBuilder
@@ -340,7 +356,10 @@ struct ChatBubbleView: View {
         case .user:
             Color.accentColor
         case .assistant:
-            Color.clear
+            // Slightly lighter/darker than background for subtle contrast
+            Color(nsColor: .controlBackgroundColor)
+                .opacity(0.7)
+                .background(Material.regular) // Glassy effect
         case .system:
             Color.secondary.opacity(0.1)
         case .error:
@@ -385,13 +404,13 @@ struct ChatBubbleView: View {
                 error: error,
                 onRetry: {
                     NotificationCenter.default.post(
-                        name: .retryMessage,
+                        name: NSNotification.Name("RetryMessage"),
                         object: nil
                     )
                 },
                 onIgnore: {
                     NotificationCenter.default.post(
-                        name: .ignoreError,
+                        name: NSNotification.Name("IgnoreError"),
                         object: nil
                     )
                 },
@@ -468,7 +487,6 @@ struct ChatBubbleView: View {
                 } else {
                     Image(iconName)
                         .resizable()
-                        .renderingMode(.template)
                         .aspectRatio(contentMode: .fit)
                         .frame(width: 14, height: 14)
                         .foregroundColor(.primary)
@@ -672,7 +690,7 @@ struct BranchToolbarButton: View {
                     origin: origin,
                     onBranchCreated: { _ in
                         NotificationCenter.default.post(
-                            name: AppConstants.showToastNotification,
+                            name: .showToast,
                             object: nil,
                             userInfo: ["message": "Branch created", "icon": "arrow.triangle.branch"]
                         )

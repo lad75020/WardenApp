@@ -4,10 +4,37 @@ import AppKit
 
 /// Defines application-wide constants and configurations.
 struct AppConstants {
+    // MARK: - API Configuration Struct
+    struct defaultApiConfiguration {
+        let name: String
+        let url: String
+        let apiKeyRef: String
+        let apiModelRef: String
+        let defaultModel: String
+        let models: [String]
+        let modelsFetching: Bool?
+        let imageUploadsSupported: Bool?
+        let maxTokens: Int?
+        let inherits: String?
+        
+        init(name: String, url: String, apiKeyRef: String, apiModelRef: String, defaultModel: String, models: [String], modelsFetching: Bool? = nil, imageUploadsSupported: Bool? = nil, maxTokens: Int? = nil, inherits: String? = nil) {
+            self.name = name
+            self.url = url
+            self.apiKeyRef = apiKeyRef
+            self.apiModelRef = apiModelRef
+            self.defaultModel = defaultModel
+            self.models = models
+            self.modelsFetching = modelsFetching
+            self.imageUploadsSupported = imageUploadsSupported
+            self.maxTokens = maxTokens
+            self.inherits = inherits
+        }
+    }
+    
     // MARK: - API & Model Configuration
     static let requestTimeout: TimeInterval = 180
     static let apiUrlChatCompletions: String = "https://api.openai.com/v1/chat/completions"
-    static let chatGptDefaultModel = "gpt-4o"
+    static let chatGptDefaultModel = "gpt-5"
     static let chatGptContextSize: Double = 10
     static let chatGptSystemMessage: String = ""
     static let chatGptGenerateChatInstruction: String = "Return a short chat name (max 10 words) as summary for this chat based on the previous message content and system message if it's not default. Don't answer to my message, just generate a name."
@@ -520,7 +547,7 @@ You are a personal productivity coach and life optimization specialist. Your app
 
 Remember that true productivity serves your overall life satisfaction and well-being, not just task completion.
 """,
-            suggestedModels: ["gpt-4o", "claude-3-5-sonnet-latest", "gemini-1.5-pro"],
+            suggestedModels: ["gpt-5", "claude-3-5-sonnet-latest", "gemini-2.5-flash"],
             summarizationStyle: .detailed,
             tags: ["productivity", "goals", "organization", "personal-development"],
             estimatedUsage: .beginner
@@ -554,71 +581,23 @@ Remember that true productivity serves your overall life satisfaction and well-b
             dataScience
         ]
         
-        static let beginnerFriendlyTemplates: [ProjectTemplate] = allTemplates.filter { 
-            $0.estimatedUsage == .beginner || $0.estimatedUsage == .intermediate 
+        static let beginnerFriendlyTemplates: [ProjectTemplate] = allTemplates.filter {
+            $0.estimatedUsage == .beginner || $0.estimatedUsage == .intermediate
         }
     }
-
-    /// Represents the configuration for a specific API service.
-    struct defaultApiConfiguration {
-        let name: String
-        let url: String
-        let apiKeyRef: String
-        let apiModelRef: String
-        let defaultModel: String
-        let models: [String]
-        var maxTokens: Int? = nil
-        var inherits: String? = nil
-        var modelsFetching: Bool = true
-        var imageUploadsSupported: Bool = false
-    }
-
-    /// A dictionary of default API configurations by type.
-    static let defaultApiConfigurations: [String: defaultApiConfiguration] = [
-        "chatgpt": defaultApiConfiguration(name: "OpenAI", url: "https://api.openai.com/v1/chat/completions", apiKeyRef: "https://platform.openai.com/docs/api-reference/api-keys", apiModelRef: "https://platform.openai.com/docs/models", defaultModel: "gpt-4o-mini", models: ["o1-preview", "o1-mini", "gpt-4o", "chatgpt-4o-latest", "gpt-4o-mini", "gpt-4-turbo", "gpt-4", "gpt-3.5-turbo"], imageUploadsSupported: true),
-        "ollama": defaultApiConfiguration(name: "Ollama", url: "http://localhost:11434/api/chat", apiKeyRef: "", apiModelRef: "https://ollama.com/library", defaultModel: "llama3.1", models: ["llama3.3", "llama3.2", "llama3.1", "llama3.1:70b", "llama3.1:400b", "qwen2.5:3b", "qwen2.5", "qwen2.5:14b", "qwen2.5:32b", "qwen2.5:72b", "qwen2.5-coder", "phi3", "gemma"]),
-        "claude": defaultApiConfiguration(name: "Claude", url: "https://api.anthropic.com/v1/messages", apiKeyRef: "https://docs.anthropic.com/en/docs/initial-setup#prerequisites", apiModelRef: "https://docs.anthropic.com/en/docs/about-claude/models", defaultModel: "claude-3-5-sonnet-latest", models: ["claude-3-5-sonnet-latest", "claude-3-opus-latest", "claude-3-haiku-20240307"], maxTokens: 4096),
-        "xai": defaultApiConfiguration(name: "xAI", url: "https://api.x.ai/v1/chat/completions", apiKeyRef: "https://console.x.ai/", apiModelRef: "https://docs.x.ai/docs#models", defaultModel: "grok-beta", models: ["grok-beta"], inherits: "chatgpt"),
-        "gemini": defaultApiConfiguration(name: "Google Gemini", url: "https://generativelanguage.googleapis.com/v1beta/chat/completions", apiKeyRef: "https://aistudio.google.com/app/apikey", apiModelRef: "https://ai.google.dev/gemini-api/docs/models/gemini#model-variations", defaultModel: "gemini-1.5-flash", models: ["gemini-2.0-flash-exp", "gemini-1.5-flash", "gemini-1.5-flash-8b", "gemini-1.5-pro"], imageUploadsSupported: true),
-        "perplexity": defaultApiConfiguration(name: "Perplexity", url: "https://api.perplexity.ai/chat/completions", apiKeyRef: "https://www.perplexity.ai/settings/api", apiModelRef: "https://docs.perplexity.ai/guides/model-cards#supported-models", defaultModel: "llama-3.1-sonar-large-128k-online", models: ["sonar-reasoning-pro", "sonar-reasoning", "sonar-pro", "sonar", "llama-3.1-sonar-small-128k-online", "llama-3.1-sonar-large-128k-online", "llama-3.1-sonar-huge-128k-online"], modelsFetching: false),
-        "deepseek": defaultApiConfiguration(name: "DeepSeek", url: "https://api.deepseek.com/chat/completions", apiKeyRef: "https://api-docs.deepseek.com/", apiModelRef: "https://api-docs.deepseek.com/quick_start/pricing", defaultModel: "deepseek-chat", models: ["deepseek-chat", "deepseek-reasoner"]),
-        "openrouter": defaultApiConfiguration(name: "OpenRouter", url: "https://openrouter.ai/api/v1/chat/completions", apiKeyRef: "https://openrouter.ai/docs/api-reference/authentication#using-an-api-key", apiModelRef: "https://openrouter.ai/docs/overview/models", defaultModel: "deepseek/deepseek-r1:free", models: ["openai/gpt-4o", "deepseek/deepseek-r1:free"]),
-        "groq": defaultApiConfiguration(name: "Groq", url: "https://api.groq.com/openai/v1/chat/completions", apiKeyRef: "https://console.groq.com/keys", apiModelRef: "https://console.groq.com/docs/models", defaultModel: "llama-3.3-70b-versatile", models: ["meta-llama/llama-4-scout-17b-16e-instruct", "meta-llama/llama-4-maverick-17b-128e-instruct", "llama-3.3-70b-versatile", "llama-3.1-8b-instant", "llama3-70b-8192", "llama3-8b-8192", "deepseek-r1-distill-llama-70b", "qwen-qwq-32b", "mistral-saba-24b", "gemma2-9b-it", "mixtral-8x7b-32768", "llama-guard-3-8b", "meta-llama/Llama-Guard-4-12B"], inherits: "chatgpt"),
-        "mistral": defaultApiConfiguration(name: "Mistral", url: "https://api.mistral.ai/v1/chat/completions", apiKeyRef: "https://console.mistral.ai/api-keys/", apiModelRef: "https://docs.mistral.ai/models/", defaultModel: "mistral-large-latest", models: ["mistral-large-latest", "mistral-medium-latest", "mistral-small-latest", "mistral-tiny-latest", "open-mixtral-8x22b", "open-mixtral-8x7b", "open-mistral-7b"], inherits: "chatgpt"),
-        "lmstudio": defaultApiConfiguration(name: "LM Studio", url: "http://localhost:1234/v1/chat/completions", apiKeyRef: "https://lmstudio.ai/docs/api/openai-api", apiModelRef: "https://lmstudio.ai/docs/local-server", defaultModel: "local-model", models: ["local-model"], inherits: "chatgpt"),
-        "openai_custom": defaultApiConfiguration(name: "OpenAI Compatible", url: "", apiKeyRef: "", apiModelRef: "", defaultModel: "", models: [], inherits: "chatgpt", modelsFetching: true, imageUploadsSupported: true),
-    ]
-
-    /// A list of available API types.
-    static let apiTypes = ["chatgpt", "ollama", "claude", "xai", "gemini", "perplexity", "deepseek", "openrouter", "groq", "mistral", "lmstudio", "openai_custom"]
-    
-    // MARK: - Notifications
     static let newChatNotification = Notification.Name("newChatNotification")
-    static let createNewProjectNotification = Notification.Name("createNewProjectNotification")
-    static let openInlineSettingsNotification = Notification.Name("openInlineSettingsNotification")
-    static let openSettingsWindowNotification = Notification.Name("openSettingsWindowNotification")
-    static let copyLastResponseNotification = Notification.Name("copyLastResponseNotification")
-    static let copyChatNotification = Notification.Name("copyChatNotification")
-    static let exportChatNotification = Notification.Name("exportChatNotification")
-    static let copyLastUserMessageNotification = Notification.Name("copyLastUserMessageNotification")
-    static let newChatHotkeyNotification = Notification.Name("newChatHotkeyNotification")
-    static let toggleQuickChatNotification = Notification.Name("toggleQuickChatNotification")
-    static let showToastNotification = Notification.Name("showToast")
+        static let createNewProjectNotification = Notification.Name("createNewProjectNotification")
+        static let openInlineSettingsNotification = Notification.Name("openInlineSettingsNotification")
+        static let openSettingsWindowNotification = Notification.Name("openSettingsWindowNotification")
+        static let copyLastResponseNotification = Notification.Name("copyLastResponseNotification")
+        static let copyChatNotification = Notification.Name("copyChatNotification")
+        static let exportChatNotification = Notification.Name("exportChatNotification")
+        static let copyLastUserMessageNotification = Notification.Name("copyLastUserMessageNotification")
+        static let newChatHotkeyNotification = Notification.Name("newChatHotkeyNotification")
+        static let toggleQuickChatNotification = Notification.Name("toggleQuickChatNotification")
     
-    // MARK: - Hotkey Settings
-    struct HotkeyKeys {
-       static let copyLastResponse = "hotkey_copy_last_response", copyChat = "hotkey_copy_chat", exportChat = "hotkey_export_chat"
-       static let copyLastUserMessage = "hotkey_copy_last_user_message", newChat = "hotkey_new_chat"
-       static let quickChat = "hotkey_quick_chat"
-    }
     
-    struct DefaultHotkeys {
-        static let copyLastResponse = "⌘⇧C", copyChat = "⌘⇧A", exportChat = "⌘⇧E"
-        static let copyLastUserMessage = "⌘⇧U", newChat = "⌘N"
-        static let quickChat = "⌘⇧Space"
-    }
     
-    // MARK: - Tavily Search Configuration
     struct TavilyConfig {
         static let baseURL = "https://api.tavily.com"
         static let defaultSearchDepth = "basic"
@@ -642,9 +621,21 @@ Remember that true productivity serves your overall life satisfaction and well-b
     static let tavilyMaxResultsKey = TavilyConfig.maxResultsKey
     static let tavilyIncludeAnswerKey = TavilyConfig.includeAnswerKey
     
+    struct HotkeyKeys {
+       static let copyLastResponse = "hotkey_copy_last_response", copyChat = "hotkey_copy_chat", exportChat = "hotkey_export_chat"
+       static let copyLastUserMessage = "hotkey_copy_last_user_message", newChat = "hotkey_new_chat"
+       static let quickChat = "hotkey_quick_chat"
+    }
+    
+    struct DefaultHotkeys {
+        static let copyLastResponse = "⌘⇧C", copyChat = "⌘⇧A", exportChat = "⌘⇧E"
+        static let copyLastUserMessage = "⌘⇧U", newChat = "⌘N"
+        static let quickChat = "⌘⇧Space"
+    }
+    
     // MARK: - HTML Preview Configuration
     static let viewportMeta = "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no\">"
-    
+
     static func getModernCSS(isMobile: Bool, isTablet: Bool, isDark: Bool) -> String {
         let padding = isMobile ? "16px" : "20px"
         let bg = isDark ? "#1a1a1a" : "#ffffff"
@@ -770,11 +761,76 @@ Remember that true productivity serves your overall life satisfaction and well-b
         </style>
         """
     }
+
+    /// A dictionary of default API configurations by type.
+    static let defaultApiConfigurations: [String: defaultApiConfiguration] = [
+        "chatgpt": defaultApiConfiguration(name: "OpenAI", url: "https://api.openai.com/v1/chat/completions", apiKeyRef: "https://platform.openai.com/docs/api-reference/api-keys", apiModelRef: "https://platform.openai.com/docs/models", defaultModel: "gpt-5", models: ["gpt-5"], imageUploadsSupported: true),
+        "chatgpt image": defaultApiConfiguration(name: "OpenAI Image", url: "https://api.openai.com/v1/images/generations", apiKeyRef: "https://platform.openai.com/docs/api-reference/api-keys", apiModelRef: "https://platform.openai.com/docs/models", defaultModel: "gpt-image-1", models: ["gpt-image-1"], modelsFetching: false, imageUploadsSupported: true),
+        "ollama": defaultApiConfiguration(name: "Ollama", url: "http://localhost:11434/api/generate", apiKeyRef: "", apiModelRef: "https://ollama.com/library", defaultModel: "llama3.1", models: ["llama3.3", "llama3.2", "llama3.1", "llama3.1:70b", "llama3.1:400b", "qwen2.5:3b", "qwen2.5", "qwen2.5:14b", "qwen2.5:32b", "qwen2.5:72b", "qwen2.5-coder", "phi3", "gemma"]),
+        "claude": defaultApiConfiguration(name: "Claude", url: "https://api.anthropic.com/v1/messages", apiKeyRef: "https://docs.anthropic.com/en/docs/initial-setup#prerequisites", apiModelRef: "https://docs.anthropic.com/en/docs/about-claude/models", defaultModel: "claude-3-5-sonnet-latest", models: ["claude-3-5-sonnet-latest", "claude-3-opus-latest", "claude-3-haiku-20240307"], maxTokens: 4096),
+        "xai": defaultApiConfiguration(name: "xAI", url: "https://api.x.ai/v1/chat/completions", apiKeyRef: "https://console.x.ai/", apiModelRef: "https://docs.x.ai/docs#models", defaultModel: "grok-beta", models: ["grok-beta"], inherits: "chatgpt"),
+        "gemini": defaultApiConfiguration(name: "Google Gemini", url: "https://generativelanguage.googleapis.com/v1beta/chat/completions", apiKeyRef: "https://aistudio.google.com/app/apikey", apiModelRef: "https://ai.google.dev/gemini-api/docs/models/gemini#model-variations", defaultModel: "gemini-1.5-flash", models: ["gemini-2.0-flash-exp", "gemini-1.5-flash", "gemini-1.5-flash-8b", "gemini-1.5-pro"], imageUploadsSupported: true),
+        "perplexity": defaultApiConfiguration(name: "Perplexity", url: "https://api.perplexity.ai/chat/completions", apiKeyRef: "https://www.perplexity.ai/settings/api", apiModelRef: "https://docs.perplexity.ai/guides/model-cards#supported-models", defaultModel: "llama-3.1-sonar-large-128k-online", models: ["sonar-reasoning-pro", "sonar-reasoning", "sonar-pro", "sonar", "llama-3.1-sonar-small-128k-online", "llama-3.1-sonar-large-128k-online", "llama-3.1-sonar-huge-128k-online"], modelsFetching: false),
+        "deepseek": defaultApiConfiguration(name: "DeepSeek", url: "https://api.deepseek.com/chat/completions", apiKeyRef: "https://api-docs.deepseek.com/", apiModelRef: "https://api-docs.deepseek.com/quick_start/pricing", defaultModel: "deepseek-chat", models: ["deepseek-chat", "deepseek-reasoner"]),
+        "openrouter": defaultApiConfiguration(name: "OpenRouter", url: "https://openrouter.ai/api/v1/chat/completions", apiKeyRef: "https://openrouter.ai/docs/api-reference/authentication#using-an-api-key", apiModelRef: "https://openrouter.ai/docs/overview/models", defaultModel: "deepseek/deepseek-r1:free", models: ["openai/gpt-4o", "deepseek/deepseek-r1:free"]),
+        "groq": defaultApiConfiguration(name: "Groq", url: "https://api.groq.com/openai/v1/chat/completions", apiKeyRef: "https://console.groq.com/keys", apiModelRef: "https://console.groq.com/docs/models", defaultModel: "llama-3.3-70b-versatile", models: ["meta-llama/llama-4-scout-17b-16e-instruct", "meta-llama/llama-4-maverick-17b-128e-instruct", "llama-3.3-70b-versatile", "llama-3.1-8b-instant", "llama3-70b-8192", "llama3-8b-8192", "deepseek-r1-distill-llama-70b", "qwen-qwq-32b", "mistral-saba-24b", "gemma2-9b-it", "mixtral-8x7b-32768", "llama-guard-3-8b", "meta-llama/Llama-Guard-4-12B"], inherits: "chatgpt"),
+        "mistral": defaultApiConfiguration(name: "Mistral", url: "https://api.mistral.ai/v1/chat/completions", apiKeyRef: "https://console.mistral.ai/api-keys/", apiModelRef: "https://docs.mistral.ai/models/", defaultModel: "mistral-large-latest", models: ["mistral-large-latest", "mistral-medium-latest", "mistral-small-latest", "mistral-tiny-latest", "open-mixtral-8x22b", "open-mixtral-8x7b", "open-mistral-7b"], inherits: "chatgpt"),
+        "lmstudio": defaultApiConfiguration(name: "LM Studio", url: "http://localhost:1234/v1/chat/completions", apiKeyRef: "https://lmstudio.ai/docs/api/openai-api", apiModelRef: "https://lmstudio.ai/docs/local-server", defaultModel: "local-model", models: ["local-model"], inherits: "chatgpt"),
+        "huggingface": defaultApiConfiguration(name: "HuggingFace", url: "local://huggingface", apiKeyRef: "", apiModelRef: "https://huggingface.co/models", defaultModel: "llama2-7b-chat", models: [
+            "llama2-7b-chat"
+        ], modelsFetching: false, imageUploadsSupported: false),
+    ]
+
+    /// A list of available API types.
+    static let apiTypes = ["chatgpt", "chatgpt image", "ollama", "claude", "xai", "gemini", "perplexity", "deepseek", "openrouter", "groq", "mistral", "lmstudio", "huggingface"]
 }
 
-/// Returns the current date formatted as "yyyy-MM-dd".
 func getCurrentFormattedDate() -> String {
     let dateFormatter = DateFormatter()
     dateFormatter.dateFormat = "yyyy-MM-dd"
     return dateFormatter.string(from: Date())
 }
+struct defaultApiConfiguration {
+       let name: String
+       let url: String
+       let apiKeyRef: String
+       let apiModelRef: String
+       let defaultModel: String
+       let models: [String]
+       var maxTokens: Int? = nil
+       var inherits: String? = nil
+       var modelsFetching: Bool = true
+       var imageUploadsSupported: Bool = false
+   }
+
+   /// A dictionary of default API configurations by type.
+
+// MARK: - Hotkey Settings
+struct HotkeyKeys {
+   static let copyLastResponse = "hotkey_copy_last_response", copyChat = "hotkey_copy_chat", exportChat = "hotkey_export_chat"
+   static let copyLastUserMessage = "hotkey_copy_last_user_message", newChat = "hotkey_new_chat"
+   static let quickChat = "hotkey_quick_chat"
+}
+
+struct DefaultHotkeys {
+    static let copyLastResponse = "⌘⇧C", copyChat = "⌘⇧A", exportChat = "⌘⇧E"
+    static let copyLastUserMessage = "⌘⇧U", newChat = "⌘N"
+    static let quickChat = "⌘⇧Space"
+}
+
+// MARK: - Tavily Search Configuration
+struct TavilyConfig {
+    static let baseURL = "https://api.tavily.com"
+    static let defaultSearchDepth = "basic"
+    static let defaultMaxResults = 5
+    static let maxResultsLimit = 10
+    static let searchCommandPrefix = "/search"
+    static let searchCommandAliases = ["/search", "/web", "/google"]
+    static let searchDepthKey = "tavilySearchDepth"
+    static let maxResultsKey = "tavilyMaxResults"
+    static let includeAnswerKey = "tavilyIncludeAnswer"
+}
+
+// Maintain backward compatibility
+
+

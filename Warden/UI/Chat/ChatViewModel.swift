@@ -1,4 +1,3 @@
-
 import Combine
 import Foundation
 import SwiftUI
@@ -6,7 +5,7 @@ import os
 
 @MainActor
 final class ChatViewModel: ObservableObject {
-    @Published var messages: [MessageEntity]
+    @Published var messages: NSOrderedSet
     @Published var streamingAssistantText: String = ""
     private let chat: ChatEntity
     private let viewContext: NSManagedObjectContext
@@ -14,6 +13,16 @@ final class ChatViewModel: ObservableObject {
     private var _messageManager: MessageManager?
     var messageManager: MessageManager? {
         get {
+            // Check if we've already failed to create a message manager
+            guard !messageManagerCreationFailed else {
+                #if DEBUG
+                WardenLog.app.debug(
+                    "Skipping message manager creation - previous attempt failed for chat \(self.chat.id.uuidString, privacy: .public)"
+                )
+                #endif
+                return nil
+            }
+            
             if _messageManager == nil {
                 _messageManager = createMessageManager()
                 // Restore cached search results if available
@@ -37,6 +46,9 @@ final class ChatViewModel: ObservableObject {
         }
     }
     
+    // Track if we've already failed to create a message manager to prevent loops
+    private var messageManagerCreationFailed = false
+    
     // Cache search results at ChatViewModel level to persist across message manager recreation
     private var cachedSearchSources: [SearchSource]?
     private var cachedSearchQuery: String?
@@ -46,19 +58,14 @@ final class ChatViewModel: ObservableObject {
 
     init(chat: ChatEntity, viewContext: NSManagedObjectContext) {
         self.chat = chat
-        self.messages = chat.messagesArray.sorted { $0.id < $1.id }
+        self.messages = chat.messages
         self.viewContext = viewContext
         
         // Subscribe to search results changes to cache them
         setupSearchResultsCaching()
-        if let manager = messageManager {
-            setupStreamingBindings(for: manager)
-        }
         
         // Load selected MCP agents
         loadSelectedMCPAgents()
-        
-        observeMessageMutations()
     }
     
     @Published var selectedMCPAgents: Set<UUID> = [] {
@@ -135,13 +142,15 @@ final class ChatViewModel: ObservableObject {
         }
         
         messageManager.sendMessageStream(message, in: chat, contextSize: contextSize) { [weak self] result in
-            switch result {
-            case .success:
-                self?.chat.objectWillChange.send()
-                completion(.success(()))
-                self?.reloadMessages()
-            case .failure(let error):
-                completion(.failure(error))
+            Task { @MainActor in
+                switch result {
+                case .success:
+                    self?.chat.objectWillChange.send()
+                    completion(.success(()))
+                    self?.reloadMessages()
+                case .failure(let error):
+                    completion(.failure(error))
+                }
             }
         }
     }
@@ -199,32 +208,11 @@ final class ChatViewModel: ObservableObject {
     }
 
     func reloadMessages() {
-        messages = chat.messagesArray.sorted { $0.id < $1.id }
+        messages = chat.messages
     }
 
     var sortedMessages: [MessageEntity] {
-        messages
-    }
-    
-    private func observeMessageMutations() {
-        NotificationCenter.default.publisher(for: .NSManagedObjectContextObjectsDidChange, object: viewContext)
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] notification in
-                guard let self else { return }
-                
-                let inserted = (notification.userInfo?[NSInsertedObjectsKey] as? Set<NSManagedObject>) ?? []
-                let deleted = (notification.userInfo?[NSDeletedObjectsKey] as? Set<NSManagedObject>) ?? []
-                
-                let insertedMessageMatchesChat = inserted
-                    .compactMap { $0 as? MessageEntity }
-                    .contains { $0.chat == self.chat }
-                
-                let anyMessageDeleted = deleted.contains { $0.entity.name == "MessageEntity" }
-                
-                guard insertedMessageMatchesChat || anyMessageDeleted else { return }
-                self.reloadMessages()
-            }
-            .store(in: &cancellables)
+        return self.chat.messagesArray
     }
 
     private func createMessageManager() -> MessageManager? {
@@ -234,13 +222,22 @@ final class ChatViewModel: ObservableObject {
                 "No valid API configuration found for chat \(self.chat.id.uuidString, privacy: .public)"
             )
             #endif
+            
+            // Mark as failed to prevent future attempts
+            messageManagerCreationFailed = true
+            
+            // Show error to user
+            showInvalidChatAlert()
+            
             return nil
         }
+        
         #if DEBUG
         WardenLog.app.debug(
             "Creating new MessageManager with URL: \(config.apiUrl.absoluteString, privacy: .public) and model: \(config.model, privacy: .public)"
         )
         #endif
+        
         return MessageManager(
             apiService: APIServiceFactory.createAPIService(config: config),
             viewContext: self.viewContext
@@ -251,7 +248,11 @@ final class ChatViewModel: ObservableObject {
         #if DEBUG
         WardenLog.app.debug("Recreating MessageManager for chat \(self.chat.id.uuidString, privacy: .public)")
         #endif
+        
+        // Clear the failure flag to allow retry
+        messageManagerCreationFailed = false
         _messageManager = createMessageManager()
+        
         if let manager = _messageManager {
             setupStreamingBindings(for: manager)
         } else {
@@ -267,7 +268,7 @@ final class ChatViewModel: ObservableObject {
         }
         
         // Try to ensure we have a valid message manager
-        return messageManager != nil
+        return messageManager != nil && !messageManagerCreationFailed
     }
 
     private func loadCurrentAPIConfig() -> APIServiceConfiguration? {
@@ -290,5 +291,38 @@ final class ChatViewModel: ObservableObject {
     
     func stopStreaming() {
         messageManager?.stopStreaming()
+    }
+    
+    // MARK: - Invalid Chat Handling
+    
+    private func showInvalidChatAlert() {
+        DispatchQueue.main.async {
+            let alert = NSAlert()
+            alert.messageText = "Invalid Chat Configuration"
+            alert.informativeText = "This chat has an invalid API configuration and cannot be used. Please delete this chat or configure a valid API service."
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
+        }
+    }
+    
+    /// Check if this chat has a valid configuration
+    var hasValidConfiguration: Bool {
+        return loadCurrentAPIConfig() != nil && !messageManagerCreationFailed
+    }
+    
+    /// Function to safely delete this chat if it's invalid
+    func deleteInvalidChat() {
+        viewContext.delete(chat)
+        do {
+            try viewContext.save()
+            #if DEBUG
+            WardenLog.app.info("Deleted invalid chat \(self.chat.id.uuidString, privacy: .public)")
+            #endif
+        } catch {
+            #if DEBUG
+            WardenLog.app.error("Failed to delete invalid chat: \(error.localizedDescription, privacy: .public)")
+            #endif
+        }
     }
 }

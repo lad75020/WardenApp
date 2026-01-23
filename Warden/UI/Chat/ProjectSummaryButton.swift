@@ -244,7 +244,7 @@ struct ProjectSummarySheet: View {
                         Button(action: {
                             // Post notification to select the chat
                             NotificationCenter.default.post(
-                                name: .selectChatFromProjectSummary,
+                                name: NSNotification.Name("SelectChatFromProjectSummary"),
                                 object: chat
                             )
                             dismiss()

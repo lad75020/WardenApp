@@ -11,16 +11,25 @@ final class SSEStreamParser {
         case bufferedWithCompatibilityFlush
     }
     
+    enum StreamFormat {
+        /// Traditional SSE format with data: prefix
+        case sse
+        /// Raw newline-delimited JSON without SSE formatting
+        case ndjson
+    }
+    
     /// Parses an SSE stream and yields data payloads
     /// - Parameters:
     ///   - stream: The async byte stream from URLSession
+    ///   - format: Format of the stream (SSE vs NDJSON)
     ///   - onEvent: Closure called with the data payload string for each event
     static func parse(
         stream: URLSession.AsyncBytes,
+        format: StreamFormat = .sse,
         deliveryMode: DeliveryMode = .bufferedWithCompatibilityFlush,
         onEvent: @escaping (String) async throws -> Void
     ) async throws {
-        var parser = Parser(deliveryMode: deliveryMode, onEvent: onEvent)
+        var parser = Parser(deliveryMode: deliveryMode, format: format, onEvent: onEvent)
 
         // `URLSession.AsyncBytes.lines` may not yield a final unterminated line. Parse by bytes so we don't drop
         // trailing content when a provider omits the last newline.
@@ -59,10 +68,11 @@ final class SSEStreamParser {
 
     static func parse(
         data: Data,
+        format: StreamFormat = .sse,
         deliveryMode: DeliveryMode = .bufferedWithCompatibilityFlush,
         onEvent: @escaping (String) async throws -> Void
     ) async throws {
-        var parser = Parser(deliveryMode: deliveryMode, onEvent: onEvent)
+        var parser = Parser(deliveryMode: deliveryMode, format: format, onEvent: onEvent)
 
         var lineStart = data.startIndex
         for index in data.indices where data[index] == 0x0A {
@@ -93,12 +103,14 @@ final class SSEStreamParser {
 private extension SSEStreamParser {
     struct Parser {
         let deliveryMode: DeliveryMode
+        let format: StreamFormat
         let onEvent: (String) async throws -> Void
 
         private(set) var bufferedDataLines: [String] = []
 
-        init(deliveryMode: DeliveryMode, onEvent: @escaping (String) async throws -> Void) {
+        init(deliveryMode: DeliveryMode, format: StreamFormat, onEvent: @escaping (String) async throws -> Void) {
             self.deliveryMode = deliveryMode
+            self.format = format
             self.onEvent = onEvent
         }
 
@@ -125,38 +137,44 @@ private extension SSEStreamParser {
         }
 
         mutating func processLine(_ line: String) async throws {
-            // Event terminator
-            if line.isEmpty {
+            // Event terminator for SSE
+            if line.isEmpty && format == .sse {
                 try await flushBufferedEvent()
                 return
             }
 
-            // Comment line
-            if line.starts(with: ":") {
+            // Comment line for SSE
+            if format == .sse && line.starts(with: ":") {
                 return
             }
 
-            // Field parsing: `field:value` (optional single leading space before value).
-            let field: Substring
-            let value: Substring
-            if let colonIndex = line.firstIndex(of: ":") {
-                field = Substring(line[..<colonIndex])
-                let afterColon = line.index(after: colonIndex)
-                if afterColon < line.endIndex, line[afterColon] == " " {
-                    value = Substring(line[line.index(after: afterColon)...])
+            let dataLine: String
+            if format == .sse {
+                // Field parsing: `field:value` (optional single leading space before value).
+                let field: Substring
+                let value: Substring
+                if let colonIndex = line.firstIndex(of: ":") {
+                    field = Substring(line[..<colonIndex])
+                    let afterColon = line.index(after: colonIndex)
+                    if afterColon < line.endIndex, line[afterColon] == " " {
+                        value = Substring(line[line.index(after: afterColon)...])
+                    } else {
+                        value = Substring(line[afterColon...])
+                    }
                 } else {
-                    value = Substring(line[afterColon...])
+                    field = Substring(line)
+                    value = ""
                 }
+
+                guard field == "data" else {
+                    return
+                }
+                
+                dataLine = String(value)
             } else {
-                field = Substring(line)
-                value = ""
+                // For NDJSON, treat the whole line as data
+                dataLine = line
             }
-
-            guard field == "data" else {
-                return
-            }
-
-            let dataLine = String(value)
 
             switch deliveryMode {
             case .lineByLine:

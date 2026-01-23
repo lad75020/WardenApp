@@ -3,11 +3,21 @@ import SwiftUI
 struct TabContributionsView: View {
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 24) {
+                // Header
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Contributions")
+                        .font(.system(size: 24, weight: .bold))
+                    Text("Support development and view credits")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.bottom, 8)
+                
                 // Support Section
                 GlassCard {
-                    VStack(alignment: .leading, spacing: 16) {
-                        SettingsSectionHeader(title: "Support")
+                    VStack(alignment: .leading, spacing: 20) {
+                        SettingsSectionHeader(title: "Support Development", icon: "heart.fill", iconColor: .pink)
                         
                         Text("Warden is built with care by an independent developer. Your support helps keep development active and makes new features possible.")
                             .font(.system(size: 13))
@@ -17,7 +27,7 @@ struct TabContributionsView: View {
                         VStack(spacing: 0) {
                             SupportRow(
                                 icon: "cup.and.saucer.fill",
-                                iconColor: .secondary,
+                                iconColor: .orange,
                                 title: "Buy Me a Coffee",
                                 subtitle: "Support ongoing development",
                                 buttonTitle: "Contribute",
@@ -28,7 +38,7 @@ struct TabContributionsView: View {
                             
                             SupportRow(
                                 icon: "bubble.left.and.bubble.right.fill",
-                                iconColor: .secondary,
+                                iconColor: .blue,
                                 title: "Share Feedback",
                                 subtitle: "Report bugs or request features",
                                 buttonTitle: "Open Issue",
@@ -39,7 +49,7 @@ struct TabContributionsView: View {
                             
                             SupportRow(
                                 icon: "chevron.left.forwardslash.chevron.right",
-                                iconColor: .secondary,
+                                iconColor: .purple,
                                 title: "Source Code",
                                 subtitle: "View and contribute on GitHub",
                                 buttonTitle: "View Code",
@@ -51,8 +61,8 @@ struct TabContributionsView: View {
                 
                 // Credits Section
                 GlassCard {
-                    VStack(alignment: .leading, spacing: 16) {
-                        SettingsSectionHeader(title: "Credits")
+                    VStack(alignment: .leading, spacing: 20) {
+                        SettingsSectionHeader(title: "Credits", icon: "star.fill", iconColor: .yellow)
                         
                         VStack(alignment: .leading, spacing: 16) {
                             // Based On

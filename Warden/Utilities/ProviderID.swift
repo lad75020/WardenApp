@@ -12,6 +12,7 @@ enum ProviderID: String, Codable, CaseIterable, Sendable {
     case deepseek
     case ollama
     case lmstudio
+    case huggingface
 }
 
 extension ProviderID {
@@ -40,6 +41,8 @@ extension ProviderID {
             self = .ollama
         case "lmstudio", "lm studio":
             self = .lmstudio
+        case "huggingface", "hugging face":
+            self = .huggingface
         default:
             return nil
         }

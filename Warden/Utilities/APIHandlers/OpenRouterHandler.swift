@@ -1,7 +1,7 @@
 import Foundation
 import os
 
-class OpenRouterHandler: ChatGPTHandler {
+class OpenRouterHandler: ChatGPTHandler {    
     override func parseJSONResponse(data: Data) -> (String?, String?, [ToolCall]?)? {
         if let responseString = String(data: data, encoding: .utf8) {
             #if DEBUG
@@ -19,21 +19,17 @@ class OpenRouterHandler: ChatGPTHandler {
                     let messageContent = message["content"] as? String
                     var finalContent = messageContent ?? ""
                     
-                    let reasoningText = extractReasoningContent(from: message)
-                    
-                    if let reasoning = reasoningText, !reasoning.isEmpty {
-                        if finalContent.isEmpty {
-                            finalContent = "<think>\n\(reasoning)\n</think>"
-                        } else {
-                            finalContent = "<think>\n\(reasoning)\n</think>\n\n\(finalContent)"
-                        }
+                    // Handle reasoning content if available
+                    if let reasoningContent = message["reasoning"] as? String {
+                        finalContent = "<think>\n\(reasoningContent)\n</think>\n\n\(finalContent)"
                     }
                     
-                    if messageContent == nil && reasoningText == nil {
+                    // If we have neither content nor reasoning, it's a failure
+                    if messageContent == nil && message["reasoning"] == nil {
                         #if DEBUG
                         WardenLog.app.debug("OpenRouter response missing both content and reasoning")
                         #endif
-                        return nil
+                         return nil
                     }
                     
                     return (finalContent, messageRole, nil)
@@ -82,11 +78,13 @@ class OpenRouterHandler: ChatGPTHandler {
                     content = contentPart
                 }
                 
-                reasoningContent = extractStreamingReasoningContent(from: delta)
+                if let reasoningPart = delta["reasoning"] as? String {
+                    reasoningContent = reasoningPart
+                }
                 
                 let finished = firstChoice["finish_reason"] as? String == "stop"
                 
-                if let reasoningContent = reasoningContent, !reasoningContent.isEmpty {
+                if let reasoningContent = reasoningContent {
                     return (finished, nil, reasoningContent, "reasoning", nil)
                 } else if let content = content {
                     return (finished, nil, content, defaultRole, nil)
@@ -109,7 +107,7 @@ class OpenRouterHandler: ChatGPTHandler {
         requestMessages: [[String: String]],
         tools: [[String: Any]]?,
         model: String,
-        settings: GenerationSettings,
+        temperature: Float,
         stream: Bool
     ) throws -> URLRequest {
         let filteredMessages = requestMessages.map { message -> [String: String] in
@@ -124,27 +122,11 @@ class OpenRouterHandler: ChatGPTHandler {
             requestMessages: filteredMessages,
             tools: tools,
             model: model,
-            settings: settings,
+            temperature: temperature,
             stream: stream
         )
-
-        if let body = request.httpBody,
-           var json = try? JSONSerialization.jsonObject(with: body, options: []) as? [String: Any] {
-            
-            json.removeValue(forKey: "reasoning_effort")
-            
-            if settings.reasoningEffort != .off {
-                let reasoningConfig = buildReasoningConfig(for: self.model, effort: settings.reasoningEffort)
-                json["reasoning"] = reasoningConfig
-            }
-            
-            do {
-                request.httpBody = try JSONSerialization.data(withJSONObject: json, options: [])
-            } catch {
-                throw APIError.decodingFailed(error.localizedDescription)
-            }
-        }
         
+        // Add OpenRouter specific headers
         request.setValue("https://github.com/SidhuK/WardenApp", forHTTPHeaderField: "HTTP-Referer")
         request.setValue("Warden", forHTTPHeaderField: "X-Title")
         
@@ -164,65 +146,5 @@ class OpenRouterHandler: ChatGPTHandler {
             WardenLog.app.error("OpenRouter regex creation error: \(error.localizedDescription, privacy: .public)")
             return content
         }
-    }
-    
-    private func extractReasoningContent(from message: [String: Any]) -> String? {
-        return extractReasoning(from: message, joinSeparator: "\n")
-    }
-    
-    private func extractStreamingReasoningContent(from delta: [String: Any]) -> String? {
-        return extractReasoning(from: delta, joinSeparator: "")
-    }
-    
-    private func buildReasoningConfig(for modelId: String, effort: ReasoningEffort) -> [String: Any] {
-        if let metadata = ModelMetadataStorage.getMetadata(provider: "openrouter", modelId: modelId),
-           let params = metadata.supportedParameters {
-            if params.contains("reasoning.max_tokens") && !params.contains("reasoning.effort") {
-                if let maxTokens = effort.openRouterMaxTokens {
-                    return ["max_tokens": maxTokens]
-                }
-            }
-        }
-        
-        let lower = modelId.lowercased()
-        let usesMaxTokens = lower.contains("anthropic/") || lower.contains("claude")
-            || lower.contains("google/") || lower.contains("gemini")
-            || lower.contains("qwen")
-        
-        if usesMaxTokens, let maxTokens = effort.openRouterMaxTokens {
-            return ["max_tokens": maxTokens]
-        }
-        
-        return ["effort": effort.openRouterReasoningEffortValue]
-    }
-    
-    private func extractReasoning(from dict: [String: Any], joinSeparator: String) -> String? {
-        if let reasoningDetails = dict["reasoning_details"] as? [[String: Any]] {
-            let texts = reasoningDetails.compactMap { detail -> String? in
-                guard let type = detail["type"] as? String else { return nil }
-                
-                switch type {
-                case "reasoning.text":
-                    return detail["text"] as? String
-                case "reasoning.summary":
-                    return detail["summary"] as? String
-                default:
-                    return nil
-                }
-            }
-            if !texts.isEmpty {
-                return texts.joined(separator: joinSeparator)
-            }
-        }
-        
-        if let reasoning = dict["reasoning"] as? String {
-            return reasoning
-        }
-        
-        if let reasoningContent = dict["reasoning_content"] as? String {
-            return reasoningContent
-        }
-        
-        return nil
     }
 }

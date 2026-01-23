@@ -199,7 +199,7 @@ final class ChatBranchingManager {
     
     private func postOpenChatNotification(for chat: ChatEntity) {
         NotificationCenter.default.post(
-            name: .openChatByID,
+            name: Notification.Name("OpenChatByID"),
             object: nil,
             userInfo: ["chatObjectID": chat.objectID]
         )

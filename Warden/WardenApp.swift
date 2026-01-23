@@ -5,27 +5,6 @@ import Sparkle
 import Darwin
 import os
 
-struct WardenTheme {
-    var surfaceBackground: Color = Color(nsColor: .controlBackgroundColor)
-    var surfaceBorder: Color = Color.primary.opacity(0.1)
-    var surfaceHover: Color = Color.primary.opacity(0.05)
-    var cornerRadiusL: CGFloat = 18
-    var cornerRadiusM: CGFloat = 12
-    var spacingS: CGFloat = 8
-    var spacingM: CGFloat = 12
-}
-
-private struct WardenThemeKey: EnvironmentKey {
-    static let defaultValue = WardenTheme()
-}
-
-extension EnvironmentValues {
-    var wardenTheme: WardenTheme {
-        get { self[WardenThemeKey.self] }
-        set { self[WardenThemeKey.self] = newValue }
-    }
-}
-
 class PersistenceController {
     static let shared = PersistenceController()
 
@@ -43,8 +22,6 @@ class PersistenceController {
         
         // Enable persistent history tracking for better multi-context support
         let description = container.persistentStoreDescriptions.first
-        description?.shouldMigrateStoreAutomatically = true
-        description?.shouldInferMappingModelAutomatically = true
         description?.setOption(true as NSNumber, forKey: NSPersistentHistoryTrackingKey)
         description?.setOption(true as NSNumber, forKey: NSPersistentStoreRemoteChangeNotificationPostOptionKey)
         
@@ -86,7 +63,6 @@ class PersistenceController {
 struct WardenApp: App {
     @AppStorage("gptModel") var gptModel: String = AppConstants.chatGptDefaultModel
     @AppStorage("preferredColorScheme") private var preferredColorSchemeRaw: Int = 0
-    @AppStorage("showMenuBarIcon") private var showMenuBarIcon: Bool = true
     @StateObject private var store = ChatStore(persistenceController: PersistenceController.shared)
 
     var preferredColorScheme: ColorScheme? {
@@ -121,11 +97,8 @@ struct WardenApp: App {
             ContentView()
                 .environment(\.managedObjectContext, persistenceController.container.viewContext)
                 .preferredColorScheme(preferredColorScheme)
-                .environment(\.wardenTheme, WardenTheme())
                 .environmentObject(store)
                 .onAppear {
-                    SettingsWindowManager.shared.configure(chatStore: store)
-
                     // Configure main window with proper sizing
                     if let window = NSApp.windows.first {
                         // Set frame autosave name for persistence
@@ -136,11 +109,11 @@ struct WardenApp: App {
                         let savedFrame = UserDefaults.standard.string(forKey: "NSWindow Frame MainWindow")
                         
                         if savedFrame == nil, let screen = NSScreen.main {
-                            // Set initial window size to 70% of screen for first launch
+                            // Set initial window size to 1280x1024 for first launch
+                            let windowWidth: CGFloat = 1280
+                            let windowHeight: CGFloat = 1024
                             let screenWidth = screen.frame.width
                             let screenHeight = screen.frame.height
-                            let windowWidth = screenWidth * 0.70
-                            let windowHeight = screenHeight * 0.70
                             
                             // Center the window on screen
                             let x = (screenWidth - windowWidth) / 2
@@ -161,19 +134,13 @@ struct WardenApp: App {
                     
                     // Auto-connect MCP servers after a delay
                     autoConnectMCPServers()
-                    
-                    // Initialize menu bar icon based on stored preference
-                    MenuBarManager.shared.updateVisibility(enabled: showMenuBarIcon)
-                }
-                .onChange(of: showMenuBarIcon) { _, newValue in
-                    MenuBarManager.shared.updateVisibility(enabled: newValue)
                 }
                 .onReceive(NotificationCenter.default.publisher(for: AppConstants.toggleQuickChatNotification)) { _ in
                     FloatingPanelManager.shared.togglePanel()
                 }
         }
         .windowStyle(.hiddenTitleBar)
-        .defaultSize(width: 1000, height: 700)
+        .defaultSize(width: 1280, height: 1024)
         
         .commands {
             CommandGroup(replacing: .appInfo) {
@@ -219,7 +186,7 @@ struct WardenApp: App {
             CommandMenu("Chat") {
                 Button("Retry Last Message") {
                     NotificationCenter.default.post(
-                        name: .retryMessage,
+                        name: NSNotification.Name("RetryMessage"),
                         object: nil
                     )
                 }
@@ -308,30 +275,43 @@ struct WardenApp: App {
     // MARK: - Model Cache & Metadata Cache Initialization
     
     private func initializeModelAndMetadataCache() {
-        // Fetch all API services from Core Data
-        let fetchRequest = APIServiceEntity.fetchRequest() as! NSFetchRequest<APIServiceEntity>
+    // Fetch all API services from Core Data
+    let fetchRequest = APIServiceEntity.fetchRequest() as! NSFetchRequest<APIServiceEntity>
+    
+    do {
+        let apiServices = try persistenceController.container.viewContext.fetch(fetchRequest)
         
-        do {
-            let apiServices = try persistenceController.container.viewContext.fetch(fetchRequest)
-            
-            // Initialize selected models manager with existing configurations
-            SelectedModelsManager.shared.loadSelections(from: apiServices)
-            
-            // Initialize model cache with all configured services
-            // This will fetch models in the background for better performance
+        // Initialize selected models manager with existing configurations
+        SelectedModelsManager.shared.loadSelections(from: apiServices)
+        
+        // Initialize model cache with all configured services
+        // This will fetch models in the background for better performance
+        DispatchQueue.global(qos: .userInitiated).async {
             ModelCacheManager.shared.fetchAllModels(from: apiServices)
             
-            // Initialize metadata cache for all configured services
-            // This fetches pricing and capability information in the background
-            Task.detached(priority: .background) {
-                await self.initializeMetadataCache(for: apiServices)
-            }
-	        } catch {
-	            WardenLog.coreData.error(
-	                "Error fetching API services for model cache initialization: \(error.localizedDescription, privacy: .public)"
-	            )
-	        }
-	    }
+            // Start monitoring HuggingFace directory for changes
+            HuggingFaceService.monitorModelDirectoryChanges()
+        }
+        
+        // Initialize metadata cache for all configured services
+        // This fetches pricing and capability information in the background
+        Task.detached(priority: .background) {
+            await self.initializeMetadataCache(for: apiServices)
+        }
+        
+        // Observe HuggingFace directory changes
+        NotificationCenter.default.addObserver(forName: NSNotification.Name("HuggingFaceDirectoryChanged"),
+                                             object: nil,
+                                             queue: .main) { _ in
+            // Use refreshModels instead of the non-existent forceFetchHuggingFaceModels
+            ModelCacheManager.shared.refreshModels(for: "huggingface", from: apiServices)
+        }
+    } catch {
+        WardenLog.coreData.error(
+            "Error fetching API services for model cache initialization: \(error.localizedDescription)"
+        )
+    }
+}
     
     private func initializeMetadataCache(for apiServices: [APIServiceEntity]) async {
         for service in apiServices {

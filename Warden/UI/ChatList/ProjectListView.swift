@@ -33,15 +33,6 @@ struct ProjectListView: View {
     private var archivedProjects: [ProjectEntity] {
         projects.filter { $0.isArchived }
     }
-
-    @MainActor
-    private func presentAlert(_ alert: NSAlert, handler: @escaping (NSApplication.ModalResponse) -> Void) {
-        if let window = NSApp.keyWindow ?? NSApp.mainWindow {
-            alert.beginSheetModal(for: window, completionHandler: handler)
-        } else {
-            handler(alert.runModal())
-        }
-    }
     
     var body: some View {
         VStack(spacing: 0) {
@@ -100,7 +91,7 @@ struct ProjectListView: View {
             .help("Create New Project")
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 6)
+        .padding(.vertical, 8)
     }
     
     @State private var showingArchivedProjects = false
@@ -171,7 +162,7 @@ struct ProjectListView: View {
         alert.addButton(withTitle: "Cancel")
         alert.alertStyle = .warning
         
-        presentAlert(alert) { response in
+        alert.beginSheetModal(for: NSApp.keyWindow!) { response in
             if response == .alertFirstButtonReturn {
                 store.deleteProject(project)
             }
@@ -195,122 +186,131 @@ struct ProjectRow: View {
     @Binding var selectedChat: ChatEntity?
     @Binding var selectedProject: ProjectEntity?
     @Binding var searchText: String
-
+    
     let onEditProject: () -> Void
     let onDeleteProject: () -> Void
     let onNewChatInProject: () -> Void
     var isArchived: Bool = false
-
-    @State private var isHovered = false
     
-    @MainActor
-    private func presentAlert(_ alert: NSAlert, handler: @escaping (NSApplication.ModalResponse) -> Void) {
-        if let window = NSApp.keyWindow ?? NSApp.mainWindow {
-            alert.beginSheetModal(for: window, completionHandler: handler)
-        } else {
-            handler(alert.runModal())
-        }
-    }
-
     private var projectColor: Color {
         Color(hex: project.colorCode ?? "#007AFF") ?? .accentColor
     }
-
+    
     private var isSelected: Bool {
         selectedProject?.objectID == project.objectID
     }
-
+    
     var body: some View {
+        VStack(spacing: 0) {
+            // Project header row with swipe actions applied here
+            projectHeaderRow
+                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                    // Delete action (destructive, red)
+                    Button(role: .destructive) {
+                        onDeleteProject()
+                    } label: {
+                        Label("Delete", systemImage: "trash")
+                    }
+                    
+                    // Archive/Unarchive action
+                    Button {
+                        store.setProjectArchived(project, archived: !isArchived)
+                    } label: {
+                        Label(isArchived ? "Unarchive" : "Archive", 
+                              systemImage: isArchived ? "tray.and.arrow.up" : "tray.and.arrow.down")
+                    }
+                    .tint(.secondary)
+                }
+                .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                    // Edit action
+                    Button {
+                        onEditProject()
+                    } label: {
+                        Label("Edit", systemImage: "pencil")
+                    }
+                    .tint(.secondary)
+                    
+                    // New chat in project action
+                    Button {
+                        onNewChatInProject()
+                    } label: {
+                        Label("New Chat", systemImage: "plus.message")
+                    }
+                    .tint(.secondary)
+                    
+                    // Regenerate chat titles action
+                    Button {
+                        store.regenerateChatTitlesInProject(project)
+                    } label: {
+                        Label("Regenerate Titles", systemImage: "arrow.clockwise")
+                    }
+                    .tint(.secondary)
+                }
+                .opacity(isArchived ? 0.7 : 1.0)
+        }
+    }
+    
+    private var projectHeaderRow: some View {
+        // Single button containing folder + name
         Button(action: {
+            // Action: select project
             if isSelected {
                 selectedProject = nil
             } else {
                 selectedProject = project
             }
         }) {
-            HStack(spacing: 8) {
+            HStack(spacing: 12) {
+                // Colored folder icon - aligned exactly with AI logos
                 Image(systemName: "folder.fill")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(isSelected ? .white : projectColor)
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(projectColor)
                     .frame(width: 16, height: 16)
-
-                Text(project.name ?? "Untitled Project")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(isSelected ? .white : .primary)
-                    .lineLimit(1)
-
+                    .padding(.leading, 8) // Same as AI logo alignment
+                
+                // Project name
+                VStack(alignment: .leading) {
+                    Text(project.name ?? "Untitled Project")
+                        .font(.body)
+                        .foregroundColor(.primary)
+                        .lineLimit(1)
+                }
+                .padding(.vertical, 8)
+                .padding(.trailing, 8)
+                
                 Spacer()
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
             .frame(maxWidth: .infinity)
             .background(
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(
-                        isSelected
-                            ? Color.accentColor
-                            : isHovered
-                                ? Color.primary.opacity(0.05)
-                                : Color.clear
-                    )
+                    .fill(isSelected ? Color.primary.opacity(0.08) : Color.clear)
             )
+            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .onHover { hovering in
-            isHovered = hovering
-        }
-        .animation(.easeInOut(duration: 0.15), value: isHovered)
-        .animation(.easeInOut(duration: 0.15), value: isSelected)
-        .opacity(isArchived ? 0.6 : 1.0)
+        .buttonStyle(PlainButtonStyle())
         .contextMenu {
             projectContextMenu
         }
-        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            Button(role: .destructive) {
-                onDeleteProject()
-            } label: {
-                Label("Delete", systemImage: "trash")
-            }
-
-            Button {
-                store.setProjectArchived(project, archived: !isArchived)
-            } label: {
-                Label(isArchived ? "Unarchive" : "Archive",
-                      systemImage: isArchived ? "tray.and.arrow.up" : "tray.and.arrow.down")
-            }
-            .tint(.secondary)
-        }
-        .swipeActions(edge: .leading, allowsFullSwipe: false) {
-            Button {
-                onEditProject()
-            } label: {
-                Label("Edit", systemImage: "pencil")
-            }
-            .tint(.secondary)
-
-            Button {
-                onNewChatInProject()
-            } label: {
-                Label("New Chat", systemImage: "plus.message")
-            }
-            .tint(.secondary)
-        }
     }
-
+    
     private var projectContextMenu: some View {
         Group {
             Button("New Chat in Project") {
                 onNewChatInProject()
             }
-
+            
             Divider()
-
+            
             Button("Edit Project") {
                 onEditProject()
             }
-
+            
+            Button("Regenerate Chat Titles") {
+                store.regenerateChatTitlesInProject(project)
+            }
+            
             Divider()
-
+            
             if isArchived {
                 Button("Unarchive Project") {
                     store.setProjectArchived(project, archived: false)
@@ -320,8 +320,8 @@ struct ProjectRow: View {
                     store.setProjectArchived(project, archived: true)
                 }
             }
-
-            Button("Delete Project", role: .destructive) {
+            
+            Button("Delete Project") {
                 onDeleteProject()
             }
         }
@@ -351,101 +351,103 @@ struct ProjectRowInList: View {
     @Binding var showingCreateProject: Bool
     @Binding var showingEditProject: Bool
     @Binding var projectToEdit: ProjectEntity?
-
+    
     let onNewChatInProject: (ProjectEntity) -> Void
     var isArchived: Bool = false
-
-    @State private var isHovered = false
     
-    @MainActor
-    private func presentAlert(_ alert: NSAlert, handler: @escaping (NSApplication.ModalResponse) -> Void) {
-        if let window = NSApp.keyWindow ?? NSApp.mainWindow {
-            alert.beginSheetModal(for: window, completionHandler: handler)
-        } else {
-            handler(alert.runModal())
-        }
-    }
-
     private var projectColor: Color {
         Color(hex: project.colorCode ?? "#007AFF") ?? .accentColor
     }
-
+    
     private var isSelected: Bool {
         selectedProject?.objectID == project.objectID
     }
-
+    
     var body: some View {
-        Button(action: {
-            if isSelected {
-                selectedProject = nil
-            } else {
-                selectedProject = project
+        VStack(spacing: 0) {
+            // Project header row - Single button containing folder + name
+            Button(action: {
+                // Action: select project
+                if isSelected {
+                    selectedProject = nil
+                } else {
+                    selectedProject = project
+                }
+            }) {
+                HStack(spacing: 2) {
+                    // Colored folder icon - aligned with AI logo (8pt from left edge)
+                    Image(systemName: "folder.fill")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(projectColor)
+                        .padding(.leading, 8) // Align with AI logo
+                    
+                    // Project name
+                    Text(project.name ?? "Untitled Project")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundColor(.primary)
+                        .lineLimit(1)
+                        .padding(.leading, 8) // Add spacing between folder and name
+                    
+                    Spacer()
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 10)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(isSelected ? Color.primary.opacity(0.08) : Color.clear)
+                )
+                .contentShape(Rectangle())
             }
-        }) {
-            HStack(spacing: 8) {
-                Image(systemName: "folder.fill")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(isSelected ? .white : projectColor)
-                    .frame(width: 16, height: 16)
-
-                Text(project.name ?? "Untitled Project")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(isSelected ? .white : .primary)
-                    .lineLimit(1)
-
-                Spacer()
+            .buttonStyle(PlainButtonStyle())
+            .contextMenu {
+                projectContextMenu
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .frame(maxWidth: .infinity)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(
-                        isSelected
-                            ? Color.accentColor
-                            : isHovered
-                                ? Color.primary.opacity(0.05)
-                                : Color.clear
-                    )
-            )
         }
-        .buttonStyle(.plain)
-        .onHover { hovering in
-            isHovered = hovering
-        }
-        .animation(.easeInOut(duration: 0.15), value: isHovered)
-        .animation(.easeInOut(duration: 0.15), value: isSelected)
-        .opacity(isArchived ? 0.6 : 1.0)
-        .contextMenu {
-            projectContextMenu
-        }
+        .opacity(isArchived ? 0.7 : 1.0)
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            // Delete action (destructive, red)
             Button(role: .destructive) {
                 deleteProject()
             } label: {
                 Label("Delete", systemImage: "trash")
             }
-
+            
+            // Archive/Unarchive action
             Button {
-                store.setProjectArchived(project, archived: !isArchived)
+                if isArchived {
+                    store.setProjectArchived(project, archived: false)
+                } else {
+                    store.setProjectArchived(project, archived: true)
+                }
             } label: {
-                Label(isArchived ? "Unarchive" : "Archive",
+                Label(isArchived ? "Unarchive" : "Archive", 
                       systemImage: isArchived ? "tray.and.arrow.up" : "tray.and.arrow.down")
             }
             .tint(.secondary)
         }
         .swipeActions(edge: .leading, allowsFullSwipe: false) {
+            // Edit action
             Button {
                 editProject()
             } label: {
                 Label("Edit", systemImage: "pencil")
             }
             .tint(.secondary)
-
+            
+            // New chat in project action
             Button {
                 onNewChatInProject(project)
             } label: {
                 Label("New Chat", systemImage: "plus.message")
+            }
+            .tint(.secondary)
+            
+            // Regenerate chat titles action
+            Button {
+                store.regenerateChatTitlesInProject(project)
+            } label: {
+                Label("Regenerate Titles", systemImage: "arrow.clockwise")
             }
             .tint(.secondary)
         }
@@ -502,7 +504,7 @@ struct ProjectRowInList: View {
         alert.addButton(withTitle: "Cancel")
         alert.alertStyle = .warning
         
-        presentAlert(alert) { response in
+        alert.beginSheetModal(for: NSApp.keyWindow!) { response in
             if response == .alertFirstButtonReturn {
                 store.deleteProject(project)
             }

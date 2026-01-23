@@ -1,4 +1,3 @@
-
 import Foundation
 import os
 
@@ -54,7 +53,7 @@ class ClaudeHandler: BaseAPIHandler {
         requestMessages: [[String: String]],
         tools: [[String: Any]]?,
         model: String,
-        settings: GenerationSettings,
+        temperature: Float,
         stream: Bool
     ) throws -> URLRequest {
         var request = URLRequest(url: baseURL)
@@ -74,44 +73,14 @@ class ClaudeHandler: BaseAPIHandler {
         }
 
         let defaultMaxTokens = AppConstants.defaultApiConfigurations["claude"]?.maxTokens ?? 8192
-        var maxTokens = (model == "claude-3-5-sonnet-latest") ? 8192 : defaultMaxTokens
-
-        if let desiredBudget = settings.reasoningEffort.anthropicThinkingBudgetTokens {
-            let budget = min(max(desiredBudget, 1024), 128000)
-            maxTokens = max(maxTokens, budget + 4096)
-            
-            var jsonDict: [String: Any] = [
-                "model": model,
-                "messages": updatedRequestMessages,
-                "system": systemMessage,
-                "stream": stream,
-                "max_tokens": maxTokens,
-            ]
-            
-            jsonDict["thinking"] = [
-                "type": "enabled",
-                "budget_tokens": budget
-            ]
-            
-            if let tools = tools {
-                jsonDict["tools"] = tools
-            }
-
-            do {
-                request.httpBody = try JSONSerialization.data(withJSONObject: jsonDict, options: [])
-            } catch {
-                throw APIError.decodingFailed(error.localizedDescription)
-            }
-
-            return request
-        }
+        let maxTokens = (model == "claude-3-5-sonnet-latest") ? 8192 : defaultMaxTokens
 
         var jsonDict: [String: Any] = [
             "model": model,
             "messages": updatedRequestMessages,
             "system": systemMessage,
             "stream": stream,
-            "temperature": settings.temperature,
+            "temperature": temperature,
             "max_tokens": maxTokens,
         ]
         
@@ -138,15 +107,6 @@ class ClaudeHandler: BaseAPIHandler {
                 let contentArray = json["content"] as? [[String: Any]]
             {
 
-                let thinkingContent = contentArray.compactMap { item -> String? in
-                    if let type = item["type"] as? String,
-                       type == "thinking",
-                       let thinking = (item["thinking"] as? String) ?? (item["text"] as? String) {
-                        return thinking
-                    }
-                    return nil
-                }.joined(separator: "\n")
-
                 let textContent = contentArray.compactMap { item -> String? in
                     if let type = item["type"] as? String, type == "text",
                         let text = item["text"] as? String
@@ -156,18 +116,8 @@ class ClaudeHandler: BaseAPIHandler {
                     return nil
                 }.joined(separator: "\n")
 
-                if !thinkingContent.isEmpty || !textContent.isEmpty {
-                    let finalContent: String
-                    if !thinkingContent.isEmpty {
-                        if textContent.isEmpty {
-                            finalContent = "<think>\n\(thinkingContent)\n</think>"
-                        } else {
-                            finalContent = "<think>\n\(thinkingContent)\n</think>\n\n\(textContent)"
-                        }
-                    } else {
-                        finalContent = textContent
-                    }
-                    return (finalContent, role, nil)
+                if !textContent.isEmpty {
+                    return (textContent, role, nil)
                 }
             }
         }
@@ -185,7 +135,6 @@ class ClaudeHandler: BaseAPIHandler {
         var isFinished = false
         var textContent = ""
         var parseError: Error?
-        var role: String?
         
         guard let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] else {
             parseError = NSError(
@@ -199,22 +148,16 @@ class ClaudeHandler: BaseAPIHandler {
         if let eventType = json["type"] as? String {
             switch eventType {
             case "content_block_start":
-                if let contentBlock = json["content_block"] as? [String: Any] {
-                    if let blockType = contentBlock["type"] as? String, blockType == "thinking" {
-                        role = "reasoning"
-                        textContent = (contentBlock["thinking"] as? String) ?? (contentBlock["text"] as? String) ?? ""
-                    } else {
-                        textContent = contentBlock["text"] as? String ?? ""
-                    }
+                if let contentBlock = json["content_block"] as? [String: Any],
+                    let text = contentBlock["text"] as? String
+                {
+                    textContent = text
                 }
             case "content_block_delta":
-                if let delta = json["delta"] as? [String: Any] {
-                    if let deltaType = delta["type"] as? String, deltaType == "thinking_delta" {
-                        role = "reasoning"
-                        textContent = delta["thinking"] as? String ?? ""
-                    } else {
-                        textContent = delta["text"] as? String ?? ""
-                    }
+                if let delta = json["delta"] as? [String: Any],
+                    let text = delta["text"] as? String
+                {
+                    textContent += text
                 }
             case "message_delta":
                 if let delta = json["delta"] as? [String: Any],
@@ -232,6 +175,6 @@ class ClaudeHandler: BaseAPIHandler {
                 break
             }
         }
-        return (isFinished, parseError, textContent.isEmpty ? nil : textContent, role, nil)
+        return (isFinished, parseError, textContent.isEmpty ? nil : textContent, nil, nil)
     }
 }
