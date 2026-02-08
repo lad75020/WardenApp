@@ -69,6 +69,10 @@ class APIServiceFactory {
             return LMStudioHandler(config: config, session: standardSession, streamingSession: streamingSession)
         case "huggingface":
             return HuggingFaceService(model: config.model)
+        case "coreml":
+            return CoreMLStableDiffusionHandler(config: config)
+        case "coreml llm":
+            return CoreMLTextGenerationService(modelPath: config.model)
         default:
             // Fall back to ChatGPT handler for unknown services
             WardenLog.app.warning(

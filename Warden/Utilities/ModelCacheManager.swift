@@ -149,6 +149,19 @@ final class ModelCacheManager: ObservableObject {
         guard let service = getServiceForProvider(providerType, from: apiServices) else { return }
         guard let config = AppConstants.defaultApiConfigurations[providerType] else { return }
         
+        // Special handling for purely local providers where the "model" is user-defined per service.
+        // For these, populate the model list from the saved services instead of static config.
+        if providerType.lowercased() == "coreml" || providerType.lowercased() == "coreml llm" {
+            let models = apiServices
+                .filter { ($0.type ?? "").lowercased() == providerType.lowercased() }
+                .compactMap { $0.model?.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+                .map { AIModel(id: $0) }
+
+            cachedModels[providerType] = models
+            return
+        }
+
         // Don't fetch if provider doesn't support it
         guard config.modelsFetching != false else {
             // For providers that don't support fetching, use static models

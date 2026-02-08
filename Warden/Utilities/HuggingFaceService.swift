@@ -277,8 +277,7 @@ class HuggingFaceService: NSObject, APIService {
             
             self.modelInstance = try LanguageModel.loadCompiled(
                 url: compiledURL,
-                computeUnits: .cpuAndGPU, // Default to CPU and GPU
-                tokenizer: tokenizer
+                computeUnits: .cpuAndGPU // Default to CPU and GPU
             )
             
             #if DEBUG

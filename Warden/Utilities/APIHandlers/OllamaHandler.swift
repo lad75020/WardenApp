@@ -118,7 +118,7 @@ class OllamaHandler: BaseAPIHandler {
         var request = URLRequest(url: effectiveURL)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.timeoutInterval = 300
+        request.timeoutInterval = 1800
         request.setValue(effectiveStream ? "application/x-ndjson" : "application/json", forHTTPHeaderField: "Accept")
         
         ollamaLog.debug("Preparing Ollama request. model=\(model, privacy: .public) stream=\(effectiveStream, privacy: .public) temperature=\(temperature, privacy: .public)")
