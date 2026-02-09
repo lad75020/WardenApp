@@ -20,6 +20,7 @@ struct ChatView: View {
     @State private var currentStreamingMessage: String = ""
     @State private var attachedImages: [ImageAttachment] = []
     @State private var attachedFiles: [FileAttachment] = []
+    @State private var veoUserParameters: VeoUserParameters = .default
     @EnvironmentObject private var store: ChatStore
     @AppStorage("useChatGptForNames") var useChatGptForNames: Bool = false
     @AppStorage("useStream") var useStream: Bool = true
@@ -82,6 +83,7 @@ struct ChatView: View {
                         attachedFiles: $attachedFiles,
                         webSearchEnabled: $webSearchEnabled,
                         selectedMCPAgents: $chatViewModel.selectedMCPAgents,
+                        veoParameters: $veoUserParameters,
                         chat: chat,
                         imageUploadsAllowed: chat.apiService?.imageUploadsAllowed ?? false,
                         isStreaming: isStreaming,
@@ -136,6 +138,7 @@ struct ChatView: View {
                         attachedFiles: $attachedFiles,
                         webSearchEnabled: $webSearchEnabled,
                         selectedMCPAgents: $chatViewModel.selectedMCPAgents,
+                        veoParameters: $veoUserParameters,
                         imageUploadsAllowed: chat.apiService?.imageUploadsAllowed ?? false,
                         isStreaming: isStreaming,
                         isMultiAgentMode: $isMultiAgentMode,
@@ -437,6 +440,17 @@ extension ChatView {
         
         guard !messageBody.isEmpty else { return }
 
+        // For Veo models only: send extra video parameters to the handler without polluting the UI/history.
+        // We do this by appending a hidden tag to the API payload only.
+        var apiMessageBody = messageBody
+        let isVeoModel = chat.gptModel.lowercased().contains("veo")
+        if isVeoModel {
+            if let jsonData = try? JSONEncoder().encode(veoUserParameters),
+               let json = String(data: jsonData, encoding: .utf8) {
+                apiMessageBody += "\n<veo-parameters>\(json)</veo-parameters>"
+            }
+        }
+
         userIsScrolling = false
         
         #if DEBUG
@@ -457,7 +471,7 @@ extension ChatView {
             
             Task { @MainActor in
                 await chatViewModel.sendMessageStreamWithSearch(
-                    messageBody,
+                    apiMessageBody,
                     contextSize: Int(chat.apiService?.contextSize ?? Int16(AppConstants.chatGptContextSize)),
                     useWebSearch: webSearchEnabled
                 ) { result in
@@ -473,7 +487,7 @@ extension ChatView {
             
             Task { @MainActor in
                 await chatViewModel.sendMessageWithSearch(
-                    messageBody,
+                    apiMessageBody,
                     contextSize: Int(chat.apiService?.contextSize ?? Int16(AppConstants.chatGptContextSize)),
                     useWebSearch: webSearchEnabled
                 ) { result in

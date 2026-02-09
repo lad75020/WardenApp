@@ -3,12 +3,15 @@ import SwiftUI
 import UniformTypeIdentifiers
 import CoreData
 
+// NOTE: `VeoParametersPopoverView` is declared in its own file.
+
 struct MessageInputView: View {
     @Binding var text: String
     @Binding var attachedImages: [ImageAttachment]
     @Binding var attachedFiles: [FileAttachment]
     @Binding var webSearchEnabled: Bool
     @Binding var selectedMCPAgents: Set<UUID>
+    @Binding var veoParameters: VeoUserParameters
     var chat: ChatEntity?
     var imageUploadsAllowed: Bool
     var isStreaming: Bool = false
@@ -36,6 +39,7 @@ struct MessageInputView: View {
     @State private var isHoveringDropZone = false
     @State private var showingMCPMenu = false
     @State private var showingPersonaPopover = false
+    @State private var showingVeoParamsPopover = false
     @StateObject private var rephraseService = RephraseService()
 
     @State private var originalText = ""
@@ -69,6 +73,11 @@ struct MessageInputView: View {
     private var isImageGenEnabled: Bool {
         guard let chat = chat else { return false }
         return UserDefaults.standard.bool(forKey: "imageGenMode_\(chat.id.uuidString)")
+    }
+
+    private var isVeoModelSelected: Bool {
+        guard let chat else { return false }
+        return chat.gptModel.lowercased().contains("veo")
     }
 
     enum Focus {
@@ -168,6 +177,24 @@ struct MessageInputView: View {
                             }
                         }
                         
+                        // Video Parameters (Veo only)
+                        Button(action: {
+                            showingVeoParamsPopover.toggle()
+                        }) {
+                            Image(systemName: "slider.horizontal.3")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(isVeoModelSelected ? .secondary : .secondary.opacity(0.35))
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .help("Video parameters (Veo)")
+                        .disabled(!isVeoModelSelected)
+                        .popover(isPresented: $showingVeoParamsPopover, arrowEdge: .top) {
+                            VeoParametersPopoverView(parameters: $veoParameters)
+                                .frame(width: 340)
+                                .padding(14)
+                                .background(Color(nsColor: .windowBackgroundColor))
+                        }
+
                         // Personas (Persona icon)
                         Button(action: {
                             showingPersonaPopover.toggle()

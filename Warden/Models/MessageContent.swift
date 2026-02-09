@@ -17,6 +17,11 @@ struct MessageContent {
     static let imageUrlTagEnd = "</image-url>"
     static let imageUrlRegexPattern = "\(imageUrlTagStart)(.*?)\(imageUrlTagEnd)"
     fileprivate static let imageURLRegex = try? NSRegularExpression(pattern: imageUrlRegexPattern, options: [])
+
+    static let videoUrlTagStart = "<video-url>"
+    static let videoUrlTagEnd = "</video-url>"
+    static let videoUrlRegexPattern = "\(videoUrlTagStart)(.*?)\(videoUrlTagEnd)"
+    fileprivate static let videoURLRegex = try? NSRegularExpression(pattern: videoUrlRegexPattern, options: [])
     
     static let imageRegexPattern = "\(imageTagStart)(.*?)\(imageTagEnd)"
     static let fileRegexPattern = "\(fileTagStart)(.*?)\(fileTagEnd)"
@@ -108,8 +113,21 @@ extension String {
             return nsString.substring(with: match.range(at: 1))
         }
     }
+
+    func extractVideoURLs() -> [String] {
+        guard let regex = MessageContent.videoURLRegex else { return [] }
+        let nsString = self as NSString
+        let matches = regex.matches(in: self, options: [], range: NSRange(location: 0, length: nsString.length))
+        return matches.compactMap { match in
+            guard match.numberOfRanges > 1 else { return nil }
+            return nsString.substring(with: match.range(at: 1))
+        }
+    }
     
     var containsAttachment: Bool {
-        contains(MessageContent.imageTagStart) || contains(MessageContent.fileTagStart) || contains(MessageContent.imageUrlTagStart)
+        contains(MessageContent.imageTagStart)
+            || contains(MessageContent.fileTagStart)
+            || contains(MessageContent.imageUrlTagStart)
+            || contains(MessageContent.videoUrlTagStart)
     }
 }

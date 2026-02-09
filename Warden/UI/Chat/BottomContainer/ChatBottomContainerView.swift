@@ -9,6 +9,7 @@ struct ChatBottomContainerView: View {
     @Binding var attachedFiles: [FileAttachment]
     @Binding var webSearchEnabled: Bool
     @Binding var selectedMCPAgents: Set<UUID>
+    @Binding var veoParameters: VeoUserParameters
     var imageUploadsAllowed: Bool
     var isStreaming: Bool
     
@@ -34,6 +35,7 @@ struct ChatBottomContainerView: View {
         attachedFiles: Binding<[FileAttachment]> = .constant([]),
         webSearchEnabled: Binding<Bool> = .constant(false),
         selectedMCPAgents: Binding<Set<UUID>> = .constant([]),
+        veoParameters: Binding<VeoUserParameters> = .constant(.default),
         imageUploadsAllowed: Bool = false,
         isStreaming: Bool = false,
         isMultiAgentMode: Binding<Bool> = .constant(false),
@@ -54,6 +56,7 @@ struct ChatBottomContainerView: View {
         self._attachedFiles = attachedFiles
         self._webSearchEnabled = webSearchEnabled
         self._selectedMCPAgents = selectedMCPAgents
+        self._veoParameters = veoParameters
         self.imageUploadsAllowed = imageUploadsAllowed
         self.isStreaming = isStreaming
         self._isMultiAgentMode = isMultiAgentMode
@@ -84,6 +87,7 @@ struct ChatBottomContainerView: View {
                   attachedFiles: $attachedFiles,
                   webSearchEnabled: $webSearchEnabled,
                   selectedMCPAgents: $selectedMCPAgents,
+                  veoParameters: $veoParameters,
                   chat: chat,
                   imageUploadsAllowed: imageUploadsAllowed,
                   isStreaming: isStreaming,

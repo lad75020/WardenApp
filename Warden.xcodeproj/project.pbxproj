@@ -81,6 +81,8 @@
 		4AFEE7212C472F53006F99FB /* APIProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AFEE7202C472F53006F99FB /* APIProtocol.swift */; };
 		4AFEE7232C472FA1006F99FB /* ChatGPTHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AFEE7222C472FA1006F99FB /* ChatGPTHandler.swift */; };
 		4AFEE7252C472FB1006F99FB /* OllamaHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AFEE7242C472FB1006F99FB /* OllamaHandler.swift */; };
+		4D1E68322F3A6631002BF362 /* VeoUserParameters.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D1E68312F3A6631002BF362 /* VeoUserParameters.swift */; };
+		4D1E68362F3A7458002BF362 /* VeoParametersPopoverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D1E68352F3A7458002BF362 /* VeoParametersPopoverView.swift */; };
 		4D4F458E2F219ED600B042DE /* HuggingFaceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D4F458D2F219ED600B042DE /* HuggingFaceService.swift */; };
 		4D4F45902F219EE000B042DE /* APIServiceFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D4F458F2F219EE000B042DE /* APIServiceFactory.swift */; };
 		4D4F45922F219EE500B042DE /* HuggingFaceLogo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D4F45912F219EE500B042DE /* HuggingFaceLogo.swift */; };
@@ -175,6 +177,8 @@
 		C49FCBEC2ECC2D8B003B51AF /* FavoriteQuickAccessBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = C49FCBEB2ECC2D8B003B51AF /* FavoriteQuickAccessBar.swift */; };
 		C49FCBEE2ECC2D99003B51AF /* ModelInfoTooltip.swift in Sources */ = {isa = PBXBuildFile; fileRef = C49FCBED2ECC2D99003B51AF /* ModelInfoTooltip.swift */; };
 		C49FCBF02ECC2E80003B51AF /* ModelMetadataFetcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = C49FCBEF2ECC2E80003B51AF /* ModelMetadataFetcher.swift */; };
+		C4A1B2C3D4E5F607890ABCDE /* VeoHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4A1B2C3D4E5F607890ABCDF /* VeoHandler.swift */; };
+		C4A1B2C3D4E5F607890ABCE0 /* VideoAttachmentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4A1B2C3D4E5F607890ABCE1 /* VideoAttachmentView.swift */; };
 		C4D1E2F42F0652E300B80002 /* SSEStreamParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4D1E2F32F0652E300B80001 /* SSEStreamParserTests.swift */; };
 		C4EB88D62ECC421C00AA0829 /* ModernButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4EB88D52ECC421C00AA0829 /* ModernButton.swift */; };
 		C4EB88D82ECC4EE900AA0829 /* ModelMetadataFetcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4EB88D72ECC4EE900AA0829 /* ModelMetadataFetcher.swift */; };
@@ -293,6 +297,8 @@
 		4AFEE7202C472F53006F99FB /* APIProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIProtocol.swift; sourceTree = "<group>"; };
 		4AFEE7222C472FA1006F99FB /* ChatGPTHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatGPTHandler.swift; sourceTree = "<group>"; };
 		4AFEE7242C472FB1006F99FB /* OllamaHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OllamaHandler.swift; sourceTree = "<group>"; };
+		4D1E68312F3A6631002BF362 /* VeoUserParameters.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VeoUserParameters.swift; sourceTree = "<group>"; };
+		4D1E68352F3A7458002BF362 /* VeoParametersPopoverView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VeoParametersPopoverView.swift; sourceTree = "<group>"; };
 		4D2F6A992F0C3EC700064D55 /* Warden.xctestplan */ = {isa = PBXFileReference; lastKnownFileType = text; path = Warden.xctestplan; sourceTree = "<group>"; };
 		4D4F458D2F219ED600B042DE /* HuggingFaceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HuggingFaceService.swift; sourceTree = "<group>"; };
 		4D4F458F2F219EE000B042DE /* APIServiceFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIServiceFactory.swift; sourceTree = "<group>"; };
@@ -373,6 +379,8 @@
 		C49FCBEB2ECC2D8B003B51AF /* FavoriteQuickAccessBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FavoriteQuickAccessBar.swift; sourceTree = "<group>"; };
 		C49FCBED2ECC2D99003B51AF /* ModelInfoTooltip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelInfoTooltip.swift; sourceTree = "<group>"; };
 		C49FCBEF2ECC2E80003B51AF /* ModelMetadataFetcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelMetadataFetcher.swift; sourceTree = "<group>"; };
+		C4A1B2C3D4E5F607890ABCDF /* VeoHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VeoHandler.swift; sourceTree = "<group>"; };
+		C4A1B2C3D4E5F607890ABCE1 /* VideoAttachmentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoAttachmentView.swift; sourceTree = "<group>"; };
 		C4D1E2F32F0652E300B80001 /* SSEStreamParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSEStreamParserTests.swift; sourceTree = "<group>"; };
 		C4EB88D52ECC421C00AA0829 /* ModernButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModernButton.swift; sourceTree = "<group>"; };
 		C4EB88D72ECC4EE900AA0829 /* ModelMetadataFetcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelMetadataFetcher.swift; sourceTree = "<group>"; };
@@ -457,8 +465,10 @@
 			isa = PBXGroup;
 			children = (
 				4A1614142D46C86800A1EF8D /* PersonaSelectorView.swift */,
+				4D1E68352F3A7458002BF362 /* VeoParametersPopoverView.swift */,
 				4AA681C62D3DAB40005C4E6E /* ChatBottomContainerView.swift */,
 				4A27FF902DA1C43E0075D730 /* MessageInputView.swift */,
+				4D1E68312F3A6631002BF362 /* VeoUserParameters.swift */,
 			);
 			path = BottomContainer;
 			sourceTree = "<group>";
@@ -467,6 +477,7 @@
 			isa = PBXGroup;
 			children = (
 				4A4918772D9F3C54007EB4A2 /* MessageContentView.swift */,
+				C4A1B2C3D4E5F607890ABCE1 /* VideoAttachmentView.swift */,
 				4A5F64B729C64E21000403F7 /* ChatBubbleView.swift */,
 				4ABB867A2CFC79ED004EC7B1 /* ErrorBubbleView.swift */,
 				4A55DCA629C264BC00A3800C /* TableView.swift */,
@@ -766,6 +777,7 @@
 				4AB4B0902D778B1D00CA41B6 /* OpenRouterHandler.swift */,
 				4AB4B08C2D75099E00CA41B6 /* DeepseekHandler.swift */,
 				4AE8691A2D56969700E3B3AC /* GeminiHandler.swift */,
+				C4A1B2C3D4E5F607890ABCDF /* VeoHandler.swift */,
 				4A0E02842D0F571000D2FAF3 /* PerplexityHandler.swift */,
 				7FFCDEA22E02C643003E764A /* LMStudioHandler.swift */,
 				4AADF71E2C9CE780001B7A26 /* ClaudeHandler.swift */,
@@ -976,6 +988,7 @@
 		4A399C9129BC8FEF00E98796 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			files = (
+				4D1E68362F3A7458002BF362 /* VeoParametersPopoverView.swift in Sources */,
 				C43A76382ED5672E006DA5E2 /* SearchResultsPreviewView.swift in Sources */,
 				C43A76392ED5672E006DA5E2 /* ToolCallProgressView.swift in Sources */,
 				C4FF23882EED7A4100C17D8B /* StreamingAttributedTextView.swift in Sources */,
@@ -1001,6 +1014,7 @@
 				4A27FF942DA1C4640075D730 /* MessageContent.swift in Sources */,
 				4A27FF952DA1C4640075D730 /* ImageAttachment.swift in Sources */,
 				4AB4B08D2D75099E00CA41B6 /* DeepseekHandler.swift in Sources */,
+				C4A1B2C3D4E5F607890ABCDE /* VeoHandler.swift in Sources */,
 				7FF903BC2DEAB0DB0054CD7B /* FavoriteModelsManager.swift in Sources */,
 				7FDDAED02DE8BA5C0072EA51 /* MistralHandler.swift in Sources */,
 				C45059942ED6C4F200AF3449 /* BranchPopover.swift in Sources */,
@@ -1022,8 +1036,10 @@
 				4ADCA45B2C9B74E8005664A6 /* APIServiceDetailViewModel.swift in Sources */,
 				7F4B74C42DFFC83100C844A2 /* ToastNotification.swift in Sources */,
 				C45059962ED6CD2100AF3449 /* MessageSourcesView.swift in Sources */,
+				4D1E68322F3A6631002BF362 /* VeoUserParameters.swift in Sources */,
 				C49FCBE62ECC2535003B51AF /* TabContributionsView.swift in Sources */,
 				4A4918782D9F3C54007EB4A2 /* MessageContentView.swift in Sources */,
+				C4A1B2C3D4E5F607890ABCE0 /* VideoAttachmentView.swift in Sources */,
 				C49FCBEE2ECC2D99003B51AF /* ModelInfoTooltip.swift in Sources */,
 				7F5A91CA2DF937E500A18860 /* ModelSelectionView.swift in Sources */,
 				7FE379022DE9A1DA0093DACE /* InteractiveOnboardingView.swift in Sources */,

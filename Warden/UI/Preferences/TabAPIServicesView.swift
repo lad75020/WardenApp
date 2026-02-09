@@ -414,39 +414,55 @@ struct APIServiceDetailContent: View {
                         }
                         VStack(spacing: 12) {
                             SettingsRow(title: "LLM Model") {
-                                HStack(spacing: 8) {
-                                    Picker("", selection: $viewModel.selectedModel) {
-                                        ForEach(viewModel.availableModels.sorted(), id: \.self) { model in
-                                            Text(model).tag(model)
-                                        }
-                                        Text("Custom...").tag("custom")
+                                if viewModel.type.lowercased() == "coreml" || viewModel.type.lowercased() == "coreml llm" {
+                                    VStack(alignment: .leading, spacing: 6) {
+                                        TextEditor(text: $viewModel.model)
+                                            .font(.system(.body, design: .monospaced))
+                                            .frame(width: 360, height: 80)
+                                            .overlay {
+                                                RoundedRectangle(cornerRadius: 6)
+                                                    .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
+                                            }
+
+                                        Text("Enter one model per line (each line is a local folder path).")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
                                     }
-                                    .pickerStyle(.menu)
-                                    .frame(width: 200)
-                                    .labelsHidden()
-                                    .disabled(viewModel.isLoadingModels)
-                                    .onChange(of: viewModel.selectedModel) { _, newValue in
-                                        viewModel.isCustomModel = newValue == "custom"
-                                        if newValue != "custom" {
-                                            viewModel.model = newValue
+                                } else {
+                                    HStack(spacing: 8) {
+                                        Picker("", selection: $viewModel.selectedModel) {
+                                            ForEach(viewModel.availableModels.sorted(), id: \.self) { model in
+                                                Text(model).tag(model)
+                                            }
+                                            Text("Custom...").tag("custom")
                                         }
-                                    }
-                                    
-                                    if AppConstants.defaultApiConfigurations[viewModel.type]?.modelsFetching ?? false {
-                                        ButtonWithStatusIndicator(
-                                            title: "Refresh",
-                                            action: { viewModel.onUpdateModelsList() },
-                                            isLoading: viewModel.isLoadingModels,
-                                            hasError: viewModel.modelFetchError != nil,
-                                            errorMessage: "Can't fetch models",
-                                            successMessage: "Click to refresh",
-                                            isSuccess: !viewModel.isLoadingModels && viewModel.modelFetchError == nil && viewModel.availableModels.count > 0
-                                        )
+                                        .pickerStyle(.menu)
+                                        .frame(width: 200)
+                                        .labelsHidden()
+                                        .disabled(viewModel.isLoadingModels)
+                                        .onChange(of: viewModel.selectedModel) { _, newValue in
+                                            viewModel.isCustomModel = newValue == "custom"
+                                            if newValue != "custom" {
+                                                viewModel.model = newValue
+                                            }
+                                        }
+
+                                        if AppConstants.defaultApiConfigurations[viewModel.type]?.modelsFetching ?? false {
+                                            ButtonWithStatusIndicator(
+                                                title: "Refresh",
+                                                action: { viewModel.onUpdateModelsList() },
+                                                isLoading: viewModel.isLoadingModels,
+                                                hasError: viewModel.modelFetchError != nil,
+                                                errorMessage: "Can't fetch models",
+                                                successMessage: "Click to refresh",
+                                                isSuccess: !viewModel.isLoadingModels && viewModel.modelFetchError == nil && viewModel.availableModels.count > 0
+                                            )
+                                        }
                                     }
                                 }
                             }
-                            
-                            if viewModel.isCustomModel {
+
+                            if viewModel.isCustomModel && !(viewModel.type.lowercased() == "coreml" || viewModel.type.lowercased() == "coreml llm") {
                                 SettingsRow(title: "Custom Model") {
                                     TextField("Model name", text: $viewModel.model)
                                         .textFieldStyle(.roundedBorder)

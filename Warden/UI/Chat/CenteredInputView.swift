@@ -7,6 +7,7 @@ struct CenteredInputView: View {
     @Binding var attachedFiles: [FileAttachment]
     @Binding var webSearchEnabled: Bool
     @Binding var selectedMCPAgents: Set<UUID>
+    @Binding var veoParameters: VeoUserParameters
     let chat: ChatEntity
     let imageUploadsAllowed: Bool
     let isStreaming: Bool
@@ -69,6 +70,7 @@ struct CenteredInputView: View {
                                     attachedFiles: $attachedFiles,
                                     webSearchEnabled: $webSearchEnabled,
                                     selectedMCPAgents: $selectedMCPAgents,
+                                    veoParameters: $veoParameters,
                                     chat: chat,
                                     imageUploadsAllowed: chat.apiService?.imageUploadsAllowed ?? false,
                                     isStreaming: isStreaming,
@@ -227,6 +229,7 @@ struct SuggestionCard: View {
         attachedFiles: .constant([]),
         webSearchEnabled: .constant(false),
         selectedMCPAgents: .constant([]),
+        veoParameters: .constant(.default),
         chat: mockChat,
         imageUploadsAllowed: true,
         isStreaming: false,
@@ -243,3 +246,4 @@ struct SuggestionCard: View {
     .environmentObject(PreviewStateManager.shared)
     .frame(width: 800, height: 600)
 } 
+

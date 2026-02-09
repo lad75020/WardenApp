@@ -109,7 +109,16 @@ struct APIServiceDetailView: View {
                         Text("LLM Model:")
                             .frame(width: 94, alignment: .leading)
 
-                        Picker("", selection: $viewModel.selectedModel) {
+                        if viewModel.type.lowercased() == "coreml" || viewModel.type.lowercased() == "coreml llm" {
+                            TextEditor(text: $viewModel.model)
+                                .font(.system(.body, design: .monospaced))
+                                .frame(height: 90)
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
+                                }
+                        } else {
+                            Picker("", selection: $viewModel.selectedModel) {
                             // First, check if the current selected model exists in available models
                             // If not, add it as a custom option
                             if !viewModel.availableModels.contains(viewModel.selectedModel) && !viewModel.selectedModel.isEmpty {
@@ -145,6 +154,7 @@ struct APIServiceDetailView: View {
                                 isSuccess: !viewModel.isLoadingModels && viewModel.modelFetchError == nil
                                     && viewModel.availableModels.count > 0
                             )
+                        }
                         }
                     }
                     .padding(.top, 8)

@@ -59,6 +59,8 @@ class APIServiceFactory {
             return PerplexityHandler(config: config, session: standardSession, streamingSession: streamingSession)
         case "gemini":
             return GeminiHandler(config: config, session: standardSession, streamingSession: streamingSession)
+        case "veo":
+            return VeoHandler(config: config, session: standardSession, streamingSession: streamingSession)
         case "deepseek":
             return DeepseekHandler(config: config, session: standardSession, streamingSession: streamingSession)
         case "openrouter":

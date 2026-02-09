@@ -136,10 +136,16 @@ final class ModelSelectorViewModel: ObservableObject {
             let serviceModels = modelCache.getModels(for: serviceType)
             
             let visibleModels = serviceModels.filter { model in
-                // Respect custom selection if present
-                if !selectedModelsManager.getSelectedModelIds(for: serviceType).isEmpty {
-                    guard selectedModelsManager.getSelectedModelIds(for: serviceType).contains(model.id) else { return false }
+                // Respect custom selection if present.
+                // Exception: for CoreML local providers, the "models" are user-supplied paths
+                // so we always show them all.
+                let st = serviceType.lowercased()
+                if st != "coreml" && st != "coreml llm" {
+                    if !selectedModelsManager.getSelectedModelIds(for: serviceType).isEmpty {
+                        guard selectedModelsManager.getSelectedModelIds(for: serviceType).contains(model.id) else { return false }
+                    }
                 }
+
                 // Capability-based inclusion (image-generation requires imageUploadsAllowed)
                 return shouldIncludeModel(provider: serviceType, modelId: model.id)
             }
@@ -223,6 +229,7 @@ final class ModelSelectorViewModel: ObservableObject {
         case "chatgpt": return "OpenAI"
         case "claude": return "Anthropic"
         case "gemini": return "Google"
+        case "veo": return "Google Veo"
         case "xai": return "xAI"
         case "perplexity": return "Perplexity"
         case "deepseek": return "DeepSeek"

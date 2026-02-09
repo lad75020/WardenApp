@@ -345,6 +345,7 @@ struct PersonaDetailView: View {
                     attachedFiles: .constant([]),
                     webSearchEnabled: .constant(false),
                     selectedMCPAgents: .constant([]),
+                    veoParameters: .constant(.default),
                     chat: nil,
                     imageUploadsAllowed: false,
                     isStreaming: false,
@@ -355,6 +356,7 @@ struct PersonaDetailView: View {
                     onEnter: {},
                     onAddImage: {},
                     onAddFile: {},
+                    onAddAssistant: nil,
                     onStopStreaming: {},
                     inputPlaceholderText: "Define how this assistant should behave...",
                     cornerRadius: 8

@@ -85,22 +85,23 @@ struct MessageContentView: View {
     }
 
     private func containsImageData(_ message: String) -> Bool {
-        // Existing attachment markers
+        // Existing attachment markers (includes image/file/video tags)
         if message.containsAttachment { return true }
-        
-        // Inline image URL tags produced by parsers/handlers
+
+        // Inline image/video URL tags produced by parsers/handlers
         if message.contains("<image-url>") { return true }
-        
+        if message.contains("<video-url>") { return true }
+
         // Data URL scheme for images
         if message.contains("data:image/") { return true }
-        
+
         // Quick heuristic for embedded base64 image blobs (PNG/JPEG/GIF/BMP)
         // These prefixes are distinctive and help us avoid truncating messages that contain images
         let magicPrefixes = ["iVBORw0KGgo", "/9j/", "R0lGOD", "Qk"]
         if magicPrefixes.contains(where: { message.contains($0) }) {
             return true
         }
-        
+
         return false
     }
 
@@ -288,6 +289,9 @@ struct MessageContentView: View {
         case .imageURL(let urlString):
             renderRemoteImage(urlString: urlString)
 
+        case .videoURL(let urlString):
+            renderVideo(urlString: urlString)
+
         case .file(let fileUUID):
             renderFileAttachmentReference(uuid: fileUUID)
         }
@@ -367,6 +371,18 @@ struct MessageContentView: View {
         }
         // 4) Fallback to showing raw text
         else {
+            Text(urlString)
+                .textSelection(.enabled)
+        }
+    }
+
+    @ViewBuilder
+    private func renderVideo(urlString: String) -> some View {
+        // Support file://... URLs produced by VeoHandler.
+        if let url = URL(string: urlString) {
+            VideoAttachmentView(videoURL: url, maxWidth: 360)
+                .padding(.bottom, 3)
+        } else {
             Text(urlString)
                 .textSelection(.enabled)
         }

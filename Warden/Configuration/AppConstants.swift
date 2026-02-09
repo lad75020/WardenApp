@@ -770,6 +770,7 @@ Remember that true productivity serves your overall life satisfaction and well-b
         "claude": defaultApiConfiguration(name: "Claude", url: "https://api.anthropic.com/v1/messages", apiKeyRef: "https://docs.anthropic.com/en/docs/initial-setup#prerequisites", apiModelRef: "https://docs.anthropic.com/en/docs/about-claude/models", defaultModel: "claude-3-5-sonnet-latest", models: ["claude-3-5-sonnet-latest", "claude-3-opus-latest", "claude-3-haiku-20240307"], maxTokens: 4096),
         "xai": defaultApiConfiguration(name: "xAI", url: "https://api.x.ai/v1/chat/completions", apiKeyRef: "https://console.x.ai/", apiModelRef: "https://docs.x.ai/docs#models", defaultModel: "grok-beta", models: ["grok-beta"], inherits: "chatgpt"),
         "gemini": defaultApiConfiguration(name: "Google Gemini", url: "https://generativelanguage.googleapis.com/v1beta/chat/completions", apiKeyRef: "https://aistudio.google.com/app/apikey", apiModelRef: "https://ai.google.dev/gemini-api/docs/models/gemini#model-variations", defaultModel: "gemini-1.5-flash", models: ["gemini-2.0-flash-exp", "gemini-1.5-flash", "gemini-1.5-flash-8b", "gemini-1.5-pro"], imageUploadsSupported: true),
+        "veo": defaultApiConfiguration(name: "Google Veo (Video)", url: "https://generativelanguage.googleapis.com/v1beta/chat/completions", apiKeyRef: "https://aistudio.google.com/app/apikey", apiModelRef: "", defaultModel: "veo-3.1-fast", models: ["veo-3.1-fast", "veo-3.1"], modelsFetching: false, imageUploadsSupported: false),
         "perplexity": defaultApiConfiguration(name: "Perplexity", url: "https://api.perplexity.ai/chat/completions", apiKeyRef: "https://www.perplexity.ai/settings/api", apiModelRef: "https://docs.perplexity.ai/guides/model-cards#supported-models", defaultModel: "llama-3.1-sonar-large-128k-online", models: ["sonar-reasoning-pro", "sonar-reasoning", "sonar-pro", "sonar", "llama-3.1-sonar-small-128k-online", "llama-3.1-sonar-large-128k-online", "llama-3.1-sonar-huge-128k-online"], modelsFetching: false),
         "deepseek": defaultApiConfiguration(name: "DeepSeek", url: "https://api.deepseek.com/chat/completions", apiKeyRef: "https://api-docs.deepseek.com/", apiModelRef: "https://api-docs.deepseek.com/quick_start/pricing", defaultModel: "deepseek-chat", models: ["deepseek-chat", "deepseek-reasoner"]),
         "openrouter": defaultApiConfiguration(name: "OpenRouter", url: "https://openrouter.ai/api/v1/chat/completions", apiKeyRef: "https://openrouter.ai/docs/api-reference/authentication#using-an-api-key", apiModelRef: "https://openrouter.ai/docs/overview/models", defaultModel: "deepseek/deepseek-r1:free", models: ["openai/gpt-4o", "deepseek/deepseek-r1:free"]),
@@ -786,7 +787,7 @@ Remember that true productivity serves your overall life satisfaction and well-b
             apiModelRef: "",
             // For CoreML local models, `model` should be a folder path containing TextEncoder.mlmodelc etc.
             defaultModel: "",
-            models: [""],
+            models: [],
             modelsFetching: false,
             imageUploadsSupported: false
         ),
@@ -797,14 +798,14 @@ Remember that true productivity serves your overall life satisfaction and well-b
             apiModelRef: "",
             // For CoreML text generation, `model` should be a folder path containing Model.mlpackage/mlmodelc + tokenizer.json
             defaultModel: "",
-            models: [""],
+            models: [],
             modelsFetching: false,
             imageUploadsSupported: false
         ),
     ]
 
     /// A list of available API types.
-    static let apiTypes = ["chatgpt", "chatgpt image", "ollama", "claude", "xai", "gemini", "perplexity", "deepseek", "openrouter", "groq", "mistral", "lmstudio", "huggingface", "coreml", "coreml llm"]
+    static let apiTypes = ["chatgpt", "chatgpt image", "ollama", "claude", "xai", "gemini", "veo", "perplexity", "deepseek", "openrouter", "groq", "mistral", "lmstudio", "huggingface", "coreml", "coreml llm"]
 }
 
 func getCurrentFormattedDate() -> String {

@@ -12,6 +12,30 @@ enum APIError: Error {
     case noApiService(String)
 }
 
+extension APIError: LocalizedError {
+    var errorDescription: String? {
+        switch self {
+        case .requestFailed(let error):
+            let desc = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+            return desc.isEmpty ? "Request failed." : desc
+        case .invalidResponse:
+            return "Invalid response from server."
+        case .decodingFailed(let message):
+            return message
+        case .unauthorized:
+            return "Unauthorized (check API key)."
+        case .rateLimited:
+            return "Rate limited. Please retry in a moment."
+        case .serverError(let message):
+            return message
+        case .unknown(let message):
+            return message
+        case .noApiService(let message):
+            return message
+        }
+    }
+}
+
 struct ToolCall: Codable {
     let id: String
     let type: String
@@ -91,21 +115,23 @@ extension APIService {
         }
 
         if !(200...299).contains(httpResponse.statusCode) {
-            if let data = data, let errorResponse = String(data: data, encoding: .utf8) {
+            if let data = data, let body = String(data: data, encoding: .utf8) {
+                let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
+                let safeBody = trimmed.isEmpty ? "<empty body>" : trimmed
                 switch httpResponse.statusCode {
                 case 401:
                     return .failure(.unauthorized)
                 case 429:
                     return .failure(.rateLimited)
                 case 400...499:
-                    return .failure(.serverError("Client Error: \(errorResponse)"))
+                    return .failure(.serverError("Client Error (HTTP \(httpResponse.statusCode)): \(safeBody)"))
                 case 500...599:
-                    return .failure(.serverError("Server Error: \(errorResponse)"))
+                    return .failure(.serverError("Server Error (HTTP \(httpResponse.statusCode)): \(safeBody)"))
                 default:
-                    return .failure(.unknown("Unknown error: \(errorResponse)"))
+                    return .failure(.unknown("HTTP \(httpResponse.statusCode): \(safeBody)"))
                 }
             } else {
-                return .failure(.serverError("HTTP \(httpResponse.statusCode)"))
+                return .failure(.serverError("HTTP \(httpResponse.statusCode) (<no response body>)"))
             }
         }
 

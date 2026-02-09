@@ -14,6 +14,7 @@ struct MessageParser {
         case imageUUID
         case imageURL
         case fileUUID
+        case videoURL
     }
 
     func detectBlockType(line: String) -> BlockType {
@@ -39,6 +40,9 @@ struct MessageParser {
         }
         else if trimmedLine.hasPrefix("<image-url>") {
             return .imageURL
+        }
+        else if trimmedLine.hasPrefix("<video-url>") {
+            return .videoURL
         }
         else if trimmedLine.hasPrefix("<file-uuid>") {
             return .fileUUID
@@ -202,6 +206,18 @@ struct MessageParser {
             return nil
         }
 
+        func extractVideoURL(_ line: String) -> String? {
+            let pattern = "<video-url>(.*?)</video-url>"
+            if let range = line.range(of: pattern, options: .regularExpression) {
+                let urlString = String(line[range])
+                    .replacingOccurrences(of: "<video-url>", with: "")
+                    .replacingOccurrences(of: "</video-url>", with: "")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                return urlString.isEmpty ? nil : urlString
+            }
+            return nil
+        }
+
         var thinkingLines: [String] = []
         var isThinkingBlockOpened = false
 
@@ -299,6 +315,14 @@ struct MessageParser {
                     elements.append(.file(uuid))
                 }
                 else {
+                    textLines.append(line)
+                }
+
+            case .videoURL:
+                if let url = extractVideoURL(line) {
+                    combineTextLinesIfNeeded()
+                    elements.append(.videoURL(url))
+                } else {
                     textLines.append(line)
                 }
 

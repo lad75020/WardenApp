@@ -154,9 +154,18 @@ extension ModelMetadata {
             modelName = modelId
         }
         
+        // Friendly names for local path-based providers
+        let lowerProvider = (providerPrefix ?? "").lowercased()
+        if lowerProvider == "coreml" || lowerProvider == "coreml llm" {
+            let leaf = URL(fileURLWithPath: modelName).lastPathComponent
+            let display = leaf.isEmpty ? modelName : leaf
+            let providerDisplay = providerPrefix.map { Self.mapProviderName($0).uppercased() }
+            return FormattedModelName(displayName: display, provider: providerDisplay)
+        }
+
         let formatted = Self.formatModelName(modelName)
         let providerDisplay = providerPrefix.map { Self.mapProviderName($0).uppercased() }
-        
+
         return FormattedModelName(displayName: formatted, provider: providerDisplay)
     }
     

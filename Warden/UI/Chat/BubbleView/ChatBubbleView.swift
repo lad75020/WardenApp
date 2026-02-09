@@ -10,6 +10,7 @@ enum MessageElements {
     case thinking(String, isExpanded: Bool)
     case image(UUID)
     case imageURL(String)
+    case videoURL(String)
     case file(UUID)
 }
 
