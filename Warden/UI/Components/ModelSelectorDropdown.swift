@@ -141,8 +141,11 @@ final class ModelSelectorViewModel: ObservableObject {
                 // so we always show them all.
                 let st = serviceType.lowercased()
                 if st != "coreml" && st != "coreml llm" {
-                    if !selectedModelsManager.getSelectedModelIds(for: serviceType).isEmpty {
-                        guard selectedModelsManager.getSelectedModelIds(for: serviceType).contains(model.id) else { return false }
+                    let hasCustom = selectedModelsManager.hasCustomSelection(for: serviceType)
+                    let selection = selectedModelsManager.getSelectedModelIds(for: serviceType)
+                    if hasCustom {
+                        // Custom selection exists: show only explicitly selected (empty set => show none)
+                        guard selection.contains(model.id) else { return false }
                     }
                 }
 
@@ -153,8 +156,9 @@ final class ModelSelectorViewModel: ObservableObject {
             var ids = visibleModels.map { $0.id }
             if serviceType.lowercased() == "huggingface" {
                 let localNames = loadHFLocalModelNames()
+                let hasCustom = selectedModelsManager.hasCustomSelection(for: serviceType)
                 let selection = selectedModelsManager.getSelectedModelIds(for: serviceType)
-                let filteredLocal = selection.isEmpty ? localNames : localNames.filter { selection.contains($0) }
+                let filteredLocal = hasCustom ? localNames.filter { selection.contains($0) } : localNames
                 // Merge and dedupe
                 let existing = Set(ids)
                 let merged = existing.union(filteredLocal)
@@ -671,3 +675,4 @@ struct StandaloneModelSelector_Previews: PreviewProvider {
             .environmentObject(PreviewStateManager.shared.chatStore)
     }
 } 
+

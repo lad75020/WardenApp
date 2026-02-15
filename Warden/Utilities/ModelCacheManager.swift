@@ -188,6 +188,49 @@ final class ModelCacheManager: ObservableObject {
             return
         }
 
+        // Special handling for local providers that don't require API keys
+        if providerType.lowercased() == "ollama" || providerType.lowercased() == "lmstudio" {
+            loadingStates[providerType] = true
+            fetchErrors[providerType] = nil
+
+            guard let serviceUrl = service.url else {
+                loadingStates[providerType] = false
+                return
+            }
+
+            let apiConfig = APIServiceConfig(
+                name: providerType,
+                apiUrl: serviceUrl,
+                apiKey: "", // no key required for local providers
+                model: ""
+            )
+
+            let apiService = APIServiceFactory.createAPIService(config: apiConfig)
+
+            Task { [weak self] in
+                guard let self else { return }
+                do {
+                    let models = try await apiService.fetchModels()
+                    await MainActor.run {
+                        self.cachedModels[providerType] = models
+                        self.loadingStates[providerType] = false
+                        self.fetchErrors[providerType] = nil
+                    }
+                    await self.triggerMetadataFetch(for: providerType, apiKey: "")
+                } catch {
+                    await MainActor.run {
+                        self.loadingStates[providerType] = false
+                        self.fetchErrors[providerType] = error.localizedDescription
+                        // Fall back to static models if configured
+                        if let staticModels = AppConstants.defaultApiConfigurations[providerType]?.models {
+                            self.cachedModels[providerType] = staticModels.map { AIModel(id: $0) }
+                        }
+                    }
+                }
+            }
+            return
+        }
+
         // Don't fetch if provider doesn't support it
         guard config.modelsFetching != false else {
             // For providers that don't support fetching, use static models

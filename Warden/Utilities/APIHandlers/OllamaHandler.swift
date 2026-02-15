@@ -13,6 +13,8 @@ private struct OllamaModel: Codable {
 
 class OllamaHandler: BaseAPIHandler {
     
+    internal let dataLoader = BackgroundDataLoader()
+    
     // Track image generation state for streaming
     private var isImageGenerationInProgress = false
     private var accumulatedBase64Data = ""
@@ -66,29 +68,48 @@ class OllamaHandler: BaseAPIHandler {
     }
     
     private func detectImageGeneration(in requestMessages: [[String: String]]) -> Bool {
-        // Check if messages contain image attachment markers
-        guard let lastUserMessage = requestMessages.reversed().first(where: { $0["role"] == "user" }),
-              let content = lastUserMessage["content"] else {
-            return false
+        // Route any vision input (image markers, file markers with image data, or data URLs) to /api/generate.
+        let imagePattern = "<image-uuid>(.*?)</image-uuid>"
+        let filePattern = "<file-uuid>(.*?)</file-uuid>"
+
+        for message in requestMessages {
+            guard let role = message["role"], role == "user", let content = message["content"] else { continue }
+            if content.contains("data:image/") {
+                return true
+            }
+
+            if let regex = try? NSRegularExpression(pattern: imagePattern, options: []) {
+                let nsString = content as NSString
+                let matches = regex.matches(in: content, options: [], range: NSRange(location: 0, length: nsString.length))
+                if !matches.isEmpty {
+                    return true
+                }
+            }
+
+            if let regex = try? NSRegularExpression(pattern: filePattern, options: []) {
+                let nsString = content as NSString
+                let matches = regex.matches(in: content, options: [], range: NSRange(location: 0, length: nsString.length))
+                for match in matches {
+                    if match.numberOfRanges > 1 {
+                        let uuidString = nsString.substring(with: match.range(at: 1))
+                        if let uuid = UUID(uuidString: uuidString),
+                           let imageData = self.dataLoader.loadFileImageData(uuid: uuid),
+                           !imageData.isEmpty {
+                            return true
+                        }
+                    }
+                }
+            }
         }
-        
-        // Only consider this image generation if:
-        // 1. The model name indicates it's an image generation model, OR
-        // 2. The content contains actual image data URLs (not just UUID markers)
-        
-        // Check for actual image data URLs (data:image/)
-        if content.contains("data:image/") {
-            return true
-        }
-        
-        // Check if the model name indicates image generation
+
+        // Also route explicit image generation models to /api/generate.
         return isImageGenerationModel(self.model.lowercased())
     }
     
     private func isImageGenerationModel(_ modelName: String) -> Bool {
         // Common patterns for image generation models in Ollama
         let imageKeywords = [
-            "image", "img", "diffusion", "stable-diffusion", "sdxl", "sdxl",
+            "image", "img", "diffusion", "stable-diffusion", "sdxl", "sd",
             "flux", "kandinsky", "dream", "pixel", "turbo", "generative",
             "bark", "riffusion", "cogview", "wand"
         ]
@@ -142,54 +163,90 @@ class OllamaHandler: BaseAPIHandler {
         ]
         
         if useChatEndpoint {
-            // Use /api/chat endpoint with proper message array format
-            let processedMessages: [[String: Any]] = requestMessages.compactMap { message in
-                guard let role = message["role"], let content = message["content"] else { return nil }
-                return ["role": role, "content": content]
+            var processedMessages: [[String: Any]] = []
+            let imagePattern = "<image-uuid>(.*?)</image-uuid>"
+            let dataUrlPattern = "data:image/[^;]+;base64,([A-Za-z0-9+/=]+)"
+            let filePattern = "<file-uuid>(.*?)</file-uuid>"
+
+            for message in requestMessages {
+                guard let role = message["role"], var content = message["content"] else { continue }
+
+                var imagesB64: [String] = []
+                if let regex = try? NSRegularExpression(pattern: imagePattern, options: []) {
+                    let nsString = content as NSString
+                    let matches = regex.matches(in: content, options: [], range: NSRange(location: 0, length: nsString.length))
+                    for match in matches {
+                        if match.numberOfRanges > 1 {
+                            let uuidString = nsString.substring(with: match.range(at: 1))
+                            if let uuid = UUID(uuidString: uuidString),
+                               let imageData = self.dataLoader.loadImageData(uuid: uuid) {
+                                imagesB64.append(imageData.base64EncodedString())
+                            }
+                        }
+                    }
+                    // Strip markers from content text
+                    content = regex.stringByReplacingMatches(in: content, options: [], range: NSRange(location: 0, length: nsString.length), withTemplate: "")
+                }
+                if let regex = try? NSRegularExpression(pattern: dataUrlPattern, options: []) {
+                    let nsString = content as NSString
+                    let matches = regex.matches(in: content, options: [], range: NSRange(location: 0, length: nsString.length))
+                    for match in matches {
+                        if match.numberOfRanges > 1 {
+                            let base64String = nsString.substring(with: match.range(at: 1))
+                            imagesB64.append(base64String)
+                        }
+                    }
+                    // Strip data URLs from content text
+                    content = regex.stringByReplacingMatches(in: content, options: [], range: NSRange(location: 0, length: nsString.length), withTemplate: "")
+                }
+                if let regex = try? NSRegularExpression(pattern: filePattern, options: []) {
+                    let nsString = content as NSString
+                    let matches = regex.matches(in: content, options: [], range: NSRange(location: 0, length: nsString.length))
+                    for match in matches {
+                        if match.numberOfRanges > 1 {
+                            let uuidString = nsString.substring(with: match.range(at: 1))
+                            if let uuid = UUID(uuidString: uuidString),
+                               let imageData = self.dataLoader.loadFileImageData(uuid: uuid),
+                               !imageData.isEmpty {
+                                imagesB64.append(imageData.base64EncodedString())
+                            }
+                        }
+                    }
+                    // Strip file markers from content text
+                    content = regex.stringByReplacingMatches(in: content, options: [], range: NSRange(location: 0, length: nsString.length), withTemplate: "")
+                }
+                content = content.trimmingCharacters(in: .whitespacesAndNewlines)
+
+                var dict: [String: Any] = [
+                    "role": role,
+                    "content": content
+                ]
+                if !imagesB64.isEmpty {
+                    dict["images"] = imagesB64
+                }
+                processedMessages.append(dict)
             }
-            
+
             // Filter messages intelligently:
             // - Keep system messages even if they contain [omitted image response]
             // - Filter empty assistant messages (placeholders)
-            // - Keep user messages with cleaned content
+            // - Keep user messages if they have text or images
             let filteredMessages = processedMessages.filter { message in
-                guard let role = message["role"] as? String,
-                      let content = message["content"] as? String else {
-                    return true
-                }
-                
-                // Keep system messages regardless of content
-                if role == "system" {
-                    return true
-                }
-                
-                // Remove <image-uuid> and <file-uuid> markers from content for checking
-                let cleanedContent = content.replacingOccurrences(
-                    of: "<image-uuid>.*?</image-uuid>",
-                    with: "",
-                    options: .regularExpression
-                )
-                .replacingOccurrences(
-                    of: "<file-uuid>.*?</file-uuid>",
-                    with: "",
-                    options: .regularExpression
-                )
-                
-                // Filter out empty assistant messages (these are placeholders for tool calls or similar)
-                if role == "assistant" && cleanedContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    return false
-                }
-                
-                // Keep user messages as long as they have some content after cleaning markers
+                guard let role = message["role"] as? String else { return true }
+                let content = (message["content"] as? String) ?? ""
+                let images = (message["images"] as? [String]) ?? []
+
+                if role == "system" { return true }
+                if role == "assistant" && content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return false }
                 if role == "user" {
-                    let trimmed = cleanedContent.trimmingCharacters(in: .whitespacesAndNewlines)
-                    return !trimmed.isEmpty
+                    let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+                    return !trimmed.isEmpty || !images.isEmpty
                 }
-                
                 return true
             }
-            
+
             jsonDict["messages"] = filteredMessages
+            
             ollamaLog.debug("Using /api/chat endpoint with \(filteredMessages.count) message(s) (from \(requestMessages.count) input)")
             
             // Log message breakdown for debugging
@@ -205,26 +262,75 @@ class OllamaHandler: BaseAPIHandler {
         } else {
             // Use /api/generate endpoint with "prompt" field
             if isImageGeneration {
-                // For image generation, extract and clean the prompt from user message
                 var prompt = ""
+                var rawUserContentForImages = ""
                 for message in requestMessages.reversed() {
                     if message["role"] == "user", let content = message["content"],
                        !content.hasPrefix("[omitted image") {
                         prompt = content
+                        rawUserContentForImages = content
                         break
                     }
                 }
-                
-                // Remove image/file markers
+
+                // Remove image/file markers from the prompt text
                 let imagePattern = "<image-uuid>(.*?)</image-uuid>"
                 let filePattern = "<file-uuid>(.*?)</file-uuid>"
                 prompt = prompt.replacingOccurrences(of: imagePattern, with: "", options: .regularExpression)
                 prompt = prompt.replacingOccurrences(of: filePattern, with: "", options: .regularExpression)
                 prompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-                
+
                 jsonDict["prompt"] = prompt
+
+                // Extract base64 images from markers and attach to payload
+                let dataUrlPattern = "data:image/[^;]+;base64,([A-Za-z0-9+/=]+)"
+                var imagesB64: [String] = []
+                if let regex = try? NSRegularExpression(pattern: imagePattern, options: []) {
+                    let nsString = rawUserContentForImages as NSString
+                    let matches = regex.matches(in: rawUserContentForImages, options: [], range: NSRange(location: 0, length: nsString.length))
+                    for match in matches {
+                        if match.numberOfRanges > 1 {
+                            let uuidString = nsString.substring(with: match.range(at: 1))
+                            if let uuid = UUID(uuidString: uuidString),
+                               let imageData = self.dataLoader.loadImageData(uuid: uuid) {
+                                imagesB64.append(imageData.base64EncodedString())
+                            }
+                        }
+                    }
+                }
+                if let regex = try? NSRegularExpression(pattern: dataUrlPattern, options: []) {
+                    let nsString = rawUserContentForImages as NSString
+                    let matches = regex.matches(in: rawUserContentForImages, options: [], range: NSRange(location: 0, length: nsString.length))
+                    for match in matches {
+                        if match.numberOfRanges > 1 {
+                            let base64String = nsString.substring(with: match.range(at: 1))
+                            imagesB64.append(base64String)
+                        }
+                    }
+                }
+                if let regex = try? NSRegularExpression(pattern: filePattern, options: []) {
+                    let nsString = rawUserContentForImages as NSString
+                    let matches = regex.matches(in: rawUserContentForImages, options: [], range: NSRange(location: 0, length: nsString.length))
+                    for match in matches {
+                        if match.numberOfRanges > 1 {
+                            let uuidString = nsString.substring(with: match.range(at: 1))
+                            if let uuid = UUID(uuidString: uuidString),
+                               let imageData = self.dataLoader.loadFileImageData(uuid: uuid),
+                               !imageData.isEmpty {
+                                imagesB64.append(imageData.base64EncodedString())
+                            }
+                        }
+                    }
+                }
+                if !imagesB64.isEmpty {
+                    jsonDict["images"] = imagesB64
+                } else if rawUserContentForImages.contains("<image-uuid>") || rawUserContentForImages.contains("data:image/") || rawUserContentForImages.contains("<file-uuid>") {
+                    ollamaLog.error("Image markers present but no image data was attached to /api/generate payload")
+                }
+
                 ollamaLog.debug("Image generation with /api/generate. Prompt length: \(prompt.count, privacy: .public)")
                 ollamaLog.debug("Image prompt preview (first 200 chars): \(String(prompt.prefix(200)), privacy: .public)")
+                ollamaLog.debug("Attached images count: \(imagesB64.count, privacy: .public)")
             } else {
                 // For /api/generate with non-image content (legacy support), just send the last user message
                 var prompt = ""
@@ -406,6 +512,12 @@ class OllamaHandler: BaseAPIHandler {
                     // Extract content and thinking separately
                     var contentField: String? = nil
                     var thinkingField: String? = nil
+                    
+                    // Handle /api/generate format with full response in one payload
+                    if let response = dict["response"] as? String, !response.isEmpty {
+                        ollamaLog.debug("Delta contains full response payload. Length: \(response.count, privacy: .public)")
+                        return (true, nil, response, "assistant", nil)
+                    }
                     
                     // Handle message object format (most common)
                     if let message = dict["message"] as? [String: Any] {

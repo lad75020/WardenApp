@@ -75,16 +75,20 @@ final class SelectedModelsManager: ObservableObject {
     func saveToService(_ service: APIServiceEntity, context: NSManagedObjectContext) {
         guard let serviceType = service.type else { return }
         
-        // Check if there's a custom selection (even if empty)
-        if let selection = customSelections[serviceType] {
-            // Save the selection even if it's empty
-            do {
-                let data = try JSONEncoder().encode(selection)
-                service.selectedModels = data as NSObject
-            } catch {
-                WardenLog.coreData.error(
-                    "Failed to encode selected models for \(serviceType, privacy: .public): \(error.localizedDescription, privacy: .public)"
-                )
+        if let selectionOpt = customSelections[serviceType] {
+            if let set = selectionOpt {
+                // Save the selection even if it's empty (empty = "select none")
+                do {
+                    let data = try JSONEncoder().encode(set)
+                    service.selectedModels = data as NSObject
+                } catch {
+                    WardenLog.coreData.error(
+                        "Failed to encode selected models for \(serviceType, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                    )
+                }
+            } else {
+                // nil = no custom selection (show all)
+                service.selectedModels = nil
             }
         } else {
             // No custom selection = clear the saved data (show all models)

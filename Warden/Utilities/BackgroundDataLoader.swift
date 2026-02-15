@@ -75,6 +75,31 @@ class BackgroundDataLoader {
         return result
     }
 
+    /// Safely load image data from a file entity on any thread
+    /// - Parameter uuid: The unique identifier of the file entity
+    /// - Returns: Raw image data if present, nil otherwise
+    func loadFileImageData(uuid: UUID) -> Data? {
+        let backgroundContext = persistenceController.container.newBackgroundContext()
+        var result: Data? = nil
+
+        backgroundContext.performAndWait {
+            let fetchRequest: NSFetchRequest<FileEntity> = FileEntity.fetchRequest()
+            fetchRequest.predicate = NSPredicate(format: "id == %@", uuid as CVarArg)
+            fetchRequest.fetchLimit = 1
+
+            do {
+                let results = try backgroundContext.fetch(fetchRequest)
+                result = results.first?.imageData
+            } catch {
+                WardenLog.coreData.error(
+                    "Error fetching file image data from Core Data: \(error.localizedDescription, privacy: .public)"
+                )
+            }
+        }
+
+        return result
+    }
+
     func loadFileAttachment(uuid: UUID) -> FileAttachment? {
         let backgroundContext = persistenceController.container.newBackgroundContext()
         var result: FileAttachment? = nil

@@ -254,7 +254,14 @@ final class MessageManager: ObservableObject {
             #endif
         } else {
             let built = prepareRequestMessages(userMessage: message, chat: chat, contextSize: contextSize)
-            requestMessages = sanitizeRequestMessagesForText(built)
+            if isVisionModelName(apiService.model) && containsImageInputs(in: built) {
+                requestMessages = [["role": "user", "content": message]]
+                #if DEBUG
+                WardenLog.app.debug("Vision model single-prompt mode active. Model=\(self.apiService.model, privacy: .public)")
+                #endif
+            } else {
+                requestMessages = containsImageInputs(in: built) ? built : sanitizeRequestMessagesForText(built)
+            }
         }
         chat.waitingForResponse = true
         let temperature = (chat.persona?.temperature ?? AppConstants.defaultTemperatureForChat).roundedToOneDecimal()
@@ -358,7 +365,14 @@ final class MessageManager: ObservableObject {
             #endif
         } else {
             let built = prepareRequestMessages(userMessage: message, chat: chat, contextSize: contextSize)
-            requestMessages = sanitizeRequestMessagesForText(built)
+            if isVisionModelName(apiService.model) && containsImageInputs(in: built) {
+                requestMessages = [["role": "user", "content": message]]
+                #if DEBUG
+                WardenLog.app.debug("Vision model single-prompt mode active. Model=\(self.apiService.model, privacy: .public)")
+                #endif
+            } else {
+                requestMessages = containsImageInputs(in: built) ? built : sanitizeRequestMessagesForText(built)
+            }
         }
         
         // For image generation models, avoid streaming entirely and use non-streaming send
@@ -889,6 +903,21 @@ final class MessageManager: ObservableObject {
         return chat.constructRequestMessages(forUserMessage: userMessage, contextSize: contextSize)
     }
     
+    private func containsImageInputs(in messages: [[String: String]]) -> Bool {
+        for message in messages {
+            guard let role = message["role"], role == "user", let content = message["content"] else { continue }
+            if content.contains("<image-uuid>") || content.contains("<file-uuid>") || content.contains("data:image/") {
+                return true
+            }
+        }
+        return false
+    }
+
+    private func isVisionModelName(_ model: String) -> Bool {
+        let name = model.lowercased()
+        return name.contains("vision") || name.contains("vl") || name.contains("pixtral") || name.contains("llava")
+    }
+
     private func sanitizeRequestMessagesForText(_ messages: [[String: String]]) -> [[String: String]] {
         // Redact image tags and large base64 blobs so they don't leak into text-only prompts
         let base64LikePattern = "[A-Za-z0-9+/=]{512,}"

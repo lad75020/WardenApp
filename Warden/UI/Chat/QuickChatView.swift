@@ -623,13 +623,24 @@ struct QuickChatView: View {
         panel.allowsMultipleSelection = true
         panel.canChooseDirectories = false
         panel.canChooseFiles = true
-        panel.allowedContentTypes = [.data]
+        panel.allowedContentTypes = [
+            .data, .image, .pdf, .plainText, .rtf, .html
+        ]
         
         panel.begin { response in
             if response == .OK {
                 for url in panel.urls {
-                    let attachment = FileAttachment(url: url, context: viewContext)
-                    attachedFiles.append(attachment)
+                    if url.isFileURL {
+                        let ext = url.pathExtension.lowercased()
+                        let isImage = ["jpg", "jpeg", "png", "webp", "heic", "heif"].contains(ext)
+                        if isImage {
+                            let attachment = ImageAttachment(url: url, context: viewContext)
+                            attachedImages.append(attachment)
+                        } else {
+                            let attachment = FileAttachment(url: url, context: viewContext)
+                            attachedFiles.append(attachment)
+                        }
+                    }
                 }
             }
         }

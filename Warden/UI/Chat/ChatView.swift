@@ -576,12 +576,12 @@ extension ChatView {
     private func selectAndAddFiles() {
         selectAndAddAttachments(
             allowedTypes: [
-                .plainText, .commaSeparatedText, .json, .xml, .html, .rtf, .pdf,
+                .plainText, .commaSeparatedText, .json, .xml, .html, .rtf, .pdf, .image,
                 UTType(filenameExtension: "md")!, UTType(filenameExtension: "log")!,
                 UTType(filenameExtension: "markdown")!
             ].compactMap { $0 },
             title: "Select Files",
-            message: "Choose text files, CSVs, PDFs, or other documents to upload",
+            message: "Choose text files, CSVs, PDFs, images, or other documents to upload",
             isImage: false
         )
     }
@@ -602,12 +602,20 @@ extension ChatView {
                 for url in panel.urls {
                     DispatchQueue.main.async {
                         withAnimation {
+                            let isImageFile = self.isValidImageFile(url: url)
                             if isImage {
+                                // Explicit image flow
                                 let attachment = ImageAttachment(url: url, context: self.viewContext)
                                 self.attachedImages.append(attachment)
                             } else {
-                                let attachment = FileAttachment(url: url, context: self.viewContext)
-                                self.attachedFiles.append(attachment)
+                                // Files flow: if the selected file is an image and uploads are allowed, treat as image
+                                if isImageFile && (self.chat.apiService?.imageUploadsAllowed == true) {
+                                    let attachment = ImageAttachment(url: url, context: self.viewContext)
+                                    self.attachedImages.append(attachment)
+                                } else {
+                                    let attachment = FileAttachment(url: url, context: self.viewContext)
+                                    self.attachedFiles.append(attachment)
+                                }
                             }
                         }
                     }
@@ -616,6 +624,10 @@ extension ChatView {
         }
     }
 
+    private func isValidImageFile(url: URL) -> Bool {
+        let validExtensions = ["jpg", "jpeg", "png", "webp", "heic", "heif"]
+        return validExtensions.contains(url.pathExtension.lowercased())
+    }
 
     private func handleResponseFinished() {
         self.isStreaming = false
