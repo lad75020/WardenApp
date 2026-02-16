@@ -52,7 +52,6 @@
 		4A775A042C1486F3004301D3 /* Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A775A032C1486F3004301D3 /* Extensions.swift */; };
 		4A79A0762CEA9FB900CB41D8 /* wardenDataModel.xcdatamodeld in Sources */ = {isa = PBXBuildFile; fileRef = 4A751D2329CBA70B006B983B /* wardenDataModel.xcdatamodeld */; };
 		4A7AFF182B0147A300C34BB4 /* ButtonTestApiTokenAndModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A7AFF172B0147A300C34BB4 /* ButtonTestApiTokenAndModel.swift */; };
-		4A7E1BDB29C910F900E57DC2 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 4A7E1BDA29C910F900E57DC2 /* Sparkle */; };
 		4A885C522CEA3B130018BBED /* HTMLPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A885C512CEA3B130018BBED /* HTMLPreviewView.swift */; };
 		4A885C542CEA3D960018BBED /* PreviewStateManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A885C532CEA3D960018BBED /* PreviewStateManager.swift */; };
 		4A885C562CEA3F6C0018BBED /* ChatListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A885C552CEA3F6C0018BBED /* ChatListView.swift */; };
@@ -182,7 +181,6 @@
 		C4D1E2F42F0652E300B80002 /* SSEStreamParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4D1E2F32F0652E300B80001 /* SSEStreamParserTests.swift */; };
 		C4EB88D62ECC421C00AA0829 /* ModernButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4EB88D52ECC421C00AA0829 /* ModernButton.swift */; };
 		C4EB88D82ECC4EE900AA0829 /* ModelMetadataFetcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4EB88D72ECC4EE900AA0829 /* ModelMetadataFetcher.swift */; };
-		C4EB88DA2ECC4EF900AA0829 /* UpdaterManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4EB88D92ECC4EF900AA0829 /* UpdaterManager.swift */; };
 		C4F8E62C2EB32B730035C83D /* BackgroundDataLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4F8E62B2EB32B730035C83D /* BackgroundDataLoader.swift */; };
 		C4FF23862EED66E300C17D8B /* WardenLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4FF23852EED66E300C17D8B /* WardenLog.swift */; };
 		C4FF23882EED7A4100C17D8B /* StreamingAttributedTextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4FF23872EED7A4100C17D8B /* StreamingAttributedTextView.swift */; };
@@ -384,7 +382,6 @@
 		C4D1E2F32F0652E300B80001 /* SSEStreamParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSEStreamParserTests.swift; sourceTree = "<group>"; };
 		C4EB88D52ECC421C00AA0829 /* ModernButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModernButton.swift; sourceTree = "<group>"; };
 		C4EB88D72ECC4EE900AA0829 /* ModelMetadataFetcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelMetadataFetcher.swift; sourceTree = "<group>"; };
-		C4EB88D92ECC4EF900AA0829 /* UpdaterManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdaterManager.swift; sourceTree = "<group>"; };
 		C4F8E62B2EB32B730035C83D /* BackgroundDataLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundDataLoader.swift; sourceTree = "<group>"; };
 		C4FF23852EED66E300C17D8B /* WardenLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WardenLog.swift; sourceTree = "<group>"; };
 		C4FF23872EED7A4100C17D8B /* StreamingAttributedTextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingAttributedTextView.swift; sourceTree = "<group>"; };
@@ -413,7 +410,6 @@
 				4A471B862C29C56800C66926 /* SwiftMath in Frameworks */,
 				4DAE61B82F393E90007FA64C /* Transformers in Frameworks */,
 				4D4F45A52F22CDCD00B042DE /* HuggingFace in Frameworks */,
-				4A7E1BDB29C910F900E57DC2 /* Sparkle in Frameworks */,
 				4DAE61A42F393D20007FA64C /* MLXFFT in Frameworks */,
 				4DAE61AC2F393D20007FA64C /* MLXOptimizers in Frameworks */,
 				4DAE61B62F393E90007FA64C /* Tokenizers in Frameworks */,
@@ -661,7 +657,6 @@
 				4AADD98B2C924FB400242D20 /* APIServiceManager.swift */,
 				C450598F2ED6BEB500AF3449 /* ChatBranchingManager.swift */,
 				C46B73E02EB1D5D300D07415 /* TavilySearchService.swift */,
-				C4EB88D92ECC4EF900AA0829 /* UpdaterManager.swift */,
 				C46B73E22EB1D5F200D07415 /* TavilyKeyManager.swift */,
 				C4870E732ECC2EBC003930F7 /* ModelMetadataCache.swift */,
 				7F8C678A2E02908F00147487 /* SettingsWindowManager.swift */,
@@ -843,7 +838,6 @@
 			packageProductDependencies = (
 				4A51EC6129C32AF700973D83 /* Highlightr */,
 				4A51EC6429C32B0B00973D83 /* AttributedText */,
-				4A7E1BDA29C910F900E57DC2 /* Sparkle */,
 				4A5C395129D8765200BCB534 /* OmenTextField */,
 				4A471B852C29C56800C66926 /* SwiftMath */,
 				4A2842482C87014800E5C920 /* KeychainAccess */,
@@ -939,7 +933,6 @@
 			packageReferences = (
 				4A51EC6029C32AF600973D83 /* XCRemoteSwiftPackageReference "Highlightr" */,
 				4A51EC6329C32B0B00973D83 /* XCRemoteSwiftPackageReference "AttributedText" */,
-				4A7E1BD929C910F800E57DC2 /* XCRemoteSwiftPackageReference "Sparkle" */,
 				4A5C395029D8765200BCB534 /* XCRemoteSwiftPackageReference "OmenTextField" */,
 				4A471B842C29C56800C66926 /* XCRemoteSwiftPackageReference "SwiftMath" */,
 				4A2842472C87014800E5C920 /* XCRemoteSwiftPackageReference "KeychainAccess" */,
@@ -1066,7 +1059,6 @@
 				4A79A0762CEA9FB900CB41D8 /* wardenDataModel.xcdatamodeld in Sources */,
 				4A254A6F2CEA6A2400F66935 /* CodeViewModel.swift in Sources */,
 				4A2B9E952CE1272E00C8042F /* RequestMessagesTransformer.swift in Sources */,
-				C4EB88DA2ECC4EF900AA0829 /* UpdaterManager.swift in Sources */,
 				4AB4B0912D778B1D00CA41B6 /* OpenRouterHandler.swift in Sources */,
 				4A5F64BA29C64F9D000403F7 /* ChatView.swift in Sources */,
 				4AFEE7212C472F53006F99FB /* APIProtocol.swift in Sources */,
@@ -1563,14 +1555,6 @@
 				kind = branch;
 			};
 		};
-		4A7E1BD929C910F800E57DC2 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/sparkle-project/Sparkle";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 2.0.0;
-			};
-		};
 		4D4F45A32F22CDCD00B042DE /* XCRemoteSwiftPackageReference "swift-huggingface" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/huggingface/swift-huggingface";
@@ -1646,11 +1630,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 4A5C395029D8765200BCB534 /* XCRemoteSwiftPackageReference "OmenTextField" */;
 			productName = OmenTextField;
-		};
-		4A7E1BDA29C910F900E57DC2 /* Sparkle */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 4A7E1BD929C910F800E57DC2 /* XCRemoteSwiftPackageReference "Sparkle" */;
-			productName = Sparkle;
 		};
 		4D4F45892F219B6C00B042DE /* Tokenizers */ = {
 			isa = XCSwiftPackageProductDependency;

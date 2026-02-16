@@ -1,7 +1,6 @@
 import SwiftUI
 import UserNotifications
 import CoreData
-import Sparkle
 import Darwin
 import os
 
@@ -88,8 +87,6 @@ struct WardenApp: App {
         DatabasePatcher.applyPatches(context: persistenceController.container.viewContext)
         DatabasePatcher.migrateExistingConfiguration(context: persistenceController.container.viewContext)
         
-        // Initialize automatic updates
-        _ = UpdaterManager.shared
     }
 
     var body: some Scene {
@@ -159,12 +156,6 @@ struct WardenApp: App {
                         Source code: github.com/SidhuK/WardenApp
                         """)
                     ])
-                }
-                
-                Divider()
-                
-                Button("Check for Updates...") {
-                    UpdaterManager.shared.checkForUpdates()
                 }
                 
                 Divider()

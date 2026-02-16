@@ -68,7 +68,6 @@ Uses `swift-format` with config at `Warden/.swift-format`: 120 char lines, 4-spa
 - **Global Hotkeys**: `GlobalHotkeyHandler` manages system-wide shortcuts
 - **Floating Panel**: `FloatingPanelManager` handles quick chat overlay windows
 - **Menu Bar**: `MenuBarManager` for macOS menu bar integration
-- **Updates**: Sparkle integration for auto-updates (`UpdaterManager`, `scripts/` for signing)
 
 **MCP Integration**: `Core/MCP/` contains `MCPManager` and `MCPServerConfig` for Model Context Protocol.
 
