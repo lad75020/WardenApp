@@ -61,6 +61,71 @@ extension Date {
     }
 }
 
+struct SecurityScopedBookmarkStore {
+    private static let storeKey = "securityScopedBookmarks"
+
+    private static func loadStore() -> [String: String] {
+        guard let data = UserDefaults.standard.data(forKey: storeKey) else { return [:] }
+        return (try? JSONDecoder().decode([String: String].self, from: data)) ?? [:]
+    }
+
+    private static func saveStore(_ store: [String: String]) {
+        if let data = try? JSONEncoder().encode(store) {
+            UserDefaults.standard.set(data, forKey: storeKey)
+        }
+    }
+
+    static func storeBookmark(for url: URL) {
+        let standardized = url.standardizedFileURL
+        guard let data = try? standardized.bookmarkData(
+            options: .withSecurityScope,
+            includingResourceValuesForKeys: nil,
+            relativeTo: nil
+        ) else { return }
+        var store = loadStore()
+        store[standardized.path] = data.base64EncodedString()
+        saveStore(store)
+    }
+
+    static func resolveBookmarkURL(for path: String) -> URL? {
+        let standardizedPath = URL(fileURLWithPath: path).standardizedFileURL.path
+        let store = loadStore()
+        guard let base64 = store[standardizedPath],
+              let data = Data(base64Encoded: base64)
+        else { return nil }
+
+        var isStale = false
+        guard let url = try? URL(
+            resolvingBookmarkData: data,
+            options: [.withSecurityScope],
+            relativeTo: nil,
+            bookmarkDataIsStale: &isStale
+        ) else {
+            return nil
+        }
+
+        if isStale {
+            storeBookmark(for: url)
+        }
+
+        return url
+    }
+
+    static func withAccess<T>(path: String, _ body: () async throws -> T) async throws -> T {
+        if let url = resolveBookmarkURL(for: path) {
+            let didAccess = url.startAccessingSecurityScopedResource()
+            defer {
+                if didAccess {
+                    url.stopAccessingSecurityScopedResource()
+                }
+            }
+            return try await body()
+        }
+
+        return try await body()
+    }
+}
+
 extension String {
     public func sha256() -> String {
         if let stringData = self.data(using: String.Encoding.utf8) {

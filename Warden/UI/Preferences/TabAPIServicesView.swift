@@ -1,3 +1,4 @@
+import AppKit
 import CoreData
 import SwiftUI
 import os
@@ -424,6 +425,36 @@ struct APIServiceDetailContent: View {
                                                     .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
                                             }
 
+                                        HStack(spacing: 8) {
+                                            Button("Choose Model Folder") {
+                                                let panel = NSOpenPanel()
+                                                panel.allowsMultipleSelection = false
+                                                panel.canChooseDirectories = true
+                                                panel.canChooseFiles = false
+                                                panel.canCreateDirectories = false
+                                                panel.title = "Select Model Folder"
+                                                if panel.runModal() == .OK, let url = panel.url {
+                                                    let path = url.standardizedFileURL.path
+                                                    SecurityScopedBookmarkStore.storeBookmark(for: url)
+
+                                                    let existing = viewModel.model
+                                                    if existing.contains(path) { return }
+
+                                                    if existing.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                                        viewModel.model = path
+                                                    } else {
+                                                        let trimmed = existing.trimmingCharacters(in: .whitespacesAndNewlines)
+                                                        viewModel.model = trimmed + "\n" + path
+                                                    }
+                                                }
+                                            }
+                                            .buttonStyle(.bordered)
+
+                                            Text("Grant sandbox access for this folder")
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                        }
+
                                         Text("Enter one model per line (each line is a local folder path).")
                                             .font(.caption)
                                             .foregroundStyle(.secondary)
@@ -459,6 +490,15 @@ struct APIServiceDetailContent: View {
                                             )
                                         }
                                     }
+                                }
+                            }
+                            .onChange(of: viewModel.accessRequestPath) { _, newValue in
+                                guard let path = newValue, !path.isEmpty else { return }
+                                presentSecurityScopedPicker(for: path) { pickedURL in
+                                    if let pickedURL {
+                                        SecurityScopedBookmarkStore.storeBookmark(for: pickedURL)
+                                    }
+                                    viewModel.accessRequestPath = nil
                                 }
                             }
 
@@ -642,6 +682,39 @@ struct APIServiceDetailContent: View {
             Text("Are you sure you want to delete this service?")
         }
     }
+
+    private func presentSecurityScopedPicker(for modelPath: String, completion: @escaping (URL?) -> Void) {
+        guard NSApp != nil else {
+            completion(nil)
+            return
+        }
+        guard NSApp?.modalWindow == nil else {
+            completion(nil)
+            return
+        }
+
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = false
+        panel.title = "Select Model Folder"
+        panel.message = "Warden needs access to this folder to load the local model."
+        panel.prompt = "Grant Access"
+        panel.directoryURL = URL(fileURLWithPath: modelPath).deletingLastPathComponent()
+
+        let handleResult: (NSApplication.ModalResponse) -> Void = { response in
+            completion(response == .OK ? panel.url : nil)
+        }
+
+        DispatchQueue.main.async {
+            if let window = NSApp?.keyWindow ?? NSApp?.mainWindow {
+                panel.beginSheetModal(for: window, completionHandler: handleResult)
+            } else {
+                handleResult(panel.runModal())
+            }
+        }
+    }
 }
 
 struct APIServiceRowView: View {
@@ -662,4 +735,3 @@ struct APIServiceRowView: View {
     TabAPIServicesView()
         .frame(width: 800, height: 600)
 }
-

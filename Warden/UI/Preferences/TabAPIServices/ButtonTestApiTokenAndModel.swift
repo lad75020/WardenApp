@@ -1,4 +1,5 @@
 
+import AppKit
 import SwiftUI
 
 struct ButtonTestApiTokenAndModel: View {
@@ -24,6 +25,10 @@ struct ButtonTestApiTokenAndModel: View {
     }
 
     private func testAPI() {
+        if apiType.lowercased() == "mlx" || apiType.lowercased() == "coreml llm" {
+            guard ensureSecurityScopedAccessForLocalModel() else { return }
+        }
+
         lampColor = .yellow
         self.testOk = false
 
@@ -94,5 +99,48 @@ struct ButtonTestApiTokenAndModel: View {
         alert.alertStyle = .warning
         alert.addButton(withTitle: "OK")
         alert.runModal()
+    }
+
+    private func ensureSecurityScopedAccessForLocalModel() -> Bool {
+        let modelPath = resolveFirstModelPath(from: gptModel)
+        if modelPath.isEmpty {
+            showErrorAlert(error: "No local model folder path is configured.")
+            return false
+        }
+
+        if SecurityScopedBookmarkStore.resolveBookmarkURL(for: modelPath) != nil {
+            return true
+        }
+
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = false
+        panel.title = "Select Model Folder"
+        panel.message = "Warden needs access to this folder to load the MLX model."
+        panel.prompt = "Grant Access"
+
+        if panel.runModal() == .OK, let url = panel.url {
+            SecurityScopedBookmarkStore.storeBookmark(for: url)
+            return true
+        }
+
+        showErrorAlert(error: "Access to the model folder was not granted.")
+        return false
+    }
+
+    private func resolveFirstModelPath(from raw: String) -> String {
+        let first = raw
+            .split(whereSeparator: { $0 == "\n" || $0 == "," || $0 == ";" })
+            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first(where: { !$0.isEmpty }) ?? ""
+
+        if first.hasPrefix("file://"), let url = URL(string: first) {
+            return url.standardizedFileURL.path
+        }
+
+        let expanded = (first as NSString).expandingTildeInPath
+        return URL(fileURLWithPath: expanded).standardizedFileURL.path
     }
 }

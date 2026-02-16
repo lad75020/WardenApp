@@ -92,6 +92,11 @@
 		4D9E2A622F43740900C2E2CD /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = 4D9E2A612F43740900C2E2CD /* MLXLMCommon */; };
 		4D9E2A642F43740900C2E2CD /* MLXVLM in Frameworks */ = {isa = PBXBuildFile; productRef = 4D9E2A632F43740900C2E2CD /* MLXVLM */; };
 		4D9E2A772F43893800C2E2CD /* StableDiffusion in Frameworks */ = {isa = PBXBuildFile; productRef = 4D9E2A762F43893800C2E2CD /* StableDiffusion */; };
+		4D9E2A7D2F43AA1800C2E2CD /* Hub in Frameworks */ = {isa = PBXBuildFile; productRef = 4D9E2A7C2F43AA1800C2E2CD /* Hub */; };
+		4D9E2A7F2F43AA1800C2E2CD /* Tokenizers in Frameworks */ = {isa = PBXBuildFile; productRef = 4D9E2A7E2F43AA1800C2E2CD /* Tokenizers */; };
+		4D9E2A812F43AA1800C2E2CD /* Transformers in Frameworks */ = {isa = PBXBuildFile; productRef = 4D9E2A802F43AA1800C2E2CD /* Transformers */; };
+		4D9E2AC42F43B6CB00C2E2CD /* FluxSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 4D9E2AC32F43B6CB00C2E2CD /* FluxSwift */; };
+		4D9E2AC62F43B7CE00C2E2CD /* MLXHandler+Flux.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D9E2AC52F43B7CE00C2E2CD /* MLXHandler+Flux.swift */; };
 		4DAE61A22F393D20007FA64C /* MLX in Frameworks */ = {isa = PBXBuildFile; productRef = 4DAE61A12F393D20007FA64C /* MLX */; };
 		4DAE61A42F393D20007FA64C /* MLXFFT in Frameworks */ = {isa = PBXBuildFile; productRef = 4DAE61A32F393D20007FA64C /* MLXFFT */; };
 		4DAE61A62F393D20007FA64C /* MLXFast in Frameworks */ = {isa = PBXBuildFile; productRef = 4DAE61A52F393D20007FA64C /* MLXFast */; };
@@ -99,9 +104,6 @@
 		4DAE61AA2F393D20007FA64C /* MLXNN in Frameworks */ = {isa = PBXBuildFile; productRef = 4DAE61A92F393D20007FA64C /* MLXNN */; };
 		4DAE61AC2F393D20007FA64C /* MLXOptimizers in Frameworks */ = {isa = PBXBuildFile; productRef = 4DAE61AB2F393D20007FA64C /* MLXOptimizers */; };
 		4DAE61AE2F393D20007FA64C /* MLXRandom in Frameworks */ = {isa = PBXBuildFile; productRef = 4DAE61AD2F393D20007FA64C /* MLXRandom */; };
-		4DAE61B42F393E90007FA64C /* Hub in Frameworks */ = {isa = PBXBuildFile; productRef = 4DAE61B32F393E90007FA64C /* Hub */; };
-		4DAE61B62F393E90007FA64C /* Tokenizers in Frameworks */ = {isa = PBXBuildFile; productRef = 4DAE61B52F393E90007FA64C /* Tokenizers */; };
-		4DAE61B82F393E90007FA64C /* Transformers in Frameworks */ = {isa = PBXBuildFile; productRef = 4DAE61B72F393E90007FA64C /* Transformers */; };
 		4DC7A3102F22EF8B00D165BC /* Tokenizers in Frameworks */ = {isa = PBXBuildFile; productRef = 4D4F45962F219FBC00B042DE /* Tokenizers */; };
 		4DD2EF342F242B65005A4A84 /* Tokenizers in Frameworks */ = {isa = PBXBuildFile; productRef = 4D4F45892F219B6C00B042DE /* Tokenizers */; };
 		4DD2EF352F242B65005A4A84 /* Hub in Frameworks */ = {isa = PBXBuildFile; productRef = 4D4F45942F219FBC00B042DE /* Hub */; };
@@ -307,6 +309,7 @@
 		4D4F45912F219EE500B042DE /* HuggingFaceLogo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HuggingFaceLogo.swift; sourceTree = "<group>"; };
 		4D9E2A5A2F43713C00C2E2CD /* MLXHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXHandler.swift; sourceTree = "<group>"; };
 		4D9E2A672F43810B00C2E2CD /* StableDiffusion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StableDiffusion.swift; path = "../mlx-swift-examples-2.29.1/Libraries/StableDiffusion/StableDiffusion.swift"; sourceTree = "<group>"; };
+		4D9E2AC52F43B7CE00C2E2CD /* MLXHandler+Flux.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "MLXHandler+Flux.swift"; sourceTree = "<group>"; };
 		4D9F3F712F2100AA000E7F7D /* OllamaHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OllamaHandler.swift; sourceTree = "<group>"; };
 		56FAB27EFCF945CEBE7541CE /* SSEStreamParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSEStreamParser.swift; sourceTree = "<group>"; };
 		5B4DE0E203854D60AC391E45 /* MCPServerConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MCPServerConfig.swift; sourceTree = "<group>"; };
@@ -418,21 +421,22 @@
 				4A51EC6229C32AF700973D83 /* Highlightr in Frameworks */,
 				4DAE61A22F393D20007FA64C /* MLX in Frameworks */,
 				4D9E2A5E2F43740900C2E2CD /* MLXEmbedders in Frameworks */,
+				4D9E2AC42F43B6CB00C2E2CD /* FluxSwift in Frameworks */,
 				4A5C395229D8765200BCB534 /* OmenTextField in Frameworks */,
 				4D9E2A772F43893800C2E2CD /* StableDiffusion in Frameworks */,
 				4A2842492C87014800E5C920 /* KeychainAccess in Frameworks */,
 				4DAE61A82F393D20007FA64C /* MLXLinalg in Frameworks */,
+				4D9E2A7F2F43AA1800C2E2CD /* Tokenizers in Frameworks */,
 				4D9E2A602F43740900C2E2CD /* MLXLLM in Frameworks */,
 				C46C81692ED47DAD00F238F3 /* MCP in Frameworks */,
 				7F97AE1B2E0D75000050CAFE /* Markdown in Frameworks */,
 				4A471B862C29C56800C66926 /* SwiftMath in Frameworks */,
-				4DAE61B82F393E90007FA64C /* Transformers in Frameworks */,
+				4D9E2A7D2F43AA1800C2E2CD /* Hub in Frameworks */,
 				4D4F45A52F22CDCD00B042DE /* HuggingFace in Frameworks */,
 				4DAE61A42F393D20007FA64C /* MLXFFT in Frameworks */,
 				4DAE61AC2F393D20007FA64C /* MLXOptimizers in Frameworks */,
-				4DAE61B62F393E90007FA64C /* Tokenizers in Frameworks */,
-				4DAE61B42F393E90007FA64C /* Hub in Frameworks */,
 				4DAE61AA2F393D20007FA64C /* MLXNN in Frameworks */,
+				4D9E2A812F43AA1800C2E2CD /* Transformers in Frameworks */,
 				4A51EC6529C32B0B00973D83 /* AttributedText in Frameworks */,
 			);
 		};
@@ -803,6 +807,7 @@
 				4AA6EF582C565F90003B6D41 /* APIServiceConfig.swift */,
 				7FDDAECF2DE8BA5C0072EA51 /* MistralHandler.swift */,
 				4D9E2A5A2F43713C00C2E2CD /* MLXHandler.swift */,
+				4D9E2AC52F43B7CE00C2E2CD /* MLXHandler+Flux.swift */,
 			);
 			path = APIHandlers;
 			sourceTree = "<group>";
@@ -874,14 +879,15 @@
 				4DAE61A92F393D20007FA64C /* MLXNN */,
 				4DAE61AB2F393D20007FA64C /* MLXOptimizers */,
 				4DAE61AD2F393D20007FA64C /* MLXRandom */,
-				4DAE61B32F393E90007FA64C /* Hub */,
-				4DAE61B52F393E90007FA64C /* Tokenizers */,
-				4DAE61B72F393E90007FA64C /* Transformers */,
 				4D9E2A5D2F43740900C2E2CD /* MLXEmbedders */,
 				4D9E2A5F2F43740900C2E2CD /* MLXLLM */,
 				4D9E2A612F43740900C2E2CD /* MLXLMCommon */,
 				4D9E2A632F43740900C2E2CD /* MLXVLM */,
 				4D9E2A762F43893800C2E2CD /* StableDiffusion */,
+				4D9E2A7C2F43AA1800C2E2CD /* Hub */,
+				4D9E2A7E2F43AA1800C2E2CD /* Tokenizers */,
+				4D9E2A802F43AA1800C2E2CD /* Transformers */,
+				4D9E2AC32F43B6CB00C2E2CD /* FluxSwift */,
 			);
 			productName = macai;
 			productReference = 4A399C9529BC8FEF00E98796 /* Warden.app */;
@@ -964,9 +970,10 @@
 				C46C81672ED47DAD00F238F3 /* XCRemoteSwiftPackageReference "swift-sdk" */,
 				4D4F45A32F22CDCD00B042DE /* XCRemoteSwiftPackageReference "swift-huggingface" */,
 				4DAE61A02F393D20007FA64C /* XCRemoteSwiftPackageReference "mlx-swift" */,
-				4DAE61B22F393E90007FA64C /* XCRemoteSwiftPackageReference "swift-transformers" */,
 				4D9E2A5C2F43740900C2E2CD /* XCRemoteSwiftPackageReference "mlx-swift-lm" */,
 				4D9E2A752F4387DE00C2E2CD /* XCRemoteSwiftPackageReference "mlx-swift-examples" */,
+				4D9E2A7B2F43AA1800C2E2CD /* XCRemoteSwiftPackageReference "swift-transformers" */,
+				4D9E2AC22F43B6CB00C2E2CD /* XCLocalSwiftPackageReference "Packages/flux.swift" */,
 			);
 			preferredProjectObjectVersion = 90;
 			productRefGroup = 4A399C9629BC8FEF00E98796 /* Products */;
@@ -1136,6 +1143,7 @@
 				7F4955AC2E06FB1200516E2D /* FilePreviewView.swift in Sources */,
 				C45059902ED6BEB500AF3449 /* ChatBranchingManager.swift in Sources */,
 				4D4F458E2F219ED600B042DE /* HuggingFaceService.swift in Sources */,
+				4D9E2AC62F43B7CE00C2E2CD /* MLXHandler+Flux.swift in Sources */,
 				4A272A7429F5DAA800F93D0D /* Models.swift in Sources */,
 				7F8D7CA62DE9DAF4003E7BCA /* MultiAgentServiceSelector.swift in Sources */,
 				7F8D7CA72DE9DAF4003E7BCA /* MultiAgentResponseView.swift in Sources */,
@@ -1351,6 +1359,7 @@
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 0.9.5;
 				ONLY_ACTIVE_ARCH = YES;
+				OTHER_SWIFT_FLAGS = "-enable-bare-slash-regex";
 				PRODUCT_BUNDLE_IDENTIFIER = fr.dubertrand.WardenAI;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = auto;
@@ -1358,7 +1367,7 @@
 				SUPPORTS_MACCATALYST = NO;
 				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_VERSION = 5.0;
+				SWIFT_VERSION = 5.9;
 			};
 			name = Debug;
 		};
@@ -1401,6 +1410,7 @@
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 0.9.5;
 				ONLY_ACTIVE_ARCH = YES;
+				OTHER_SWIFT_FLAGS = "-enable-bare-slash-regex";
 				PRODUCT_BUNDLE_IDENTIFIER = fr.dubertrand.WardenAI;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = auto;
@@ -1408,7 +1418,7 @@
 				SUPPORTS_MACCATALYST = NO;
 				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_VERSION = 5.0;
+				SWIFT_VERSION = 5.9;
 			};
 			name = Release;
 		};
@@ -1424,12 +1434,13 @@
 				IPHONEOS_DEPLOYMENT_TARGET = 16.2;
 				MACOSX_DEPLOYMENT_TARGET = 13.1;
 				MARKETING_VERSION = 1.0;
+				OTHER_SWIFT_FLAGS = "-enable-bare-slash-regex";
 				PRODUCT_BUNDLE_IDENTIFIER = notfullin.com.macaiTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = auto;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
 				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_VERSION = 5.0;
+				SWIFT_VERSION = 5.9;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Warden.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Warden";
 			};
@@ -1447,12 +1458,13 @@
 				IPHONEOS_DEPLOYMENT_TARGET = 16.2;
 				MACOSX_DEPLOYMENT_TARGET = 13.1;
 				MARKETING_VERSION = 1.0;
+				OTHER_SWIFT_FLAGS = "-enable-bare-slash-regex";
 				PRODUCT_BUNDLE_IDENTIFIER = notfullin.com.macaiTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = auto;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
 				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_VERSION = 5.0;
+				SWIFT_VERSION = 5.9;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Warden.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Warden";
 			};
@@ -1469,12 +1481,13 @@
 				IPHONEOS_DEPLOYMENT_TARGET = 16.2;
 				MACOSX_DEPLOYMENT_TARGET = 13.1;
 				MARKETING_VERSION = 1.0;
+				OTHER_SWIFT_FLAGS = "-enable-bare-slash-regex";
 				PRODUCT_BUNDLE_IDENTIFIER = notfullin.com.macaiUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = auto;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
 				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_VERSION = 5.0;
+				SWIFT_VERSION = 5.9;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_TARGET_NAME = macai;
 			};
@@ -1491,12 +1504,13 @@
 				IPHONEOS_DEPLOYMENT_TARGET = 16.2;
 				MACOSX_DEPLOYMENT_TARGET = 13.1;
 				MARKETING_VERSION = 1.0;
+				OTHER_SWIFT_FLAGS = "-enable-bare-slash-regex";
 				PRODUCT_BUNDLE_IDENTIFIER = notfullin.com.macaiUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = auto;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
 				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_VERSION = 5.0;
+				SWIFT_VERSION = 5.9;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_TARGET_NAME = macai;
 			};
@@ -1538,6 +1552,13 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		4D9E2AC22F43B6CB00C2E2CD /* XCLocalSwiftPackageReference "Packages/flux.swift" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/flux.swift;
+		};
+/* End XCLocalSwiftPackageReference section */
 
 /* Begin XCRemoteSwiftPackageReference section */
 		4A2842472C87014800E5C920 /* XCRemoteSwiftPackageReference "KeychainAccess" */ = {
@@ -1604,20 +1625,20 @@
 				kind = branch;
 			};
 		};
-		4DAE61A02F393D20007FA64C /* XCRemoteSwiftPackageReference "mlx-swift" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/ml-explore/mlx-swift";
-			requirement = {
-				kind = exactVersion;
-				version = 0.30.3;
-			};
-		};
-		4DAE61B22F393E90007FA64C /* XCRemoteSwiftPackageReference "swift-transformers" */ = {
+		4D9E2A7B2F43AA1800C2E2CD /* XCRemoteSwiftPackageReference "swift-transformers" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/huggingface/swift-transformers";
 			requirement = {
 				kind = upToNextMajorVersion;
 				minimumVersion = 1.1.6;
+			};
+		};
+		4DAE61A02F393D20007FA64C /* XCRemoteSwiftPackageReference "mlx-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/ml-explore/mlx-swift";
+			requirement = {
+				branch = main;
+				kind = branch;
 			};
 		};
 		7F97AE192E0D75000050CAFE /* XCRemoteSwiftPackageReference "swift-markdown" */ = {
@@ -1706,6 +1727,25 @@
 			package = 4D9E2A752F4387DE00C2E2CD /* XCRemoteSwiftPackageReference "mlx-swift-examples" */;
 			productName = StableDiffusion;
 		};
+		4D9E2A7C2F43AA1800C2E2CD /* Hub */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4D9E2A7B2F43AA1800C2E2CD /* XCRemoteSwiftPackageReference "swift-transformers" */;
+			productName = Hub;
+		};
+		4D9E2A7E2F43AA1800C2E2CD /* Tokenizers */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4D9E2A7B2F43AA1800C2E2CD /* XCRemoteSwiftPackageReference "swift-transformers" */;
+			productName = Tokenizers;
+		};
+		4D9E2A802F43AA1800C2E2CD /* Transformers */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4D9E2A7B2F43AA1800C2E2CD /* XCRemoteSwiftPackageReference "swift-transformers" */;
+			productName = Transformers;
+		};
+		4D9E2AC32F43B6CB00C2E2CD /* FluxSwift */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = FluxSwift;
+		};
 		4DAE61A12F393D20007FA64C /* MLX */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 4DAE61A02F393D20007FA64C /* XCRemoteSwiftPackageReference "mlx-swift" */;
@@ -1740,21 +1780,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 4DAE61A02F393D20007FA64C /* XCRemoteSwiftPackageReference "mlx-swift" */;
 			productName = MLXRandom;
-		};
-		4DAE61B32F393E90007FA64C /* Hub */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 4DAE61B22F393E90007FA64C /* XCRemoteSwiftPackageReference "swift-transformers" */;
-			productName = Hub;
-		};
-		4DAE61B52F393E90007FA64C /* Tokenizers */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 4DAE61B22F393E90007FA64C /* XCRemoteSwiftPackageReference "swift-transformers" */;
-			productName = Tokenizers;
-		};
-		4DAE61B72F393E90007FA64C /* Transformers */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 4DAE61B22F393E90007FA64C /* XCRemoteSwiftPackageReference "swift-transformers" */;
-			productName = Transformers;
 		};
 		7F97AE1A2E0D75000050CAFE /* Markdown */ = {
 			isa = XCSwiftPackageProductDependency;

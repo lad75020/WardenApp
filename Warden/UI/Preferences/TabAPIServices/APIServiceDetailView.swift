@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import CoreData
 import Hub
@@ -110,13 +111,26 @@ struct APIServiceDetailView: View {
                             .frame(width: 94, alignment: .leading)
 
                         if viewModel.type.lowercased() == "coreml llm" || viewModel.type.lowercased() == "mlx" {
-                            TextEditor(text: $viewModel.model)
-                                .font(.system(.body, design: .monospaced))
-                                .frame(height: 90)
-                                .overlay {
-                                    RoundedRectangle(cornerRadius: 6)
-                                        .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
+                            VStack(alignment: .leading, spacing: 6) {
+                                TextEditor(text: $viewModel.model)
+                                    .font(.system(.body, design: .monospaced))
+                                    .frame(height: 90)
+                                    .overlay {
+                                        RoundedRectangle(cornerRadius: 6)
+                                            .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
+                                    }
+
+                                HStack(spacing: 8) {
+                                    Button("Grant Access") {
+                                        viewModel.requestAccessIfNeeded()
+                                    }
+                                    .buttonStyle(.bordered)
+
+                                    Text("Required for sandboxed model folders")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
                                 }
+                            }
                         } else {
                             Picker("", selection: $viewModel.selectedModel) {
                             // First, check if the current selected model exists in available models
@@ -336,6 +350,19 @@ struct APIServiceDetailView: View {
             }
             .padding(.top, 16)
         }
+        .onChange(of: viewModel.accessRequestPath) { _, newValue in
+            guard let path = newValue, !path.isEmpty else { return }
+            presentSecurityScopedPicker(for: path) { pickedURL in
+                if let pickedURL {
+                    SecurityScopedBookmarkStore.storeBookmark(for: pickedURL)
+                    viewModel.updateModelPathIfNeeded(pickedURL.path)
+                }
+                viewModel.accessRequestPath = nil
+            }
+        }
+        .onAppear {
+            viewModel.requestAccessIfNeeded()
+        }
         .padding(16)
         .alert(isPresented: $showingDeleteConfirmation) {
             Alert(
@@ -351,12 +378,39 @@ struct APIServiceDetailView: View {
     }
     
     // MARK: - HuggingFace Model Download
-    
 
-    
+    private func presentSecurityScopedPicker(for modelPath: String, completion: @escaping (URL?) -> Void) {
+        guard NSApp != nil else {
+            completion(nil)
+            return
+        }
+        guard NSApp?.modalWindow == nil else {
+            completion(nil)
+            return
+        }
 
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = false
+        panel.title = "Select Model Folder"
+        panel.message = "Warden needs access to this folder to load the local model."
+        panel.prompt = "Grant Access"
+        panel.directoryURL = URL(fileURLWithPath: modelPath).deletingLastPathComponent()
+
+        let handleResult: (NSApplication.ModalResponse) -> Void = { response in
+            completion(response == .OK ? panel.url : nil)
+        }
+
+        DispatchQueue.main.async {
+            if let window = NSApp?.keyWindow ?? NSApp?.mainWindow {
+                panel.beginSheetModal(for: window, completionHandler: handleResult)
+            } else {
+                handleResult(panel.runModal())
+            }
+        }
+    }
 }
 
 // Download status enum
-
-

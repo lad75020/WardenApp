@@ -166,29 +166,49 @@ final class MLXHandler: APIService {
         #else
         _ = tools
 
-        let modelURL = URL(fileURLWithPath: model)
-        guard FileManager.default.fileExists(atPath: modelURL.path) else {
-            throw APIError.serverError("MLX model folder not found: \(modelURL.path)")
+        let modelPath = resolveModelPath(model)
+        guard !modelPath.isEmpty else {
+            throw APIError.decodingFailed("No MLX model path provided")
         }
 
-        let rawPrompt = extractPrompt(from: requestMessages)
-        guard !rawPrompt.isEmpty else {
-            throw APIError.decodingFailed("No user prompt found")
+        return try await SecurityScopedBookmarkStore.withAccess(path: modelPath) {
+            let modelURL = URL(fileURLWithPath: modelPath)
+            var isDirectory: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: modelURL.path, isDirectory: &isDirectory),
+                  isDirectory.boolValue
+            else {
+                throw APIError.serverError("MLX model folder not found: \(modelURL.path)")
+            }
+
+            let rawPrompt = extractPrompt(from: requestMessages)
+            guard !rawPrompt.isEmpty else {
+                throw APIError.decodingFailed("No user prompt found")
+            }
+
+            let extraction = extractImageInputs(from: rawPrompt)
+            let prompt = extraction.prompt
+            let imageData = extraction.imageData
+
+            #if canImport(FluxSwift)
+            if let fluxInfo = findFluxModelInfo(at: modelURL) {
+                return try await generateFluxImage(
+                    prompt: prompt,
+                    modelInfo: fluxInfo,
+                    imageData: imageData
+                )
+            }
+            #endif
+
+            if let stableDiffusionRoot = findStableDiffusionRoot(at: modelURL) {
+                return try await generateImage(prompt: prompt, modelURL: stableDiffusionRoot)
+            }
+
+            if !imageData.isEmpty {
+                return try await generateVision(prompt: prompt, imageData: imageData, temperature: temperature, onToken: onToken)
+            }
+
+            return try await generateText(prompt: prompt, temperature: temperature, onToken: onToken)
         }
-
-        let extraction = extractImageInputs(from: rawPrompt)
-        let prompt = extraction.prompt
-        let imageData = extraction.imageData
-
-        if modelLooksLikeStableDiffusion(at: modelURL) {
-            return try await generateImage(prompt: prompt, modelURL: modelURL)
-        }
-
-        if !imageData.isEmpty {
-            return try await generateVision(prompt: prompt, imageData: imageData, temperature: temperature, onToken: onToken)
-        }
-
-        return try await generateText(prompt: prompt, temperature: temperature, onToken: onToken)
         #endif
     }
 
@@ -199,6 +219,34 @@ final class MLXHandler: APIService {
             }
         }
         return requestMessages.last?["content"] ?? ""
+    }
+
+    private func resolveModelPath(_ rawPath: String) -> String {
+        let first = rawPath
+            .split(whereSeparator: { $0 == "\n" || $0 == "," || $0 == ";" })
+            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first(where: { !$0.isEmpty }) ?? ""
+
+        let normalized = normalizePathSeparators(first)
+
+        if normalized.hasPrefix("file://"), let url = URL(string: normalized) {
+            return url.standardizedFileURL.path
+        }
+
+        let expanded = (normalized as NSString).expandingTildeInPath
+        return URL(fileURLWithPath: expanded).standardizedFileURL.path
+    }
+
+    private func normalizePathSeparators(_ value: String) -> String {
+        let dashVariants: [String] = [
+            "\u{2010}", "\u{2011}", "\u{2012}", "\u{2013}",
+            "\u{2014}", "\u{2015}", "\u{2212}"
+        ]
+        var normalized = value
+        for dash in dashVariants {
+            normalized = normalized.replacingOccurrences(of: dash, with: "-")
+        }
+        return normalized
     }
 
     private func extractImageInputs(from content: String) -> (prompt: String, imageData: [Data]) {
@@ -272,25 +320,62 @@ final class MLXHandler: APIService {
         return (cleaned, images)
     }
 
-    private func modelLooksLikeStableDiffusion(at url: URL) -> Bool {
+    private func findStableDiffusionRoot(at url: URL) -> URL? {
         let fm = FileManager.default
-        let candidates = [
-            "unet",
-            "vae",
-            "text_encoder",
-            "text_encoder_2",
-            "tokenizer",
-            "tokenizer_2",
-            "scheduler",
-            "model_index.json"
-        ]
-        var hits = 0
-        for item in candidates {
-            if fm.fileExists(atPath: url.appendingPathComponent(item).path) {
-                hits += 1
+        let maxDepth = 2
+        var queue: [(url: URL, depth: Int)] = [(url, 0)]
+
+        while !queue.isEmpty {
+            let current = queue.removeFirst()
+            if isStableDiffusionRoot(current.url) {
+                return current.url
+            }
+            guard current.depth < maxDepth else { continue }
+            if let children = try? fm.contentsOfDirectory(
+                at: current.url,
+                includingPropertiesForKeys: [.isDirectoryKey],
+                options: [.skipsHiddenFiles]
+            ) {
+                for child in children {
+                    if (try? child.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true {
+                        queue.append((child, current.depth + 1))
+                    }
+                }
             }
         }
-        return hits >= 3
+        return nil
+    }
+
+    private func isStableDiffusionRoot(_ url: URL) -> Bool {
+        missingStableDiffusionComponents(at: url).isEmpty
+    }
+
+    private func missingStableDiffusionComponents(at url: URL) -> [String] {
+        let fm = FileManager.default
+        let requiredPaths = [
+            "unet/config.json",
+            "vae/config.json",
+            "scheduler/scheduler_config.json",
+            "tokenizer/vocab.json"
+        ]
+        let encoderPaths = [
+            "text_encoder/config.json",
+            "text_encoder_2/config.json"
+        ]
+
+        var missing: [String] = []
+        for path in requiredPaths {
+            if !fm.fileExists(atPath: url.appendingPathComponent(path).path) {
+                missing.append(path)
+            }
+        }
+
+        let hasEncoder = encoderPaths.contains { fm.fileExists(atPath: url.appendingPathComponent($0).path) }
+        if !hasEncoder {
+            missing.append("text_encoder/config.json")
+        }
+
+        return missing
     }
 
     private func imageExtension(from data: Data, fallback: String = "png") -> String {
@@ -312,7 +397,7 @@ final class MLXHandler: APIService {
         return fallback
     }
 
-    private func writeTempImageFile(data: Data) throws -> URL {
+    func writeTempImageFile(data: Data) throws -> URL {
         let ext = imageExtension(from: data)
         let filename = "mlx_image_\(UUID().uuidString).\(ext)"
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
@@ -392,6 +477,13 @@ final class MLXHandler: APIService {
             "StableDiffusion module not available. Add the mlx-swift-examples StableDiffusion product to the Warden target."
         )
         #else
+        let missing = missingStableDiffusionComponents(at: modelURL)
+        if !missing.isEmpty {
+            let missingList = missing.prefix(4).joined(separator: ", ")
+            throw APIError.serverError(
+                "MLX image model is missing required files. Expected under \(modelURL.path): \(missingList)"
+            )
+        }
         let configuration = stableDiffusionConfiguration(for: modelURL)
         try prepareStableDiffusionCache(configuration: configuration, modelURL: modelURL)
 
@@ -453,18 +545,39 @@ final class MLXHandler: APIService {
         }
 
         if fm.fileExists(atPath: cacheURL.path) {
-            let destination = try fm.destinationOfSymbolicLink(atPath: cacheURL.path)
-            if destination == modelURL.path {
+            var shouldReplace = true
+            if let attrs = try? fm.attributesOfItem(atPath: cacheURL.path),
+               let type = attrs[.type] as? FileAttributeType,
+               type == .typeSymbolicLink,
+               let destination = try? fm.destinationOfSymbolicLink(atPath: cacheURL.path),
+               destination == modelURL.path {
+                shouldReplace = false
+            }
+
+            if shouldReplace {
+                try fm.removeItem(at: cacheURL)
+            } else {
                 return
             }
+        } else if (try? fm.destinationOfSymbolicLink(atPath: cacheURL.path)) != nil {
+            // Broken symlink still occupies the path but fileExists() returns false.
             try fm.removeItem(at: cacheURL)
         }
-
-        try fm.createSymbolicLink(at: cacheURL, withDestinationURL: modelURL)
+        do {
+            try fm.createSymbolicLink(at: cacheURL, withDestinationURL: modelURL)
+        } catch {
+            let nsError = error as NSError
+            if nsError.code == NSFileWriteFileExistsError {
+                try fm.removeItem(at: cacheURL)
+                try fm.createSymbolicLink(at: cacheURL, withDestinationURL: modelURL)
+            } else {
+                throw error
+            }
+        }
     }
     #endif
 
-    private func pngData(from cgImage: CGImage) throws -> Data {
+    func pngData(from cgImage: CGImage) throws -> Data {
         let bitmap = NSBitmapImageRep(cgImage: cgImage)
         guard let data = bitmap.representation(using: .png, properties: [:]) else {
             throw APIError.decodingFailed("Failed to encode PNG")

@@ -8,6 +8,7 @@ final class APIServiceDetailViewModel: ObservableObject {
     var apiService: APIServiceEntity?
     private var cancellables = Set<AnyCancellable>()
     private var notificationDismissTask: Task<Void, Never>?
+    private var lastPromptedModelPath: String?
 
     @Published var name: String = AppConstants.defaultApiConfigurations[AppConstants.defaultApiType]?.name ?? ""
     @Published var type: String = AppConstants.defaultApiType
@@ -28,6 +29,7 @@ final class APIServiceDetailViewModel: ObservableObject {
     @Published var isLoadingModels: Bool = false
     @Published var modelFetchError: String? = nil
     @Published var userNotification: UserNotification?
+    @Published var accessRequestPath: String?
     
     private let selectedModelsManager = SelectedModelsManager.shared
     
@@ -97,6 +99,87 @@ final class APIServiceDetailViewModel: ObservableObject {
                 }
             }
             .store(in: &cancellables)
+
+        $model
+            .sink { [weak self] newValue in
+                self?.ensureSecurityScopedAccessIfNeeded(for: newValue)
+            }
+            .store(in: &cancellables)
+
+        $type
+            .sink { [weak self] _ in
+                guard let self else { return }
+                self.ensureSecurityScopedAccessIfNeeded(for: self.model)
+            }
+            .store(in: &cancellables)
+    }
+
+    func requestAccessIfNeeded() {
+        ensureSecurityScopedAccessIfNeeded(for: model)
+    }
+
+    func updateModelPathIfNeeded(_ path: String) {
+        let normalized = normalizePathSeparators(path)
+        let existing = model
+        if existing.contains(normalized) {
+            return
+        }
+        if existing.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            model = normalized
+        } else {
+            let trimmed = existing.trimmingCharacters(in: .whitespacesAndNewlines)
+            model = trimmed + "\n" + normalized
+        }
+    }
+
+    private func ensureSecurityScopedAccessIfNeeded(for rawModel: String) {
+        let lowerType = type.lowercased()
+        guard lowerType == "mlx" || lowerType == "coreml llm" else { return }
+
+        let modelPath = resolveFirstModelPath(from: rawModel)
+        guard !modelPath.isEmpty else { return }
+        guard modelPath.contains("/") else { return }
+        guard modelPath.split(separator: "/").count >= 3 else { return }
+
+        if SecurityScopedBookmarkStore.resolveBookmarkURL(for: modelPath) != nil {
+            lastPromptedModelPath = modelPath
+            return
+        }
+
+        if lastPromptedModelPath == modelPath {
+            return
+        }
+        lastPromptedModelPath = modelPath
+
+        accessRequestPath = modelPath
+    }
+
+    private func resolveFirstModelPath(from raw: String) -> String {
+        let first = raw
+            .split(whereSeparator: { $0 == "\n" || $0 == "," || $0 == ";" })
+            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first(where: { !$0.isEmpty }) ?? ""
+
+        let normalized = normalizePathSeparators(first)
+
+        if normalized.hasPrefix("file://"), let url = URL(string: normalized) {
+            return url.standardizedFileURL.path
+        }
+
+        let expanded = (normalized as NSString).expandingTildeInPath
+        return URL(fileURLWithPath: expanded).standardizedFileURL.path
+    }
+
+    private func normalizePathSeparators(_ value: String) -> String {
+        let dashVariants: [String] = [
+            "\u{2010}", "\u{2011}", "\u{2012}", "\u{2013}",
+            "\u{2014}", "\u{2015}", "\u{2212}"
+        ]
+        var normalized = value
+        for dash in dashVariants {
+            normalized = normalized.replacingOccurrences(of: dash, with: "-")
+        }
+        return normalized
     }
 
     private func fetchModelsForService() {
