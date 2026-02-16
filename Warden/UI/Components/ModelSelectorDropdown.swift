@@ -140,7 +140,7 @@ final class ModelSelectorViewModel: ObservableObject {
                 // Exception: for CoreML local providers, the "models" are user-supplied paths
                 // so we always show them all.
                 let st = serviceType.lowercased()
-                if st != "coreml" && st != "coreml llm" {
+                if st != "coreml llm" && st != "mlx" {
                     let hasCustom = selectedModelsManager.hasCustomSelection(for: serviceType)
                     let selection = selectedModelsManager.getSelectedModelIds(for: serviceType)
                     if hasCustom {

@@ -780,17 +780,6 @@ Remember that true productivity serves your overall life satisfaction and well-b
         "huggingface": defaultApiConfiguration(name: "HuggingFace", url: "local://huggingface", apiKeyRef: "", apiModelRef: "https://huggingface.co/models", defaultModel: "llama2-7b-chat", models: [
             "llama2-7b-chat"
         ], modelsFetching: false, imageUploadsSupported: false),
-        "coreml": defaultApiConfiguration(
-            name: "CoreML (Stable Diffusion)",
-            url: "local://coreml",
-            apiKeyRef: "",
-            apiModelRef: "",
-            // For CoreML local models, `model` should be a folder path containing TextEncoder.mlmodelc etc.
-            defaultModel: "",
-            models: [],
-            modelsFetching: false,
-            imageUploadsSupported: false
-        ),
         "coreml llm": defaultApiConfiguration(
             name: "CoreML (Text Generation)",
             url: "local://coreml-llm",
@@ -802,10 +791,21 @@ Remember that true productivity serves your overall life satisfaction and well-b
             modelsFetching: false,
             imageUploadsSupported: false
         ),
+        "mlx": defaultApiConfiguration(
+            name: "MLX (Local)",
+            url: "local://mlx",
+            apiKeyRef: "",
+            apiModelRef: "",
+            // For MLX local models, `model` should be a folder path containing MLX model assets.
+            defaultModel: "",
+            models: [],
+            modelsFetching: false,
+            imageUploadsSupported: true
+        ),
     ]
 
     /// A list of available API types.
-    static let apiTypes = ["chatgpt", "chatgpt image", "ollama", "claude", "xai", "gemini", "veo", "perplexity", "deepseek", "openrouter", "groq", "mistral", "lmstudio", "huggingface", "coreml", "coreml llm"]
+    static let apiTypes = ["chatgpt", "chatgpt image", "ollama", "claude", "xai", "gemini", "veo", "perplexity", "deepseek", "openrouter", "groq", "mistral", "lmstudio", "huggingface", "coreml llm", "mlx"]
 }
 
 func getCurrentFormattedDate() -> String {

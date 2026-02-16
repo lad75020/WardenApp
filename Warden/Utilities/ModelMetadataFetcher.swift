@@ -38,8 +38,8 @@ class ModelMetadataFetcherFactory {
             return LocalModelMetadataFetcher()
         case .huggingface:
             return HuggingFaceMetadataFetcher()
-        case .coreml:
-            return GenericMetadataFetcher(provider: "coreml")
+        case .mlx:
+            return GenericMetadataFetcher(provider: "mlx")
         case nil:
             return GenericMetadataFetcher(provider: provider)
         }

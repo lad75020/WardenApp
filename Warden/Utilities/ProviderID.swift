@@ -13,7 +13,7 @@ enum ProviderID: String, Codable, CaseIterable, Sendable {
     case ollama
     case lmstudio
     case huggingface
-    case coreml
+    case mlx
 }
 
 extension ProviderID {
@@ -44,8 +44,8 @@ extension ProviderID {
             self = .lmstudio
         case "huggingface", "hugging face":
             self = .huggingface
-        case "coreml", "core ml", "stable diffusion", "coreml stable diffusion":
-            self = .coreml
+        case "mlx":
+            self = .mlx
         default:
             return nil
         }

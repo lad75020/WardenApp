@@ -75,10 +75,10 @@ final class ModelCacheManager: ObservableObject {
             return cached
         }
 
-        // For CoreML providers, never fall back to static models.
+        // For local path-based providers, never fall back to static models.
         // The list is derived from user-defined paths in API services.
         let pt = providerType.lowercased()
-        if pt == "coreml" || pt == "coreml llm" {
+        if pt == "coreml llm" || pt == "mlx" {
             return cachedModels[providerType] ?? []
         }
 
@@ -158,8 +158,8 @@ final class ModelCacheManager: ObservableObject {
 
         // Special handling for purely local providers where the "model" is user-defined per service.
         // For these, populate the model list from the saved services instead of static config.
-        if providerType.lowercased() == "coreml" || providerType.lowercased() == "coreml llm" {
-            // For CoreML providers, we allow multiple models per service by letting the user
+        if providerType.lowercased() == "coreml llm" || providerType.lowercased() == "mlx" {
+            // For local path-based providers, we allow multiple models per service by letting the user
             // enter several paths separated by newlines (or commas/semicolons).
             let models: [AIModel] = apiServices
                 .filter { ($0.type ?? "").lowercased() == providerType.lowercased() }
@@ -287,7 +287,7 @@ final class ModelCacheManager: ObservableObject {
         // If there is no API key for a remote provider, still seed the cache with the
         // static config list (so the UI doesn't look empty).
         if currentAPIKey.isEmpty {
-            // NOTE: local providers (ollama/lmstudio/huggingface/coreml) are handled elsewhere.
+            // NOTE: local providers (ollama/lmstudio/huggingface/coreml llm/mlx) are handled elsewhere.
             cachedModels[providerType] = config.models.map { AIModel(id: $0) }
             fetchErrors[providerType] = fetchErrors[providerType] ?? "Missing API key"
             loadingStates[providerType] = false

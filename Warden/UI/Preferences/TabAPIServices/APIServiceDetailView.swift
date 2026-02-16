@@ -109,7 +109,7 @@ struct APIServiceDetailView: View {
                         Text("LLM Model:")
                             .frame(width: 94, alignment: .leading)
 
-                        if viewModel.type.lowercased() == "coreml" || viewModel.type.lowercased() == "coreml llm" {
+                        if viewModel.type.lowercased() == "coreml llm" || viewModel.type.lowercased() == "mlx" {
                             TextEditor(text: $viewModel.model)
                                 .font(.system(.body, design: .monospaced))
                                 .frame(height: 90)

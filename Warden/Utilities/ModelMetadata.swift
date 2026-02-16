@@ -156,7 +156,7 @@ extension ModelMetadata {
         
         // Friendly names for local path-based providers
         let lowerProvider = (providerPrefix ?? "").lowercased()
-        if lowerProvider == "coreml" || lowerProvider == "coreml llm" {
+        if lowerProvider == "coreml llm" || lowerProvider == "mlx" {
             let leaf = URL(fileURLWithPath: modelName).lastPathComponent
             let display = leaf.isEmpty ? modelName : leaf
             let providerDisplay = providerPrefix.map { Self.mapProviderName($0).uppercased() }
@@ -280,6 +280,7 @@ extension ModelMetadata {
             "openrouter": "OPENROUTER",
             "lmstudio": "LMSTUDIO",
             "claude": "ANTHROPIC",
+            "mlx": "MLX",
         ]
         return mapping[provider.lowercased()] ?? provider.uppercased()
     }

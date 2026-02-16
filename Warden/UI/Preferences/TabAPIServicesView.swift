@@ -414,7 +414,7 @@ struct APIServiceDetailContent: View {
                         }
                         VStack(spacing: 12) {
                             SettingsRow(title: "LLM Model") {
-                                if viewModel.type.lowercased() == "coreml" || viewModel.type.lowercased() == "coreml llm" {
+                                if viewModel.type.lowercased() == "coreml llm" || viewModel.type.lowercased() == "mlx" {
                                     VStack(alignment: .leading, spacing: 6) {
                                         TextEditor(text: $viewModel.model)
                                             .font(.system(.body, design: .monospaced))
@@ -462,7 +462,7 @@ struct APIServiceDetailContent: View {
                                 }
                             }
 
-                            if viewModel.isCustomModel && !(viewModel.type.lowercased() == "coreml" || viewModel.type.lowercased() == "coreml llm") {
+                            if viewModel.isCustomModel && !(viewModel.type.lowercased() == "coreml llm" || viewModel.type.lowercased() == "mlx") {
                                 SettingsRow(title: "Custom Model") {
                                     TextField("Model name", text: $viewModel.model)
                                         .textFieldStyle(.roundedBorder)
