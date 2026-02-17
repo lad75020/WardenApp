@@ -97,6 +97,20 @@
 		4D9E2A812F43AA1800C2E2CD /* Transformers in Frameworks */ = {isa = PBXBuildFile; productRef = 4D9E2A802F43AA1800C2E2CD /* Transformers */; };
 		4D9E2AC42F43B6CB00C2E2CD /* FluxSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 4D9E2AC32F43B6CB00C2E2CD /* FluxSwift */; };
 		4D9E2AC62F43B7CE00C2E2CD /* MLXHandler+Flux.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D9E2AC52F43B7CE00C2E2CD /* MLXHandler+Flux.swift */; };
+		4D9E2AC92F43EA7300C2E2CD /* LoRAUtils in Frameworks */ = {isa = PBXBuildFile; productRef = 4D9E2AC82F43EA7300C2E2CD /* LoRAUtils */; };
+		4D9E2ACB2F43EA7300C2E2CD /* MLXPipeline in Frameworks */ = {isa = PBXBuildFile; productRef = 4D9E2ACA2F43EA7300C2E2CD /* MLXPipeline */; };
+		4D9E2ACD2F43EA7300C2E2CD /* MLXTextEncoder in Frameworks */ = {isa = PBXBuildFile; productRef = 4D9E2ACC2F43EA7300C2E2CD /* MLXTextEncoder */; };
+		4D9E2ACF2F43EA7300C2E2CD /* MLXZImage in Frameworks */ = {isa = PBXBuildFile; productRef = 4D9E2ACE2F43EA7300C2E2CD /* MLXZImage */; };
+		4D9E2AD12F43EA7300C2E2CD /* MLXZImageSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 4D9E2AD02F43EA7300C2E2CD /* MLXZImageSwift */; };
+		4D9E2AE02F43F03600C2E2CD /* HuggingFace in Frameworks */ = {isa = PBXBuildFile; productRef = 4D9E2ADF2F43F03600C2E2CD /* HuggingFace */; };
+		4D9E2AE22F43F06E00C2E2CD /* MLX in Frameworks */ = {isa = PBXBuildFile; productRef = 4D9E2AE12F43F06E00C2E2CD /* MLX */; };
+		4D9E2AE42F43F06E00C2E2CD /* Hub in Frameworks */ = {isa = PBXBuildFile; productRef = 4D9E2AE32F43F06E00C2E2CD /* Hub */; };
+		4D9E2AE62F43F06E00C2E2CD /* Tokenizers in Frameworks */ = {isa = PBXBuildFile; productRef = 4D9E2AE52F43F06E00C2E2CD /* Tokenizers */; };
+		4D9E2AE82F43F06E00C2E2CD /* LoRAUtils in Frameworks */ = {isa = PBXBuildFile; productRef = 4D9E2AE72F43F06E00C2E2CD /* LoRAUtils */; };
+		4D9E2AEA2F43F06E00C2E2CD /* MLXPipeline in Frameworks */ = {isa = PBXBuildFile; productRef = 4D9E2AE92F43F06E00C2E2CD /* MLXPipeline */; };
+		4D9E2AEC2F43F06E00C2E2CD /* MLXTextEncoder in Frameworks */ = {isa = PBXBuildFile; productRef = 4D9E2AEB2F43F06E00C2E2CD /* MLXTextEncoder */; };
+		4D9E2AEE2F43F06E00C2E2CD /* MLXZImage in Frameworks */ = {isa = PBXBuildFile; productRef = 4D9E2AED2F43F06E00C2E2CD /* MLXZImage */; };
+		4D9E2AF02F43F06E00C2E2CD /* MLXZImageSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 4D9E2AEF2F43F06E00C2E2CD /* MLXZImageSwift */; };
 		4DAE61A22F393D20007FA64C /* MLX in Frameworks */ = {isa = PBXBuildFile; productRef = 4DAE61A12F393D20007FA64C /* MLX */; };
 		4DAE61A42F393D20007FA64C /* MLXFFT in Frameworks */ = {isa = PBXBuildFile; productRef = 4DAE61A32F393D20007FA64C /* MLXFFT */; };
 		4DAE61A62F393D20007FA64C /* MLXFast in Frameworks */ = {isa = PBXBuildFile; productRef = 4DAE61A52F393D20007FA64C /* MLXFast */; };
@@ -224,6 +238,14 @@
 				4A4F204C2D62651900D1F57F /* FiraCode-VF.ttf in CopyFiles */,
 			);
 		};
+		4D9E2AD62F43F01B00C2E2CD /* CopyFiles */ = {
+			isa = PBXCopyFilesBuildPhase;
+			dstPath = /usr/share/man/man1/;
+			dstSubfolder = None;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 1;
+		};
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
@@ -310,6 +332,7 @@
 		4D9E2A5A2F43713C00C2E2CD /* MLXHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXHandler.swift; sourceTree = "<group>"; };
 		4D9E2A672F43810B00C2E2CD /* StableDiffusion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StableDiffusion.swift; path = "../mlx-swift-examples-2.29.1/Libraries/StableDiffusion/StableDiffusion.swift"; sourceTree = "<group>"; };
 		4D9E2AC52F43B7CE00C2E2CD /* MLXHandler+Flux.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "MLXHandler+Flux.swift"; sourceTree = "<group>"; };
+		4D9E2AD82F43F01B00C2E2CD /* MLXZImageSwiftCLI */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = MLXZImageSwiftCLI; sourceTree = BUILT_PRODUCTS_DIR; };
 		4D9F3F712F2100AA000E7F7D /* OllamaHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OllamaHandler.swift; sourceTree = "<group>"; };
 		56FAB27EFCF945CEBE7541CE /* SSEStreamParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSEStreamParser.swift; sourceTree = "<group>"; };
 		5B4DE0E203854D60AC391E45 /* MCPServerConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MCPServerConfig.swift; sourceTree = "<group>"; };
@@ -405,6 +428,11 @@
 			path = "../mlx-swift-examples-2.29.1/Libraries/StableDiffusion";
 			sourceTree = "<group>";
 		};
+		4D9E2AD92F43F01B00C2E2CD /* MLXZImageSwiftCLI */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = MLXZImageSwiftCLI;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -414,16 +442,19 @@
 				4D9E2A642F43740900C2E2CD /* MLXVLM in Frameworks */,
 				4D9E2A622F43740900C2E2CD /* MLXLMCommon in Frameworks */,
 				4DAE61A62F393D20007FA64C /* MLXFast in Frameworks */,
+				4D9E2ACF2F43EA7300C2E2CD /* MLXZImage in Frameworks */,
 				4DD2EF352F242B65005A4A84 /* Hub in Frameworks */,
 				4DD2EF342F242B65005A4A84 /* Tokenizers in Frameworks */,
 				4DAE61AE2F393D20007FA64C /* MLXRandom in Frameworks */,
 				4DC7A3102F22EF8B00D165BC /* Tokenizers in Frameworks */,
 				4A51EC6229C32AF700973D83 /* Highlightr in Frameworks */,
+				4D9E2AD12F43EA7300C2E2CD /* MLXZImageSwift in Frameworks */,
 				4DAE61A22F393D20007FA64C /* MLX in Frameworks */,
 				4D9E2A5E2F43740900C2E2CD /* MLXEmbedders in Frameworks */,
 				4D9E2AC42F43B6CB00C2E2CD /* FluxSwift in Frameworks */,
 				4A5C395229D8765200BCB534 /* OmenTextField in Frameworks */,
 				4D9E2A772F43893800C2E2CD /* StableDiffusion in Frameworks */,
+				4D9E2ACB2F43EA7300C2E2CD /* MLXPipeline in Frameworks */,
 				4A2842492C87014800E5C920 /* KeychainAccess in Frameworks */,
 				4DAE61A82F393D20007FA64C /* MLXLinalg in Frameworks */,
 				4D9E2A7F2F43AA1800C2E2CD /* Tokenizers in Frameworks */,
@@ -431,6 +462,8 @@
 				C46C81692ED47DAD00F238F3 /* MCP in Frameworks */,
 				7F97AE1B2E0D75000050CAFE /* Markdown in Frameworks */,
 				4A471B862C29C56800C66926 /* SwiftMath in Frameworks */,
+				4D9E2AC92F43EA7300C2E2CD /* LoRAUtils in Frameworks */,
+				4D9E2ACD2F43EA7300C2E2CD /* MLXTextEncoder in Frameworks */,
 				4D9E2A7D2F43AA1800C2E2CD /* Hub in Frameworks */,
 				4D4F45A52F22CDCD00B042DE /* HuggingFace in Frameworks */,
 				4DAE61A42F393D20007FA64C /* MLXFFT in Frameworks */,
@@ -448,6 +481,20 @@
 		4A399CAD29BC8FF200E98796 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			files = (
+			);
+		};
+		4D9E2AD52F43F01B00C2E2CD /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+				4D9E2AEA2F43F06E00C2E2CD /* MLXPipeline in Frameworks */,
+				4D9E2AE62F43F06E00C2E2CD /* Tokenizers in Frameworks */,
+				4D9E2AF02F43F06E00C2E2CD /* MLXZImageSwift in Frameworks */,
+				4D9E2AE42F43F06E00C2E2CD /* Hub in Frameworks */,
+				4D9E2AE22F43F06E00C2E2CD /* MLX in Frameworks */,
+				4D9E2AE82F43F06E00C2E2CD /* LoRAUtils in Frameworks */,
+				4D9E2AE02F43F03600C2E2CD /* HuggingFace in Frameworks */,
+				4D9E2AEC2F43F06E00C2E2CD /* MLXTextEncoder in Frameworks */,
+				4D9E2AEE2F43F06E00C2E2CD /* MLXZImage in Frameworks */,
 			);
 		};
 /* End PBXFrameworksBuildPhase section */
@@ -711,6 +758,7 @@
 				4A399C9729BC8FEF00E98796 /* Warden */,
 				4A399CA929BC8FF200E98796 /* WardenTests */,
 				4A399CB329BC8FF200E98796 /* WardenUITests */,
+				4D9E2AD92F43F01B00C2E2CD /* MLXZImageSwiftCLI */,
 				4A399C9629BC8FEF00E98796 /* Products */,
 				4A5C394629D834DC00BCB534 /* Frameworks */,
 				C42D9A022EF9078E0028D1BB /* AppIcon.icon */,
@@ -723,6 +771,7 @@
 				4A399C9529BC8FEF00E98796 /* Warden.app */,
 				4A399CA629BC8FF200E98796 /* WardenTests.xctest */,
 				4A399CB029BC8FF200E98796 /* WardenUITests.xctest */,
+				4D9E2AD82F43F01B00C2E2CD /* MLXZImageSwiftCLI */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -888,6 +937,11 @@
 				4D9E2A7E2F43AA1800C2E2CD /* Tokenizers */,
 				4D9E2A802F43AA1800C2E2CD /* Transformers */,
 				4D9E2AC32F43B6CB00C2E2CD /* FluxSwift */,
+				4D9E2AC82F43EA7300C2E2CD /* LoRAUtils */,
+				4D9E2ACA2F43EA7300C2E2CD /* MLXPipeline */,
+				4D9E2ACC2F43EA7300C2E2CD /* MLXTextEncoder */,
+				4D9E2ACE2F43EA7300C2E2CD /* MLXZImage */,
+				4D9E2AD02F43EA7300C2E2CD /* MLXZImageSwift */,
 			);
 			productName = macai;
 			productReference = 4A399C9529BC8FEF00E98796 /* Warden.app */;
@@ -929,6 +983,35 @@
 			productReference = 4A399CB029BC8FF200E98796 /* WardenUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
+		4D9E2AD72F43F01B00C2E2CD /* MLXZImageSwiftCLI */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 4D9E2ADC2F43F01B00C2E2CD /* Build configuration list for PBXNativeTarget "MLXZImageSwiftCLI" */;
+			buildPhases = (
+				4D9E2AD42F43F01B00C2E2CD /* Sources */,
+				4D9E2AD52F43F01B00C2E2CD /* Frameworks */,
+				4D9E2AD62F43F01B00C2E2CD /* CopyFiles */,
+			);
+			buildRules = (
+			);
+			fileSystemSynchronizedGroups = (
+				4D9E2AD92F43F01B00C2E2CD /* MLXZImageSwiftCLI */,
+			);
+			name = MLXZImageSwiftCLI;
+			packageProductDependencies = (
+				4D9E2ADF2F43F03600C2E2CD /* HuggingFace */,
+				4D9E2AE12F43F06E00C2E2CD /* MLX */,
+				4D9E2AE32F43F06E00C2E2CD /* Hub */,
+				4D9E2AE52F43F06E00C2E2CD /* Tokenizers */,
+				4D9E2AE72F43F06E00C2E2CD /* LoRAUtils */,
+				4D9E2AE92F43F06E00C2E2CD /* MLXPipeline */,
+				4D9E2AEB2F43F06E00C2E2CD /* MLXTextEncoder */,
+				4D9E2AED2F43F06E00C2E2CD /* MLXZImage */,
+				4D9E2AEF2F43F06E00C2E2CD /* MLXZImageSwift */,
+			);
+			productName = MLXZImageSwiftCLI;
+			productReference = 4D9E2AD82F43F01B00C2E2CD /* MLXZImageSwiftCLI */;
+			productType = "com.apple.product-type.tool";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -936,7 +1019,7 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
-				LastSwiftUpdateCheck = 1420;
+				LastSwiftUpdateCheck = 2630;
 				LastUpgradeCheck = 2600;
 				TargetAttributes = {
 					4A399C9429BC8FEF00E98796 = {
@@ -949,6 +1032,9 @@
 					4A399CAF29BC8FF200E98796 = {
 						CreatedOnToolsVersion = 14.2;
 						TestTargetID = 4A399C9429BC8FEF00E98796;
+					};
+					4D9E2AD72F43F01B00C2E2CD = {
+						CreatedOnToolsVersion = 26.3;
 					};
 				};
 			};
@@ -974,6 +1060,7 @@
 				4D9E2A752F4387DE00C2E2CD /* XCRemoteSwiftPackageReference "mlx-swift-examples" */,
 				4D9E2A7B2F43AA1800C2E2CD /* XCRemoteSwiftPackageReference "swift-transformers" */,
 				4D9E2AC22F43B6CB00C2E2CD /* XCLocalSwiftPackageReference "Packages/flux.swift" */,
+				4D9E2AC72F43EA7300C2E2CD /* XCLocalSwiftPackageReference "Packages/MLXZImageSwift" */,
 			);
 			preferredProjectObjectVersion = 90;
 			productRefGroup = 4A399C9629BC8FEF00E98796 /* Products */;
@@ -983,6 +1070,7 @@
 				4A399C9429BC8FEF00E98796 /* Warden */,
 				4A399CA529BC8FF200E98796 /* WardenTests */,
 				4A399CAF29BC8FF200E98796 /* WardenUITests */,
+				4D9E2AD72F43F01B00C2E2CD /* MLXZImageSwiftCLI */,
 			);
 		};
 /* End PBXProject section */
@@ -1180,6 +1268,11 @@
 			files = (
 				4A399CB729BC8FF200E98796 /* WardenUITestsLaunchTests.swift in Sources */,
 				4A399CB529BC8FF200E98796 /* WardenUITests.swift in Sources */,
+			);
+		};
+		4D9E2AD42F43F01B00C2E2CD /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
 			);
 		};
 /* End PBXSourcesBuildPhase section */
@@ -1516,6 +1609,45 @@
 			};
 			name = Release;
 		};
+		4D9E2ADD2F43F01B00C2E2CD /* Debug configuration for PBXNativeTarget "MLXZImageSwiftCLI" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = RJYVGK9S3F;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.2;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		4D9E2ADE2F43F01B00C2E2CD /* Release configuration for PBXNativeTarget "MLXZImageSwiftCLI" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = RJYVGK9S3F;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.2;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -1551,12 +1683,24 @@
 			);
 			defaultConfigurationName = Release;
 		};
+		4D9E2ADC2F43F01B00C2E2CD /* Build configuration list for PBXNativeTarget "MLXZImageSwiftCLI" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4D9E2ADD2F43F01B00C2E2CD /* Debug configuration for PBXNativeTarget "MLXZImageSwiftCLI" */,
+				4D9E2ADE2F43F01B00C2E2CD /* Release configuration for PBXNativeTarget "MLXZImageSwiftCLI" */,
+			);
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
 		4D9E2AC22F43B6CB00C2E2CD /* XCLocalSwiftPackageReference "Packages/flux.swift" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Packages/flux.swift;
+		};
+		4D9E2AC72F43EA7300C2E2CD /* XCLocalSwiftPackageReference "Packages/MLXZImageSwift" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/MLXZImageSwift;
 		};
 /* End XCLocalSwiftPackageReference section */
 
@@ -1745,6 +1889,71 @@
 		4D9E2AC32F43B6CB00C2E2CD /* FluxSwift */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = FluxSwift;
+		};
+		4D9E2AC82F43EA7300C2E2CD /* LoRAUtils */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = LoRAUtils;
+		};
+		4D9E2ACA2F43EA7300C2E2CD /* MLXPipeline */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = MLXPipeline;
+		};
+		4D9E2ACC2F43EA7300C2E2CD /* MLXTextEncoder */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = MLXTextEncoder;
+		};
+		4D9E2ACE2F43EA7300C2E2CD /* MLXZImage */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = MLXZImage;
+		};
+		4D9E2AD02F43EA7300C2E2CD /* MLXZImageSwift */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = MLXZImageSwift;
+		};
+		4D9E2ADF2F43F03600C2E2CD /* HuggingFace */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4D4F45A32F22CDCD00B042DE /* XCRemoteSwiftPackageReference "swift-huggingface" */;
+			productName = HuggingFace;
+		};
+		4D9E2AE12F43F06E00C2E2CD /* MLX */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4DAE61A02F393D20007FA64C /* XCRemoteSwiftPackageReference "mlx-swift" */;
+			productName = MLX;
+		};
+		4D9E2AE32F43F06E00C2E2CD /* Hub */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4D9E2A7B2F43AA1800C2E2CD /* XCRemoteSwiftPackageReference "swift-transformers" */;
+			productName = Hub;
+		};
+		4D9E2AE52F43F06E00C2E2CD /* Tokenizers */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4D9E2A7B2F43AA1800C2E2CD /* XCRemoteSwiftPackageReference "swift-transformers" */;
+			productName = Tokenizers;
+		};
+		4D9E2AE72F43F06E00C2E2CD /* LoRAUtils */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4D9E2AC72F43EA7300C2E2CD /* XCLocalSwiftPackageReference "Packages/MLXZImageSwift" */;
+			productName = LoRAUtils;
+		};
+		4D9E2AE92F43F06E00C2E2CD /* MLXPipeline */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4D9E2AC72F43EA7300C2E2CD /* XCLocalSwiftPackageReference "Packages/MLXZImageSwift" */;
+			productName = MLXPipeline;
+		};
+		4D9E2AEB2F43F06E00C2E2CD /* MLXTextEncoder */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4D9E2AC72F43EA7300C2E2CD /* XCLocalSwiftPackageReference "Packages/MLXZImageSwift" */;
+			productName = MLXTextEncoder;
+		};
+		4D9E2AED2F43F06E00C2E2CD /* MLXZImage */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4D9E2AC72F43EA7300C2E2CD /* XCLocalSwiftPackageReference "Packages/MLXZImageSwift" */;
+			productName = MLXZImage;
+		};
+		4D9E2AEF2F43F06E00C2E2CD /* MLXZImageSwift */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4D9E2AC72F43EA7300C2E2CD /* XCLocalSwiftPackageReference "Packages/MLXZImageSwift" */;
+			productName = MLXZImageSwift;
 		};
 		4DAE61A12F393D20007FA64C /* MLX */ = {
 			isa = XCSwiftPackageProductDependency;

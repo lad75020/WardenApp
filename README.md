@@ -1,5 +1,5 @@
 <div align="center">
-
+FORK OF https://github.com/SidhuK/WardenApp, for additional library support
 <img src="./assets/Logo.png" width="128" />
 
 # Warden
@@ -21,8 +21,6 @@
 
 Warden is a fast, beautiful, and privacy-focused AI client built purely in SwiftUI.
 No Electron, no web wrappers—just a premium native experience.
-
-[Download for macOS](https://github.com/SidhuK/WardenApp/releases) • [View Website](https://karatsidhu.gumroad.com/l/warden)
 
 <br/>
 
@@ -49,21 +47,13 @@ Warden is different. It's built with 100% native code, making it:
 
 ## 📥 Installation
 
-### Homebrew (Recommended)
-
-```bash
-brew install --cask SidhuK/warden/warden
-```
-
-> **Note:** On first launch, right-click → Open (app is not notarized).
-
 ### Manual Download
 
 <div align="center">
 
 | **Typical User** | **Developer** |
 | :---: | :---: |
-| [**Download Installer**](https://github.com/SidhuK/WardenApp/releases)<br>Simply drag to Applications | [**Build from Source**](#build-from-source)<br>Clone and run in Xcode |
+| [**Download Installer**](https://github.com/lad75020/WardenApp/releases)<br>Simply drag to Applications | [**Build from Source**](#build-from-source)<br>Clone and run in Xcode |
 
 </div>
 
@@ -72,19 +62,11 @@ brew install --cask SidhuK/warden/warden
 ### Build from Source
 
 ```bash
-git clone https://github.com/SidhuK/WardenApp.git
+git clone https://github.com/lad75020/WardenApp.git
 cd WardenApp
 open Warden.xcodeproj
 # Press Cmd+R to run
 ```
-## ❤️ Support
-
-Warden is open source and free. If you enjoy using it, you can support development:
-
-- [Star this repo](https://github.com/SidhuK/WardenApp) 🌟
-- [Buy Me a Coffee](https://www.buymeacoffee.com/karatsidhu) ☕️
-
----
 
 <div align="center">
 
