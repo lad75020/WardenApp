@@ -92,7 +92,7 @@ struct TabAPIServicesView: View {
                         refreshList()
                     },
                     onSetDefault: {
-                        defaultApiServiceID = service.objectID.uriRepresentation().absoluteString
+                        _ = APIServiceManager(viewContext: viewContext).setDefaultAPIService(service)
                     },
                     isDefault: isSelectedServiceDefault
                 )
@@ -136,30 +136,12 @@ struct TabAPIServicesView: View {
 
     private func duplicateService() {
         guard let selectedService = apiServices.first(where: { $0.objectID == selectedServiceID }) else { return }
-        
-        let newService = selectedService.copy() as! APIServiceEntity
-        newService.name = (selectedService.name ?? "") + " Copy"
-        newService.addedDate = Date()
-        
-        let newServiceID = UUID()
-        newService.id = newServiceID
-
-        if let oldServiceIDString = selectedService.id?.uuidString {
-            do {
-                if let token = try TokenManager.getToken(for: oldServiceIDString) {
-                    try TokenManager.setToken(token, for: newServiceID.uuidString)
-                }
-            } catch {
-                WardenLog.app.error("Error copying API token: \(error.localizedDescription, privacy: .public)")
-            }
-        }
-
-        do {
-            try viewContext.save()
-            selectedServiceID = newService.objectID
+        switch APIServiceManager(viewContext: viewContext).duplicateAPIService(selectedService) {
+        case .success(let copy):
+            selectedServiceID = copy.objectID
             refreshList()
-        } catch {
-            WardenLog.coreData.error("Error duplicating service: \(error.localizedDescription, privacy: .public)")
+        case .failure:
+            break
         }
     }
 
@@ -334,11 +316,10 @@ struct APIServiceDetailContent: View {
                             
                             VStack(spacing: 12) {
                                 SettingsRow(title: "API Token") {
-                                    TextField("", text: $viewModel.apiKey)
+                                    SecureField("API token", text: $viewModel.apiKey)
                                         .textFieldStyle(.roundedBorder)
                                         .frame(width: 250)
                                         .focused($isTokenFocused)
-                                        .blur(radius: !viewModel.apiKey.isEmpty && !isTokenFocused ? 3 : 0)
                                         .onChange(of: viewModel.apiKey) { _, newValue in
                                             viewModel.onChangeApiKey(newValue)
                                         }
@@ -525,13 +506,7 @@ struct APIServiceDetailContent: View {
                                 Text("Test Connection")
                                     .font(.system(size: 13))
                                 Spacer()
-                                ButtonTestApiTokenAndModel(
-                                    lampColor: $lampColor,
-                                    gptToken: viewModel.apiKey,
-                                    gptModel: viewModel.model,
-                                    apiUrl: viewModel.url,
-                                    apiType: viewModel.type
-                                )
+                                ButtonTestApiTokenAndModel(viewModel: viewModel)
                             }
                         }
                     }
@@ -675,8 +650,9 @@ struct APIServiceDetailContent: View {
         .alert("Delete Service", isPresented: $showingDeleteConfirmation) {
             Button("Cancel", role: .cancel) { }
             Button("Delete", role: .destructive) {
-                viewModel.deleteAPIService()
-                onDelete()
+                if viewModel.deleteAPIService() {
+                    onDelete()
+                }
             }
         } message: {
             Text("Are you sure you want to delete this service?")

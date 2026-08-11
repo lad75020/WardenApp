@@ -71,6 +71,7 @@
 		4ABB867B2CFC79ED004EC7B1 /* ErrorBubbleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4ABB867A2CFC79ED004EC7B1 /* ErrorBubbleView.swift */; };
 		4ABDBE6629F86B5900661B2D /* MessageParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4ABDBE6529F86B5900661B2D /* MessageParser.swift */; };
 		4ABDBE6B29F86E8D00661B2D /* MessageParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4ABDBE6A29F86E8D00661B2D /* MessageParserTests.swift */; };
+		E30000010000000100000001 /* APIServiceConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E30000010000000100000002 /* APIServiceConfigurationTests.swift */; };
 		A1B2C3D4E5F60708090A0B01 /* AppShellTestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60708090A0B02 /* AppShellTestSupport.swift */; };
 		A1B2C3D4E5F60708090A0B04 /* WelcomeExperienceStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60708090A0B05 /* WelcomeExperienceStateTests.swift */; };
 		A00100050001000100010001 /* OnboardingFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00100060001000100010001 /* OnboardingFlowTests.swift */; };
@@ -316,6 +317,7 @@
 		4ABB867A2CFC79ED004EC7B1 /* ErrorBubbleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorBubbleView.swift; sourceTree = "<group>"; };
 		4ABDBE6529F86B5900661B2D /* MessageParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageParser.swift; sourceTree = "<group>"; };
 		4ABDBE6A29F86E8D00661B2D /* MessageParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageParserTests.swift; sourceTree = "<group>"; };
+		E30000010000000100000002 /* APIServiceConfigurationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIServiceConfigurationTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60708090A0B02 /* AppShellTestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppShellTestSupport.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60708090A0B05 /* WelcomeExperienceStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeExperienceStateTests.swift; sourceTree = "<group>"; };
 		A00100060001000100010001 /* OnboardingFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingFlowTests.swift; sourceTree = "<group>"; };
@@ -834,6 +836,7 @@
 			isa = PBXGroup;
 			children = (
 				4ABDBE6A29F86E8D00661B2D /* MessageParserTests.swift */,
+				E30000010000000100000002 /* APIServiceConfigurationTests.swift */,
 				C4D1E2F32F0652E300B80001 /* SSEStreamParserTests.swift */,
 			);
 			path = Utilities;
@@ -1257,6 +1260,7 @@
 				A1B2C3D4E5F60708090A0B04 /* WelcomeExperienceStateTests.swift in Sources */,
 				A00100050001000100010001 /* OnboardingFlowTests.swift in Sources */,
 				4ABDBE6B29F86E8D00661B2D /* MessageParserTests.swift in Sources */,
+				E30000010000000100000001 /* APIServiceConfigurationTests.swift in Sources */,
 				C4D1E2F42F0652E300B80002 /* SSEStreamParserTests.swift in Sources */,
 			);
 		};

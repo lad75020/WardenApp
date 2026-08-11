@@ -115,20 +115,18 @@ extension APIService {
         }
 
         if !(200...299).contains(httpResponse.statusCode) {
-            if let data = data, let body = String(data: data, encoding: .utf8) {
-                let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
-                let safeBody = trimmed.isEmpty ? "<empty body>" : trimmed
+            if data != nil {
                 switch httpResponse.statusCode {
                 case 401:
                     return .failure(.unauthorized)
                 case 429:
                     return .failure(.rateLimited)
                 case 400...499:
-                    return .failure(.serverError("Client Error (HTTP \(httpResponse.statusCode)): \(safeBody)"))
+                    return .failure(.serverError("Client error (HTTP \(httpResponse.statusCode))"))
                 case 500...599:
-                    return .failure(.serverError("Server Error (HTTP \(httpResponse.statusCode)): \(safeBody)"))
+                    return .failure(.serverError("Server error (HTTP \(httpResponse.statusCode))"))
                 default:
-                    return .failure(.unknown("HTTP \(httpResponse.statusCode): \(safeBody)"))
+                    return .failure(.unknown("HTTP \(httpResponse.statusCode)"))
                 }
             } else {
                 return .failure(.serverError("HTTP \(httpResponse.statusCode) (<no response body>)"))

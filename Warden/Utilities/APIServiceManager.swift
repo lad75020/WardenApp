@@ -3,10 +3,219 @@ import CoreData
 import os
 
 class APIServiceManager {
+    enum EndpointValidationError: Error, Equatable {
+        case invalidEndpoint
+        case insecureCredentialTransport
+    }
+
+    enum LifecycleError: Error, Equatable {
+        case persistenceFailed
+        case credentialFailed
+        case invalidService
+    }
+
+    enum LifecycleResult: Equatable {
+        case saved
+        case deleted(defaultCleared: Bool)
+        case duplicated
+        case defaultSet
+    }
+
     private let viewContext: NSManagedObjectContext
+    private let defaults: UserDefaults
     
-    init(viewContext: NSManagedObjectContext) {
+    init(viewContext: NSManagedObjectContext, defaults: UserDefaults = .standard) {
         self.viewContext = viewContext
+        self.defaults = defaults
+    }
+
+    /// Validates a user-entered endpoint before any save or network operation.
+    /// Remote plaintext is allowed only when it carries no credential.
+    static func validateEndpoint(_ rawValue: String, credential: String) -> Result<URL, EndpointValidationError> {
+        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: trimmed),
+              let scheme = url.scheme?.lowercased(),
+              let host = url.host,
+              !host.isEmpty,
+              scheme == "http" || scheme == "https"
+        else {
+            return .failure(.invalidEndpoint)
+        }
+
+        if !credential.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           !url.allowsSensitiveTransport {
+            return .failure(.insecureCredentialTransport)
+        }
+        return .success(url)
+    }
+
+    static func userSafeEndpointMessage(for error: EndpointValidationError) -> String {
+        switch error {
+        case .invalidEndpoint:
+            return "Enter a valid HTTP or HTTPS service URL."
+        case .insecureCredentialTransport:
+            return "Use HTTPS for a remote service with an API token, or use a loopback HTTP URL for a local service."
+        }
+    }
+
+    /// Maps failures to stable user-facing categories; never interpolate provider bodies or credentials.
+    static func userSafeErrorMessage(for error: Error) -> String {
+        if let endpointError = error as? EndpointValidationError {
+            return userSafeEndpointMessage(for: endpointError)
+        }
+        if let apiError = error as? APIError {
+            switch apiError {
+            case .unauthorized:
+                return "Authentication failed. Check the API token."
+            case .rateLimited:
+                return "The service is rate limited. Try again shortly."
+            case .invalidResponse, .decodingFailed:
+                return "The service returned an invalid response. Check the service URL."
+            case .serverError:
+                return "The service returned an error. Please try again later."
+            case .requestFailed(let requestError):
+                let nsError = requestError as NSError
+                if nsError.code == NSURLErrorTimedOut {
+                    return "The request timed out. Check the service and try again."
+                }
+                return "Could not reach the service. Check the service URL and network connection."
+            case .noApiService:
+                return "The service configuration is not valid for this request."
+            case .unknown:
+                return "The service request could not be completed."
+            }
+        }
+        return "The service request could not be completed."
+    }
+
+    static func allowsStreaming(providerType: String, model: String) -> Bool {
+        let provider = providerType.lowercased()
+        return !provider.contains("image") && !model.lowercased().hasPrefix("gpt-image")
+    }
+
+    @discardableResult
+    func saveAPIService(
+        _ service: APIServiceEntity?,
+        name: String,
+        type: String,
+        url: URL,
+        model: String,
+        contextSize: Int16,
+        useStreamResponse: Bool,
+        generateChatNames: Bool,
+        imageUploadsAllowed: Bool,
+        defaultPersona: PersonaEntity?,
+        credential: String
+    ) -> Result<APIServiceEntity, LifecycleError> {
+        var result: Result<APIServiceEntity, LifecycleError> = .failure(.persistenceFailed)
+        viewContext.performAndWait {
+            let isNew = service == nil
+            let target = service ?? APIServiceEntity(context: viewContext)
+            if target.id == nil { target.id = UUID() }
+            target.name = name
+            target.type = type
+            target.url = url
+            target.model = model
+            target.contextSize = contextSize
+            target.useStreamResponse = Self.allowsStreaming(providerType: type, model: model) && useStreamResponse
+            target.generateChatNames = generateChatNames
+            target.imageUploadsAllowed = imageUploadsAllowed
+            target.defaultPersona = defaultPersona
+            if isNew { target.addedDate = Date() } else { target.editedDate = Date() }
+
+            do {
+                try viewContext.save()
+            } catch {
+                viewContext.rollback()
+                result = .failure(.persistenceFailed)
+                return
+            }
+
+            guard let identifier = target.id?.uuidString else {
+                result = .failure(.invalidService)
+                return
+            }
+            do {
+                if credential.isEmpty {
+                    try TokenManager.deleteToken(for: identifier)
+                } else {
+                    try TokenManager.setToken(credential, for: identifier)
+                }
+                result = .success(target)
+            } catch {
+                // Metadata is already durable and remains recoverable; no secret is logged.
+                result = .failure(.credentialFailed)
+            }
+        }
+        return result
+    }
+
+    @discardableResult
+    func duplicateAPIService(_ service: APIServiceEntity) -> Result<APIServiceEntity, LifecycleError> {
+        var result: Result<APIServiceEntity, LifecycleError> = .failure(.persistenceFailed)
+        viewContext.performAndWait {
+            let copy = APIServiceEntity(context: viewContext)
+            copy.id = UUID()
+            copy.name = (service.name ?? "Untitled Service") + " Copy"
+            copy.type = service.type
+            copy.url = service.url
+            copy.model = service.model
+            copy.contextSize = service.contextSize
+            copy.useStreamResponse = service.useStreamResponse
+            copy.generateChatNames = service.generateChatNames
+            copy.imageUploadsAllowed = service.imageUploadsAllowed
+            copy.defaultPersona = service.defaultPersona
+            copy.addedDate = Date()
+            do {
+                try viewContext.save()
+                if let sourceID = service.id?.uuidString,
+                   let copyID = copy.id?.uuidString,
+                   let token = try TokenManager.getToken(for: sourceID) {
+                    try TokenManager.setToken(token, for: copyID)
+                }
+                result = .success(copy)
+            } catch {
+                // Do not delete or overwrite the source service/token on a failed copy.
+                result = .failure(.credentialFailed)
+            }
+        }
+        return result
+    }
+
+    @discardableResult
+    func deleteAPIServiceTransactionally(_ service: APIServiceEntity) -> Result<LifecycleResult, LifecycleError> {
+        var result: Result<LifecycleResult, LifecycleError> = .failure(.persistenceFailed)
+        viewContext.performAndWait {
+            guard let identifier = service.id?.uuidString else {
+                result = .failure(.invalidService)
+                return
+            }
+            let uri = service.objectID.uriRepresentation().absoluteString
+            viewContext.delete(service)
+            do {
+                try viewContext.save()
+            } catch {
+                viewContext.rollback()
+                result = .failure(.persistenceFailed)
+                return
+            }
+            let wasDefault = defaults.string(forKey: "defaultApiService") == uri
+            if wasDefault { defaults.removeObject(forKey: "defaultApiService") }
+            do {
+                try TokenManager.deleteToken(for: identifier)
+                result = .success(.deleted(defaultCleared: wasDefault))
+            } catch {
+                result = .failure(.credentialFailed)
+            }
+        }
+        return result
+    }
+
+    @discardableResult
+    func setDefaultAPIService(_ service: APIServiceEntity) -> Result<LifecycleResult, LifecycleError> {
+        guard !service.objectID.isTemporaryID else { return .failure(.invalidService) }
+        defaults.set(service.objectID.uriRepresentation().absoluteString, forKey: "defaultApiService")
+        return .success(.defaultSet)
     }
     
     func createAPIService(name: String, type: String, url: URL, model: String, contextSize: Int16, useStreamResponse: Bool, generateChatNames: Bool) -> APIServiceEntity {
