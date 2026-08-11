@@ -325,7 +325,6 @@
 		4D4F458F2F219EE000B042DE /* APIServiceFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIServiceFactory.swift; sourceTree = "<group>"; };
 		4D4F45912F219EE500B042DE /* HuggingFaceLogo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HuggingFaceLogo.swift; sourceTree = "<group>"; };
 		4D9E2A5A2F43713C00C2E2CD /* MLXHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXHandler.swift; sourceTree = "<group>"; };
-		4D9E2A672F43810B00C2E2CD /* StableDiffusion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StableDiffusion.swift; path = "../mlx-swift-examples-2.29.1/Libraries/StableDiffusion/StableDiffusion.swift"; sourceTree = "<group>"; };
 		4D9E2AC52F43B7CE00C2E2CD /* MLXHandler+Flux.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "MLXHandler+Flux.swift"; sourceTree = "<group>"; };
 		4D9E2AD82F43F01B00C2E2CD /* MLXZImageSwiftCLI */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = MLXZImageSwiftCLI; sourceTree = BUILT_PRODUCTS_DIR; };
 		4D9F3F712F2100AA000E7F7D /* OllamaHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OllamaHandler.swift; sourceTree = "<group>"; };
@@ -412,12 +411,6 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		4D9E2A742F4386A600C2E2CD /* StableDiffusion */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			name = StableDiffusion;
-			path = "../mlx-swift-examples-2.29.1/Libraries/StableDiffusion";
-			sourceTree = "<group>";
-		};
 		4D9E2AD92F43F01B00C2E2CD /* MLXZImageSwiftCLI */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = MLXZImageSwiftCLI;
@@ -749,7 +742,6 @@
 				4A399CB329BC8FF200E98796 /* WardenUITests */,
 				4D9E2AD92F43F01B00C2E2CD /* MLXZImageSwiftCLI */,
 				4A399C9629BC8FEF00E98796 /* Products */,
-				4A5C394629D834DC00BCB534 /* Frameworks */,
 				C42D9A022EF9078E0028D1BB /* AppIcon.icon */,
 			);
 			sourceTree = "<group>";
@@ -799,15 +791,6 @@
 				4A399CB629BC8FF200E98796 /* WardenUITestsLaunchTests.swift */,
 			);
 			path = WardenUITests;
-			sourceTree = "<group>";
-		};
-		4A5C394629D834DC00BCB534 /* Frameworks */ = {
-			isa = PBXGroup;
-			children = (
-				4D9E2A742F4386A600C2E2CD /* StableDiffusion */,
-				4D9E2A672F43810B00C2E2CD /* StableDiffusion.swift */,
-			);
-			name = Frameworks;
 			sourceTree = "<group>";
 		};
 		4ABDBE6429F86B3900661B2D /* Configuration */ = {

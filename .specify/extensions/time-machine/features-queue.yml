@@ -1,0 +1,229 @@
+analyzed_at: "2026-08-11T17:29:16Z"
+project_root: "/Volumes/WDBlack4TB/Code/WardenApp"
+total_features: 12
+completed: 0
+features:
+  - id: "app-shell-and-onboarding"
+    name: "App Shell and Onboarding"
+    description: "Provides the native macOS application lifecycle, main window, first-run experience, preferences entry points, and appearance settings."
+    files:
+      - "Warden/WardenApp.swift"
+      - "Warden/UI/ContentView.swift"
+      - "Warden/UI/WelcomeScreen/"
+      - "Warden/UI/Preferences/SettingsView.swift"
+      - "Warden/UI/Preferences/PreferencesView.swift"
+      - "Warden/UI/Preferences/TabGeneralSettingsView.swift"
+      - "Warden/Utilities/SettingsWindowManager.swift"
+    status: in-progress # pending | in-progress | done | skipped
+    current_phase: plan # null | specify | clarify | plan | tasks | implement
+    branch: "feature/time-machine-app-shell-and-onboarding"
+    pushed: null # null | true | false
+    started_at: "2026-08-11T17:46:35Z"
+    completed_at: null
+
+  - id: "persistence-and-chat-history"
+    name: "Persistence and Chat History"
+    description: "Stores conversations, messages, projects, personas, and service configuration locally while preserving data through migrations and recovery paths."
+    files:
+      - "Warden/Store/"
+      - "Warden/Models/Models.swift"
+      - "Warden/Models/MessageContent.swift"
+      - "Warden/Models/RequestMessagesTransformer.swift"
+      - "Warden/Utilities/DatabasePatcher.swift"
+      - "Warden/Store/wardenDataModel.xcdatamodeld/"
+    status: pending # pending | in-progress | done | skipped
+    current_phase: null # null | specify | clarify | plan | tasks | implement
+    branch: null
+    pushed: null # null | true | false
+    started_at: null
+    completed_at: null
+
+  - id: "provider-and-model-configuration"
+    name: "Provider and Model Configuration"
+    description: "Lets users securely add, test, edit, select, and remove hosted or self-hosted AI services and their available models."
+    files:
+      - "Warden/Utilities/APIHandlers/APIProtocol.swift"
+      - "Warden/Utilities/APIHandlers/APIServiceConfig.swift"
+      - "Warden/Utilities/APIHandlers/BaseAPIHandler.swift"
+      - "Warden/Utilities/APIServiceFactory.swift"
+      - "Warden/Utilities/APIServiceManager.swift"
+      - "Warden/Utilities/TokenManager.swift"
+      - "Warden/UI/Preferences/TabAPIServicesView.swift"
+      - "Warden/UI/Preferences/TabAPIServices/"
+    status: pending # pending | in-progress | done | skipped
+    current_phase: null # null | specify | clarify | plan | tasks | implement
+    branch: null
+    pushed: null # null | true | false
+    started_at: null
+    completed_at: null
+
+  - id: "core-chat-and-streaming"
+    name: "Core Chat and Streaming"
+    description: "Enables users to compose prompts, receive cancellable streamed responses, retry messages, and manage the active conversation."
+    files:
+      - "Warden/UI/Chat/ChatView.swift"
+      - "Warden/UI/Chat/ChatViewModel.swift"
+      - "Warden/UI/Chat/MessageListView.swift"
+      - "Warden/UI/Chat/BottomContainer/"
+      - "Warden/Utilities/MessageManager.swift"
+      - "Warden/Utilities/SSEStreamParser.swift"
+      - "Warden/Utilities/StreamingTaskController.swift"
+      - "Warden/Utilities/IncrementalMessageParser.swift"
+    status: pending # pending | in-progress | done | skipped
+    current_phase: null # null | specify | clarify | plan | tasks | implement
+    branch: null
+    pushed: null # null | true | false
+    started_at: null
+    completed_at: null
+
+  - id: "rich-message-rendering"
+    name: "Rich Message Rendering"
+    description: "Displays AI responses as readable Markdown, highlighted code, tables, mathematics, thinking sections, and interactive previews."
+    files:
+      - "Warden/UI/Chat/BubbleView/"
+      - "Warden/UI/Chat/CodeView/"
+      - "Warden/UI/Chat/HTMLPreviewView.swift"
+      - "Warden/UI/Chat/ThinkingProcessView.swift"
+      - "Warden/UI/Components/MarkdownView.swift"
+      - "Warden/UI/Components/StreamingAttributedTextView.swift"
+      - "Warden/Utilities/MessageParser.swift"
+    status: pending # pending | in-progress | done | skipped
+    current_phase: null # null | specify | clarify | plan | tasks | implement
+    branch: null
+    pushed: null # null | true | false
+    started_at: null
+    completed_at: null
+
+  - id: "attachments-and-media"
+    name: "Attachments and Media"
+    description: "Allows users to attach, preview, send, render, open, and save files, images, and generated video within conversations."
+    files:
+      - "Warden/Models/FileAttachment.swift"
+      - "Warden/Models/ImageAttachment.swift"
+      - "Warden/Utilities/AttachmentResolver.swift"
+      - "Warden/Utilities/BackgroundDataLoader.swift"
+      - "Warden/UI/Components/FilePreviewView.swift"
+      - "Warden/UI/Chat/ZoomableImageView.swift"
+      - "Warden/UI/Chat/BubbleView/VideoAttachmentView.swift"
+      - "Warden/Utilities/APIHandlers/VeoHandler.swift"
+    status: pending # pending | in-progress | done | skipped
+    current_phase: null # null | specify | clarify | plan | tasks | implement
+    branch: null
+    pushed: null # null | true | false
+    started_at: null
+    completed_at: null
+
+  - id: "personas-and-model-selection"
+    name: "Personas and Model Selection"
+    description: "Lets users create reusable AI personas and quickly choose, favorite, and inspect models for each conversation."
+    files:
+      - "Warden/UI/Preferences/TabAIPersonasView.swift"
+      - "Warden/UI/Chat/ChatParameters/PersonaSelectorView.swift"
+      - "Warden/UI/Chat/BottomContainer/PersonaSelectorView.swift"
+      - "Warden/UI/Components/ModelSelectorDropdown.swift"
+      - "Warden/UI/Components/ModelInfoTooltip.swift"
+      - "Warden/UI/Components/FavoriteQuickAccessBar.swift"
+      - "Warden/Utilities/FavoriteModelsManager.swift"
+      - "Warden/Utilities/SelectedModelsManager.swift"
+      - "Warden/Utilities/ModelCacheManager.swift"
+      - "Warden/Utilities/ModelMetadata.swift"
+    status: pending # pending | in-progress | done | skipped
+    current_phase: null # null | specify | clarify | plan | tasks | implement
+    branch: null
+    pushed: null # null | true | false
+    started_at: null
+    completed_at: null
+
+  - id: "web-search-and-citations"
+    name: "Web Search and Citations"
+    description: "Augments prompts with Tavily web results and shows search progress, sources, citation badges, and actionable errors."
+    files:
+      - "Warden/Utilities/TavilySearchService.swift"
+      - "Warden/Utilities/TavilyKeyManager.swift"
+      - "Warden/Models/TavilyModels.swift"
+      - "Warden/Models/SearchModels.swift"
+      - "Warden/UI/Preferences/TabTavilySearchView.swift"
+      - "Warden/UI/Chat/Components/SearchProgressView.swift"
+      - "Warden/UI/Chat/Components/SearchResultsPreviewView.swift"
+      - "Warden/UI/Chat/Components/SearchErrorView.swift"
+      - "Warden/UI/Chat/Components/MessageSourcesView.swift"
+      - "Warden/UI/Chat/Components/CitationBadgeView.swift"
+    status: pending # pending | in-progress | done | skipped
+    current_phase: null # null | specify | clarify | plan | tasks | implement
+    branch: null
+    pushed: null # null | true | false
+    started_at: null
+    completed_at: null
+
+  - id: "chat-organization-and-sharing"
+    name: "Chat Organization and Sharing"
+    description: "Helps users search, archive, group, branch, summarize, export, and share conversations and projects."
+    files:
+      - "Warden/UI/ChatList/"
+      - "Warden/Utilities/ChatBranchingManager.swift"
+      - "Warden/Utilities/ChatSharingService.swift"
+      - "Warden/UI/Components/ChatShareMenu.swift"
+      - "Warden/UI/Chat/Components/BranchPopover.swift"
+      - "Warden/UI/Chat/Components/BranchCreationSheet.swift"
+      - "Warden/UI/Chat/ProjectSummaryView.swift"
+      - "Warden/UI/Chat/ProjectSummaryButton.swift"
+    status: pending # pending | in-progress | done | skipped
+    current_phase: null # null | specify | clarify | plan | tasks | implement
+    branch: null
+    pushed: null # null | true | false
+    started_at: null
+    completed_at: null
+
+  - id: "local-ai-and-generation"
+    name: "Local AI and Generation"
+    description: "Runs compatible text, vision, and image-generation models locally through MLX, Core ML, Hugging Face, Ollama, and LM Studio integrations."
+    files:
+      - "Warden/Utilities/APIHandlers/MLXHandler.swift"
+      - "Warden/Utilities/APIHandlers/MLXHandler+Flux.swift"
+      - "Warden/Utilities/APIHandlers/CoreMLTextGenerationService.swift"
+      - "Warden/Utilities/APIHandlers/OllamaHandler.swift"
+      - "Warden/Utilities/APIHandlers/LMStudioHandler.swift"
+      - "Warden/Utilities/HuggingFaceService.swift"
+      - "Warden/Utilities/ModelMetadataFetcher.swift"
+      - "MLXZImageSwiftCLI/"
+    status: pending # pending | in-progress | done | skipped
+    current_phase: null # null | specify | clarify | plan | tasks | implement
+    branch: null
+    pushed: null # null | true | false
+    started_at: null
+    completed_at: null
+
+  - id: "mcp-tool-integration"
+    name: "MCP Tool Integration"
+    description: "Lets users configure MCP servers, securely store their environment secrets, select tools for chats, and monitor tool execution."
+    files:
+      - "Warden/Core/MCP/"
+      - "Warden/UI/Preferences/MCP/"
+      - "Warden/UI/Chat/MCPAgentSelector.swift"
+      - "Warden/UI/Chat/Components/ToolCallProgressView.swift"
+      - "Warden/Utilities/MessageManager.swift"
+    status: pending # pending | in-progress | done | skipped
+    current_phase: null # null | specify | clarify | plan | tasks | implement
+    branch: null
+    pushed: null # null | true | false
+    started_at: null
+    completed_at: null
+
+  - id: "multi-agent-and-quick-chat"
+    name: "Multi-Agent and Quick Chat"
+    description: "Supports side-by-side responses from multiple services and a global-hotkey floating chat for fast access from anywhere on macOS."
+    files:
+      - "Warden/Utilities/MultiAgentMessageManager.swift"
+      - "Warden/UI/Chat/MultiAgentServiceSelector.swift"
+      - "Warden/UI/Chat/MultiAgentResponseView.swift"
+      - "Warden/UI/Chat/QuickChatView.swift"
+      - "Warden/Utilities/FloatingPanelManager.swift"
+      - "Warden/Utilities/GlobalHotkeyHandler.swift"
+      - "Warden/Models/HotkeyModels.swift"
+      - "Warden/UI/Preferences/TabHotkeysView.swift"
+    status: pending # pending | in-progress | done | skipped
+    current_phase: null # null | specify | clarify | plan | tasks | implement
+    branch: null
+    pushed: null # null | true | false
+    started_at: null
+    completed_at: null
