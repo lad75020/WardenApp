@@ -32,3 +32,8 @@ Changes crossing module boundaries must name the owning module in the implementa
 - **State**: `@StateObject` (owner), `@ObservedObject` (passed in), `@EnvironmentObject` (global).
 - **Concurrency**: `async`/`await`. Heavy work on background queues.
 - **Security**: NEVER log API keys. Use Keychain for secrets. NO analytics/tracking.
+
+<!-- SPECKIT START -->
+## Active Spec Kit Plan
+- `specs/001-app-shell-onboarding/plan.md`
+<!-- SPECKIT END -->
