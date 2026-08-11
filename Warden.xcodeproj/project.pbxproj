@@ -15,6 +15,8 @@
 		4A194C062C9633BC003C8782 /* EntityListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A194C052C9633BC003C8782 /* EntityListView.swift */; };
 		4A1F0A0A29CEFB7F002A139A /* MessageCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A1F0A0929CEFB7F002A139A /* MessageCell.swift */; };
 		4A1F0A0C29CF02CA002A139A /* WelcomeScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A1F0A0B29CF02CA002A139A /* WelcomeScreen.swift */; };
+		A1B2C3D4E5F60708090A0B10 /* WelcomeExperienceState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60708090A0B11 /* WelcomeExperienceState.swift */; };
+		A00100130001000100010001 /* OnboardingFlowState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00100140001000100010001 /* OnboardingFlowState.swift */; };
 		4A254A6D2CEA69EB00F66935 /* HighlighterManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A254A6C2CEA69EB00F66935 /* HighlighterManager.swift */; };
 		4A254A6F2CEA6A2400F66935 /* CodeViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A254A6E2CEA6A2400F66935 /* CodeViewModel.swift */; };
 		4A270AE329D4AFE7005E063C /* AppConstants.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A270AE229D4AFE7005E063C /* AppConstants.swift */; };
@@ -71,6 +73,9 @@
 		4ABDBE6B29F86E8D00661B2D /* MessageParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4ABDBE6A29F86E8D00661B2D /* MessageParserTests.swift */; };
 		A1B2C3D4E5F60708090A0B01 /* AppShellTestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60708090A0B02 /* AppShellTestSupport.swift */; };
 		A1B2C3D4E5F60708090A0B04 /* WelcomeExperienceStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60708090A0B05 /* WelcomeExperienceStateTests.swift */; };
+		A00100050001000100010001 /* OnboardingFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00100060001000100010001 /* OnboardingFlowTests.swift */; };
+		A1B2C3D4E5F60708090A0B06 /* AppShellTestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60708090A0B07 /* AppShellTestSupport.swift */; };
+		A1B2C3D4E5F60708090A0B08 /* AppShellUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60708090A0B09 /* AppShellUITests.swift */; };
 		4ACAD6632C13AE8F0081BDAC /* CodeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4ACAD6622C13AE8F0081BDAC /* CodeView.swift */; };
 		4ACE2FB82D61656000DEEA6D /* SwipeModifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4ACE2FB72D61656000DEEA6D /* SwipeModifier.swift */; };
 		4ADCA45B2C9B74E8005664A6 /* APIServiceDetailViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4ADCA45A2C9B74E8005664A6 /* APIServiceDetailViewModel.swift */; };
@@ -256,6 +261,8 @@
 		4A194C052C9633BC003C8782 /* EntityListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EntityListView.swift; sourceTree = "<group>"; };
 		4A1F0A0929CEFB7F002A139A /* MessageCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageCell.swift; sourceTree = "<group>"; };
 		4A1F0A0B29CF02CA002A139A /* WelcomeScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeScreen.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60708090A0B11 /* WelcomeExperienceState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeExperienceState.swift; sourceTree = "<group>"; };
+		A00100140001000100010001 /* OnboardingFlowState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingFlowState.swift; sourceTree = "<group>"; };
 		4A254A6C2CEA69EB00F66935 /* HighlighterManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HighlighterManager.swift; sourceTree = "<group>"; };
 		4A254A6E2CEA6A2400F66935 /* CodeViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeViewModel.swift; sourceTree = "<group>"; };
 		4A270AE229D4AFE7005E063C /* AppConstants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConstants.swift; sourceTree = "<group>"; };
@@ -311,6 +318,9 @@
 		4ABDBE6A29F86E8D00661B2D /* MessageParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageParserTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60708090A0B02 /* AppShellTestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppShellTestSupport.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60708090A0B05 /* WelcomeExperienceStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeExperienceStateTests.swift; sourceTree = "<group>"; };
+		A00100060001000100010001 /* OnboardingFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingFlowTests.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60708090A0B07 /* AppShellTestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppShellTestSupport.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60708090A0B09 /* AppShellUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppShellUITests.swift; sourceTree = "<group>"; };
 		4ACAD6622C13AE8F0081BDAC /* CodeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeView.swift; sourceTree = "<group>"; };
 		4ACE2FB72D61656000DEEA6D /* SwipeModifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwipeModifier.swift; sourceTree = "<group>"; };
 		4ADCA45A2C9B74E8005664A6 /* APIServiceDetailViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIServiceDetailViewModel.swift; sourceTree = "<group>"; };
@@ -658,6 +668,8 @@
 			children = (
 				4A5F64C029C78B64000403F7 /* SceneKitParticlesView.swift */,
 				4A1F0A0B29CF02CA002A139A /* WelcomeScreen.swift */,
+				A1B2C3D4E5F60708090A0B11 /* WelcomeExperienceState.swift */,
+				A00100140001000100010001 /* OnboardingFlowState.swift */,
 				7FE379012DE9A1DA0093DACE /* InteractiveOnboardingView.swift */,
 			);
 			path = WelcomeScreen;
@@ -794,6 +806,7 @@
 			children = (
 				A1B2C3D4E5F60708090A0B02 /* AppShellTestSupport.swift */,
 				A1B2C3D4E5F60708090A0B05 /* WelcomeExperienceStateTests.swift */,
+				A00100060001000100010001 /* OnboardingFlowTests.swift */,
 			);
 			path = AppShell;
 			sourceTree = "<group>";
@@ -801,6 +814,8 @@
 		4A399CB329BC8FF200E98796 /* WardenUITests */ = {
 			isa = PBXGroup;
 			children = (
+				A1B2C3D4E5F60708090A0B07 /* AppShellTestSupport.swift */,
+				A1B2C3D4E5F60708090A0B09 /* AppShellUITests.swift */,
 				4A399CB429BC8FF200E98796 /* WardenUITests.swift */,
 				4A399CB629BC8FF200E98796 /* WardenUITestsLaunchTests.swift */,
 			);
@@ -1129,6 +1144,8 @@
 				7FFCDEA32E02C643003E764A /* LMStudioHandler.swift in Sources */,
 				4A885C582CEA3F7B0018BBED /* ChatListRow.swift in Sources */,
 				4A1F0A0C29CF02CA002A139A /* WelcomeScreen.swift in Sources */,
+				A1B2C3D4E5F60708090A0B10 /* WelcomeExperienceState.swift in Sources */,
+				A00100130001000100010001 /* OnboardingFlowState.swift in Sources */,
 				4ADCA45B2C9B74E8005664A6 /* APIServiceDetailViewModel.swift in Sources */,
 				7F4B74C42DFFC83100C844A2 /* ToastNotification.swift in Sources */,
 				C45059962ED6CD2100AF3449 /* MessageSourcesView.swift in Sources */,
@@ -1238,6 +1255,7 @@
 			files = (
 				A1B2C3D4E5F60708090A0B01 /* AppShellTestSupport.swift in Sources */,
 				A1B2C3D4E5F60708090A0B04 /* WelcomeExperienceStateTests.swift in Sources */,
+				A00100050001000100010001 /* OnboardingFlowTests.swift in Sources */,
 				4ABDBE6B29F86E8D00661B2D /* MessageParserTests.swift in Sources */,
 				C4D1E2F42F0652E300B80002 /* SSEStreamParserTests.swift in Sources */,
 			);
@@ -1245,6 +1263,8 @@
 		4A399CAC29BC8FF200E98796 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			files = (
+				A1B2C3D4E5F60708090A0B06 /* AppShellTestSupport.swift in Sources */,
+				A1B2C3D4E5F60708090A0B08 /* AppShellUITests.swift in Sources */,
 				4A399CB729BC8FF200E98796 /* WardenUITestsLaunchTests.swift in Sources */,
 				4A399CB529BC8FF200E98796 /* WardenUITests.swift in Sources */,
 			);

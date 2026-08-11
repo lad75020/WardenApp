@@ -17,4 +17,16 @@ final class OnboardingFlowTests: XCTestCase {
         XCTAssertTrue(flow.consumeCompletion())
         XCTAssertFalse(flow.consumeCompletion())
     }
+
+    func testBoundaryNavigationAndSettingsDetourPreserveStep() {
+        var flow = OnboardingFlowState()
+        flow.goBack()
+        XCTAssertEqual(flow.currentStep, .welcome)
+        flow.goNext()
+        XCTAssertEqual(flow.currentStep, .providerSetup)
+        XCTAssertFalse(flow.isCompleting)
+        flow.goNext()
+        flow.goNext()
+        XCTAssertEqual(flow.currentStep, .ready)
+    }
 }

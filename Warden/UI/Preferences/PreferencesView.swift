@@ -53,6 +53,7 @@ struct TopTabItem: View {
             )
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier(tab == .general ? "settings.generalTab" : "settings.tab.\(tab.id)")
         .onHover { isHovering = $0 }
     }
 }

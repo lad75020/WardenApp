@@ -3,6 +3,27 @@ import SwiftUI
 import CoreData
 import AppKit
 
+/// Keeps App Shell UI-test preference changes out of the user's application domain.
+/// Production always uses the standard application defaults.
+enum AppShellPreferenceStore {
+    private static let suiteEnvironmentKey = "WARDEN_APP_SHELL_UI_TEST_DEFAULTS_SUITE"
+    private static let resetEnvironmentKey = "WARDEN_APP_SHELL_UI_TEST_RESET_DEFAULTS"
+
+    static let defaults: UserDefaults = {
+        let processInfo = ProcessInfo.processInfo
+        guard processInfo.arguments.contains("-AppShellUITestMode"),
+              let suiteName = processInfo.environment[suiteEnvironmentKey],
+              let testDefaults = UserDefaults(suiteName: suiteName) else {
+            return .standard
+        }
+
+        if processInfo.environment[resetEnvironmentKey] == "1" {
+            testDefaults.removePersistentDomain(forName: suiteName)
+        }
+        return testDefaults
+    }()
+}
+
 @MainActor
 final class SettingsWindowManager: ObservableObject {
     static let shared = SettingsWindowManager()
@@ -32,7 +53,7 @@ final class SettingsWindowManager: ObservableObject {
     private func updateWindowAppearance() {
         guard let window = settingsWindow else { return }
         
-        let preferredColorSchemeRaw = UserDefaults.standard.integer(forKey: "preferredColorScheme")
+        let preferredColorSchemeRaw = AppShellPreferenceStore.defaults.integer(forKey: "preferredColorScheme")
         
         switch preferredColorSchemeRaw {
         case 1: // Light
@@ -45,15 +66,16 @@ final class SettingsWindowManager: ObservableObject {
     }
     
     func openSettingsWindow() {
-        // If window already exists, bring it to front
-        if let existingWindow = settingsWindow, existingWindow.isVisible {
+        // Keep one owner even when the window is miniaturized or temporarily ordered out.
+        if let existingWindow = settingsWindow {
+            existingWindow.deminiaturize(nil)
             existingWindow.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             return
         }
         
         // Get the current color scheme preference
-        let preferredColorSchemeRaw = UserDefaults.standard.integer(forKey: "preferredColorScheme")
+        let preferredColorSchemeRaw = AppShellPreferenceStore.defaults.integer(forKey: "preferredColorScheme")
         let colorScheme: ColorScheme? = {
             switch preferredColorSchemeRaw {
             case 1: return .light
@@ -77,6 +99,7 @@ final class SettingsWindowManager: ObservableObject {
         )
         
         window.contentView = NSHostingView(rootView: settingsView)
+        window.identifier = NSUserInterfaceItemIdentifier("settings.window")
         window.center()
         window.setFrameAutosaveName("SettingsWindow")
         window.isReleasedWhenClosed = false

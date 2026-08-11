@@ -49,6 +49,8 @@ struct ContentView: View {
             } detail: {
                 detailView
             }
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("appShell.navigation")
         }
         .onAppear(perform: setupInitialState)
         .background(WindowAccessor(window: $window))
@@ -113,14 +115,18 @@ struct ContentView: View {
             ideal: 220,
             max: 400
         )
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("appShell.sidebar")
     }
 
     private func setupInitialState() {
-        if let lastOpenedChatId = UUID(uuidString: lastOpenedChatId) {
-            if let lastOpenedChat = chats.first(where: { $0.id == lastOpenedChatId }) {
-                selectedChat = lastOpenedChat
-            }
+        let chatIDs = chats.compactMap(\.id)
+        if let restoredID = LastOpenedChatSelection.restore(lastOpenedChatId, from: chatIDs),
+           let restoredChat = chats.first(where: { $0.id == restoredID }) {
+            selectedChat = restoredChat
+            return
         }
+        lastOpenedChatId = ""
     }
 
     private func setupScenePhaseChange(phase: ScenePhase) {
@@ -141,6 +147,7 @@ struct ContentView: View {
         }
         if newValue != nil {
             selectedProject = nil
+            lastOpenedChatId = newValue?.id.uuidString ?? ""
         }
     }
 
@@ -277,6 +284,8 @@ struct ContentView: View {
                 .frame(width: 1),
             alignment: .leading
         )
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("appShell.detail")
     }
 }
 

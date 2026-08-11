@@ -53,6 +53,8 @@ struct SettingsView: View {
             .background(Color(NSColor.windowBackgroundColor))
         }
         .background(Color(NSColor.windowBackgroundColor))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("settings.window")
         .onAppear {
             store.saveInCoreData()
         }

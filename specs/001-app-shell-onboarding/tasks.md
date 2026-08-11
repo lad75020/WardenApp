@@ -46,16 +46,16 @@ description: "Executable tasks for WardenApp App Shell and Onboarding"
 
 ### Tests for User Story 1
 
-- [ ] T007 [P] [US1] Add failing welcome-state and stale-selection tests in `WardenTests/AppShell/WelcomeExperienceStateTests.swift`
-- [ ] T008 [P] [US1] Add failing startup-state and primary-action UI checks in `WardenUITests/AppShellUITests.swift`
+- [x] T007 [P] [US1] Add failing welcome-state and stale-selection tests in `WardenTests/AppShell/WelcomeExperienceStateTests.swift`
+- [x] T008 [P] [US1] Add failing startup-state and primary-action UI checks in `WardenUITests/AppShellUITests.swift`
 
 ### Implementation for User Story 1
 
-- [ ] T009 [US1] Implement deterministic welcome-context resolution in `Warden/UI/WelcomeScreen/WelcomeExperienceState.swift`
-- [ ] T010 [US1] Render setup-required, first-chat, and chat-selection states from the resolver with stable accessibility identifiers in `Warden/UI/WelcomeScreen/WelcomeScreen.swift`
-- [ ] T011 [US1] Restore only an existing `lastOpenedChatId` and persist each valid selected chat in `Warden/UI/ContentView.swift`
-- [ ] T012 [US1] Add new US1 source and test files to the Warden and test targets in `Warden.xcodeproj/project.pbxproj`
-- [ ] T013 [US1] Run focused US1 tests and record exact outcomes in `specs/001-app-shell-onboarding/implementation-log.md`
+- [x] T009 [US1] Implement deterministic welcome-context resolution in `Warden/UI/WelcomeScreen/WelcomeExperienceState.swift`
+- [x] T010 [US1] Render setup-required, first-chat, and chat-selection states from the resolver with stable accessibility identifiers in `Warden/UI/WelcomeScreen/WelcomeScreen.swift`
+- [x] T011 [US1] Restore only an existing `lastOpenedChatId` and persist each valid selected chat in `Warden/UI/ContentView.swift`
+- [x] T012 [US1] Add new US1 source and test files to the Warden and test targets in `Warden.xcodeproj/project.pbxproj`
+- [x] T013 [US1] Run focused US1 tests and record exact outcomes in `specs/001-app-shell-onboarding/implementation-log.md`
 
 **Checkpoint**: Every supported startup context presents one understandable next action, while invalid restoration data falls back safely.
 
@@ -69,16 +69,16 @@ description: "Executable tasks for WardenApp App Shell and Onboarding"
 
 ### Tests for User Story 2
 
-- [ ] T014 [P] [US2] Add failing transition and duplicate-completion tests in `WardenTests/AppShell/OnboardingFlowTests.swift`
-- [ ] T015 [P] [US2] Extend onboarding navigation and provider-step Settings checks in `WardenUITests/AppShellUITests.swift`
+- [x] T014 [P] [US2] Add failing transition and duplicate-completion tests in `WardenTests/AppShell/OnboardingFlowTests.swift`
+- [x] T015 [P] [US2] Extend onboarding navigation and provider-step Settings checks in `WardenUITests/AppShellUITests.swift`
 
 ### Implementation for User Story 2
 
-- [ ] T016 [US2] Implement the internal onboarding step and completion-guard state in `Warden/UI/WelcomeScreen/OnboardingFlowState.swift`
-- [ ] T017 [US2] Route Back, Next, Open Settings, and Start through the flow state and expose progress semantics in `Warden/UI/WelcomeScreen/InteractiveOnboardingView.swift`
-- [ ] T018 [US2] Preserve optional guide access after completion and recover the guide after Settings activation in `Warden/UI/WelcomeScreen/WelcomeScreen.swift`
-- [ ] T019 [US2] Add new US2 source and test files to the Warden and WardenTests targets in `Warden.xcodeproj/project.pbxproj`
-- [ ] T020 [US2] Run focused US2 tests plus the US1 regression tests and record exact outcomes in `specs/001-app-shell-onboarding/implementation-log.md`
+- [x] T016 [US2] Implement the internal onboarding step and completion-guard state in `Warden/UI/WelcomeScreen/OnboardingFlowState.swift`
+- [x] T017 [US2] Route Back, Next, Open Settings, and Start through the flow state and expose progress semantics in `Warden/UI/WelcomeScreen/InteractiveOnboardingView.swift`
+- [x] T018 [US2] Preserve optional guide access after completion and recover the guide after Settings activation in `Warden/UI/WelcomeScreen/WelcomeScreen.swift`
+- [x] T019 [US2] Add new US2 source and test files to the Warden and WardenTests targets in `Warden.xcodeproj/project.pbxproj`
+- [x] T020 [US2] Run focused US2 tests plus the US1 regression tests and record exact outcomes in `specs/001-app-shell-onboarding/implementation-log.md`
 
 **Checkpoint**: Guided setup is keyboard/accessibility reachable, survives the Settings detour, and starts at most one chat per completion.
 
@@ -92,15 +92,15 @@ description: "Executable tasks for WardenApp App Shell and Onboarding"
 
 ### Tests for User Story 3
 
-- [ ] T021 [P] [US3] Add Settings reuse, appearance, preference, shortcut, and malformed-import UI checks in `WardenUITests/AppShellUITests.swift`
+- [x] T021 [P] [US3] Add Settings reuse, appearance, preference, shortcut, and malformed-import UI checks in `WardenUITests/AppShellUITests.swift`
 
 ### Implementation for User Story 3
 
-- [ ] T022 [US3] Normalize System/Light/Dark updates, add accessibility identifiers, and show non-destructive import/export failures in `Warden/UI/Preferences/TabGeneralSettingsView.swift`
-- [ ] T023 [US3] Preserve one main-actor Settings window across repeated activation, close, reopen, and appearance changes in `Warden/Utilities/SettingsWindowManager.swift`
-- [ ] T024 [US3] Preserve intended-window routing, standard menu commands, fallback-storage warning, and practical frame restoration in `Warden/WardenApp.swift`
-- [ ] T025 [US3] Expose stable shell navigation identifiers without changing provider/chat behavior in `Warden/UI/ContentView.swift`
-- [ ] T026 [US3] Run focused US3 UI tests and record exact outcomes or the precise macOS automation blocker in `specs/001-app-shell-onboarding/implementation-log.md`
+- [x] T022 [US3] Normalize System/Light/Dark updates, add accessibility identifiers, and show non-destructive import/export failures in `Warden/UI/Preferences/TabGeneralSettingsView.swift`
+- [x] T023 [US3] Preserve one main-actor Settings window across repeated activation, close, reopen, and appearance changes in `Warden/Utilities/SettingsWindowManager.swift`
+- [x] T024 [US3] Preserve intended-window routing, standard menu commands, fallback-storage warning, and practical frame restoration in `Warden/WardenApp.swift`
+- [x] T025 [US3] Expose stable shell navigation identifiers without changing provider/chat behavior in `Warden/UI/ContentView.swift`
+- [x] T026 [US3] Run focused US3 UI tests and record exact outcomes or the precise macOS automation blocker in `specs/001-app-shell-onboarding/implementation-log.md`
 
 **Checkpoint**: Native commands target the intended window, Settings never duplicates, preferences persist, and backup failures are visible without data corruption.
 
@@ -108,12 +108,12 @@ description: "Executable tasks for WardenApp App Shell and Onboarding"
 
 ## Phase 6: Cross-Cutting Verification and Polish
 
-- [ ] T027 [P] Verify VoiceOver labels, keyboard focus, non-color progress, and enlarged-text behavior against `specs/001-app-shell-onboarding/contracts/app-shell-ui-contract.md`
-- [ ] T028 Run all focused app-shell XCTest and XCUITest commands from `specs/001-app-shell-onboarding/quickstart.md` and record real outcomes in `specs/001-app-shell-onboarding/implementation-log.md`
-- [ ] T029 Run `xcodebuild -project Warden.xcodeproj -scheme Warden -destination 'platform=macOS' build` and record the real result in `specs/001-app-shell-onboarding/implementation-log.md`
-- [ ] T030 Run `xcodebuild test -project Warden.xcodeproj -scheme Warden -destination 'platform=macOS'` and record the real result or exact environment blocker in `specs/001-app-shell-onboarding/implementation-log.md`
-- [ ] T031 [P] Inspect `Warden/UI/`, `Warden/Utilities/`, `WardenTests/`, `WardenUITests/`, and `Warden.xcodeproj/project.pbxproj` diffs for Keychain/secret exposure, private data, telemetry, ad-hoc `print`, build output, and unrelated-change damage
-- [ ] T032 Re-run `git diff --check` and reconcile every requirement and success criterion in `specs/001-app-shell-onboarding/implementation-log.md`
+- [x] T027 [P] Verify VoiceOver labels, keyboard focus, non-color progress, and enlarged-text behavior against `specs/001-app-shell-onboarding/contracts/app-shell-ui-contract.md`
+- [x] T028 Run all focused app-shell XCTest and XCUITest commands from `specs/001-app-shell-onboarding/quickstart.md` and record real outcomes in `specs/001-app-shell-onboarding/implementation-log.md`
+- [x] T029 Run `xcodebuild -project Warden.xcodeproj -scheme Warden -destination 'platform=macOS' build` and record the real result in `specs/001-app-shell-onboarding/implementation-log.md`
+- [x] T030 Run `xcodebuild test -project Warden.xcodeproj -scheme Warden -destination 'platform=macOS'` and record the real result or exact environment blocker in `specs/001-app-shell-onboarding/implementation-log.md`
+- [x] T031 [P] Inspect `Warden/UI/`, `Warden/Utilities/`, `WardenTests/`, `WardenUITests/`, and `Warden.xcodeproj/project.pbxproj` diffs for Keychain/secret exposure, private data, telemetry, ad-hoc `print`, build output, and unrelated-change damage
+- [x] T032 Re-run `git diff --check` and reconcile every requirement and success criterion in `specs/001-app-shell-onboarding/implementation-log.md`
 
 ## Dependencies and Execution Order
 

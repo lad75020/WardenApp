@@ -14,4 +14,18 @@ final class WelcomeExperienceStateTests: XCTestCase {
     func testNegativeCountsAreTreatedAsZero() {
         XCTAssertEqual(WelcomeExperienceState.resolve(providerCount: -1, chatCount: -1, hasSelection: false), .setupRequired)
     }
+
+    func testSelectionAlwaysWinsOverWelcomeContext() {
+        XCTAssertEqual(WelcomeExperienceState.resolve(providerCount: 0, chatCount: 0, hasSelection: true), .contentSelected)
+    }
+
+    func testValidLastOpenedChatIDIsRestored() {
+        let id = UUID()
+        XCTAssertEqual(LastOpenedChatSelection.restore(id.uuidString, from: [id]), id)
+    }
+
+    func testStaleLastOpenedChatIDIsDiscarded() {
+        XCTAssertNil(LastOpenedChatSelection.restore(UUID().uuidString, from: [UUID()]))
+        XCTAssertNil(LastOpenedChatSelection.restore("not-a-uuid", from: []))
+    }
 }

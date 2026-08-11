@@ -5,7 +5,9 @@ import Darwin
 import os
 
 class PersistenceController {
-    static let shared = PersistenceController()
+    static let shared = PersistenceController(
+        inMemory: ProcessInfo.processInfo.arguments.contains("-AppShellUITestMode")
+    )
 
     let container: NSPersistentContainer
 
@@ -61,7 +63,7 @@ class PersistenceController {
 @main
 struct WardenApp: App {
     @AppStorage("gptModel") var gptModel: String = AppConstants.chatGptDefaultModel
-    @AppStorage("preferredColorScheme") private var preferredColorSchemeRaw: Int = 0
+    @AppStorage("preferredColorScheme", store: AppShellPreferenceStore.defaults) private var preferredColorSchemeRaw: Int = 0
     @StateObject private var store = ChatStore(persistenceController: PersistenceController.shared)
 
     var preferredColorScheme: ColorScheme? {
@@ -74,6 +76,10 @@ struct WardenApp: App {
     @Environment(\.scenePhase) private var scenePhase
 
     let persistenceController = PersistenceController.shared
+
+    private var isAppShellUITestMode: Bool {
+        ProcessInfo.processInfo.arguments.contains("-AppShellUITestMode")
+    }
 
     init() {
         // Ignore SIGPIPE to prevent crashes when MCP server processes terminate
@@ -124,13 +130,11 @@ struct WardenApp: App {
                     }
                     
                     // Initialize model cache and metadata cache with all configured API services
-                    initializeModelAndMetadataCache()
-                    
-                    // Setup Global Hotkeys
-                    setupGlobalHotkeys()
-                    
-                    // Auto-connect MCP servers after a delay
-                    autoConnectMCPServers()
+                    if !isAppShellUITestMode {
+                        initializeModelAndMetadataCache()
+                        setupGlobalHotkeys()
+                        autoConnectMCPServers()
+                    }
                 }
                 .onReceive(NotificationCenter.default.publisher(for: AppConstants.toggleQuickChatNotification)) { _ in
                     FloatingPanelManager.shared.togglePanel()

@@ -6,174 +6,65 @@ struct WelcomeScreen: View {
     var customUrl: Bool
     let openPreferencesView: () -> Void
     let newChat: () -> Void
-    
+
     @State private var showInteractiveOnboarding = false
-    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
+
+    private var state: WelcomeExperienceState {
+        .resolve(providerCount: apiServiceIsPresent ? 1 : 0, chatCount: chatsCount, hasSelection: false)
+    }
 
     var body: some View {
-        GeometryReader { geometry in
-            ZStack {
-                if showInteractiveOnboarding {
-                    InteractiveOnboardingView(
-                        openPreferencesView: openPreferencesView,
-                        newChat: newChat,
-                        onComplete: {
-                            withAnimation(.easeInOut(duration: 0.5)) {
-                                showInteractiveOnboarding = false
-                            }
-                        }
-                    )
-                } else {
-                    // Refined welcome screen
-                    ZStack {
-                        AppConstants.backgroundWindow
-                            .ignoresSafeArea()
-
-                        VStack(spacing: 32) {
-                            Spacer(minLength: 40)
-
-                            WelcomeIcon()
-
-                            VStack(spacing: 12) {
-                                Text("Welcome to Warden")
-                                    .font(.system(size: 28, weight: .semibold))
-                                    .foregroundColor(AppConstants.textPrimary)
-                                
-                                Text("A focused workspace for your AI conversations.")
-                                    .font(.system(size: 14, weight: .regular))
-                                    .foregroundColor(AppConstants.textSecondary)
-                                    .multilineTextAlignment(.center)
-                                    .frame(maxWidth: 420)
-                            }
-
-                            if !apiServiceIsPresent {
-                                VStack(spacing: 14) {
-                                    if !hasCompletedOnboarding {
-                                        Button(action: {
-                                            withAnimation(.easeInOut(duration: 0.35)) {
-                                                showInteractiveOnboarding = true
-                                            }
-                                        }) {
-                                            HStack(spacing: 8) {
-                                                Image(systemName: "sparkles")
-                                                    .font(.system(size: 14, weight: .medium))
-                                                Text("Start interactive setup")
-                                                    .font(.system(size: 14, weight: .semibold))
-                                            }
-                                            .foregroundColor(.white)
-                                            .padding(.horizontal, 20)
-                                            .padding(.vertical, 10)
-                                            .background(
-                                                RoundedRectangle(cornerRadius: 8)
-                                                    .fill(Color.accentColor)
-                                            )
-                                        }
-                                        .buttonStyle(.plain)
-                                    }
-
-                                    Button(action: openPreferencesView) {
-                                        HStack(spacing: 6) {
-                                            Image(systemName: "gearshape")
-                                                .font(.system(size: 13, weight: .medium))
-                                            Text("Open Settings")
-                                                .font(.system(size: 13, weight: .medium))
-                                        }
-                                        .foregroundColor(AppConstants.textPrimary)
-                                        .padding(.horizontal, 18)
-                                        .padding(.vertical, 8)
-                                        .background(
-                                            RoundedRectangle(cornerRadius: 8)
-                                                .stroke(AppConstants.borderSubtle, lineWidth: 0.9)
-                                        )
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            } else {
-                                if chatsCount == 0 {
-                                    VStack(spacing: 14) {
-                                        Text("You are connected. Start your first conversation.")
-                                            .font(.system(size: 14))
-                                            .foregroundColor(AppConstants.textSecondary)
-
-                                        Button(action: newChat) {
-                                            HStack(spacing: 8) {
-                                                Image(systemName: "plus.bubble")
-                                                    .font(.system(size: 14, weight: .medium))
-                                                Text("New Chat")
-                                                    .font(.system(size: 14, weight: .semibold))
-                                            }
-                                            .foregroundColor(.white)
-                                            .padding(.horizontal, 20)
-                                            .padding(.vertical, 9)
-                                            .background(
-                                                RoundedRectangle(cornerRadius: 8)
-                                                    .fill(Color.accentColor)
-                                            )
-                                        }
-                                        .buttonStyle(.plain)
-                                    }
-                                } else {
-                                    VStack(spacing: 10) {
-                                        Text("Select a chat from the sidebar or start a new one.")
-                                            .font(.system(size: 14))
-                                            .foregroundColor(AppConstants.textSecondary)
-
-                                        Button(action: {
-                                            withAnimation(.easeInOut(duration: 0.3)) {
-                                                showInteractiveOnboarding = true
-                                            }
-                                        }) {
-                                            HStack(spacing: 6) {
-                                                Image(systemName: "questionmark.circle")
-                                                    .font(.system(size: 11))
-                                                Text("View setup guide")
-                                                    .font(.system(size: 11, weight: .medium))
-                                            }
-                                            .foregroundColor(AppConstants.textSecondary)
-                                            .padding(.horizontal, 14)
-                                            .padding(.vertical, 6)
-                                            .background(
-                                                RoundedRectangle(cornerRadius: 7)
-                                                    .stroke(AppConstants.borderSubtle, lineWidth: 0.8)
-                                            )
-                                        }
-                                        .buttonStyle(.plain)
-                                    }
-                                }
-                            }
-
-                            Spacer(minLength: 40)
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .padding(.horizontal, 40)
-                    }
+        ZStack {
+            AppConstants.backgroundWindow.ignoresSafeArea()
+            if showInteractiveOnboarding {
+                InteractiveOnboardingView(
+                    openPreferencesView: openPreferencesView,
+                    newChat: newChat,
+                    onComplete: { showInteractiveOnboarding = false }
+                )
+            } else {
+                VStack(spacing: 18) {
+                    Spacer()
+                    Image(systemName: "shield.lefthalf.filled")
+                        .font(.system(size: 52))
+                        .accessibilityHidden(true)
+                    Text("Welcome to Warden").font(.system(size: 28, weight: .semibold))
+                    Text(message).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                    controls
+                    Spacer()
                 }
+                .frame(maxWidth: .infinity)
+                .padding(40)
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("welcome.container")
             }
         }
     }
-}
 
-struct WelcomeIcon: View {
-    var body: some View {
-        Image("WelcomeIcon")
-            .resizable()
-            .scaledToFit()
-            .frame(width: 80, height: 80)
-            .foregroundColor(AppConstants.textSecondary)
-            .opacity(0.8)
+    @ViewBuilder private var controls: some View {
+        switch state {
+        case .setupRequired:
+            Button("Start interactive setup") { showInteractiveOnboarding = true }
+                .accessibilityIdentifier("welcome.startSetup")
+            Button("Open Settings", action: openPreferencesView)
+                .accessibilityIdentifier("welcome.openSettings")
+        case .readyForFirstChat:
+            Button("New Chat", action: newChat).accessibilityIdentifier("welcome.newChat")
+        case .readyForSelection:
+            Button("New Chat", action: newChat).accessibilityIdentifier("welcome.newChat")
+            Button("View setup guide") { showInteractiveOnboarding = true }
+                .accessibilityIdentifier("welcome.startSetup")
+        case .contentSelected:
+            EmptyView()
+        }
     }
-}
 
-struct WelcomeScreen_Previews: PreviewProvider {
-    static var previews: some View {
-        Group {
-            WelcomeScreen(chatsCount: 0, apiServiceIsPresent: false, customUrl: false, openPreferencesView: {}, newChat: {})
-                .preferredColorScheme(.light)
-                .previewDisplayName("Light - No API")
-            
-            WelcomeScreen(chatsCount: 0, apiServiceIsPresent: true, customUrl: false, openPreferencesView: {}, newChat: {})
-                .preferredColorScheme(.dark)
-                .previewDisplayName("Dark - With API")
+    private var message: String {
+        switch state {
+        case .setupRequired: "Start by configuring an AI provider in Settings."
+        case .readyForFirstChat: "You are connected. Start your first conversation."
+        case .readyForSelection: "Select a chat from the sidebar or start a new one."
+        case .contentSelected: ""
         }
     }
 }

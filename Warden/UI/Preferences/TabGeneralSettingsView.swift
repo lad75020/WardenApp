@@ -3,17 +3,29 @@ import AttributedText
 import os
 
 struct TabGeneralSettingsView: View {
-    @AppStorage("chatFontSize") var chatFontSize: Double = 14.0
-    @AppStorage("preferredColorScheme") private var preferredColorSchemeRaw: Int = 0
-    @AppStorage("enableMultiAgentMode") private var enableMultiAgentMode: Bool = false
-    @AppStorage("showSidebarAIIcons") private var showSidebarAIIcons: Bool = true
-    @Environment(\.colorScheme) private var systemColorScheme
+    private struct BackupErrorAlert: Identifiable {
+        let id = UUID()
+        let title: String
+        let message: String
+    }
+
+    @AppStorage("chatFontSize", store: AppShellPreferenceStore.defaults) var chatFontSize: Double = 14.0
+    @AppStorage("preferredColorScheme", store: AppShellPreferenceStore.defaults) private var preferredColorSchemeRaw: Int = 0
+    @AppStorage("enableMultiAgentMode", store: AppShellPreferenceStore.defaults) private var enableMultiAgentMode: Bool = false
+    @AppStorage("showSidebarAIIcons", store: AppShellPreferenceStore.defaults) private var showSidebarAIIcons: Bool = true
     @EnvironmentObject private var store: ChatStore
     @State private var selectedColorSchemeRaw: Int = 0
-    @State private var exportErrorMessage: String?
-    @State private var showExportError = false
+    @State private var backupError: BackupErrorAlert?
 
     private let fontSizeOptions: [Double] = [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]
+
+    private var selectedAppearanceLabel: String {
+        switch selectedColorSchemeRaw {
+        case 1: return "Light"
+        case 2: return "Dark"
+        default: return "System"
+        }
+    }
 
     private var preferredColorScheme: Binding<ColorScheme?> {
         Binding(
@@ -25,22 +37,13 @@ struct TabGeneralSettingsView: View {
                 }
             },
             set: { newValue in
-                if newValue == nil {
-                    let isDark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-                    preferredColorSchemeRaw = isDark ? 2 : 1
-                    selectedColorSchemeRaw = 0
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                        preferredColorSchemeRaw = 0
-                    }
-                } else {
-                    switch newValue {
-                    case .light: preferredColorSchemeRaw = 1
-                    case .dark: preferredColorSchemeRaw = 2
-                    case .none: preferredColorSchemeRaw = 0
-                    case .some(_): preferredColorSchemeRaw = 0
-                    }
-                    selectedColorSchemeRaw = preferredColorSchemeRaw
+                switch newValue {
+                case .light: preferredColorSchemeRaw = 1
+                case .dark: preferredColorSchemeRaw = 2
+                case .none: preferredColorSchemeRaw = 0
+                case .some(_): preferredColorSchemeRaw = 0
                 }
+                selectedColorSchemeRaw = preferredColorSchemeRaw
             }
         )
     }
@@ -73,6 +76,8 @@ struct TabGeneralSettingsView: View {
                                 .pickerStyle(.segmented)
                                 .frame(width: 180)
                                 .labelsHidden()
+                                .accessibilityIdentifier("settings.theme")
+                                .accessibilityValue(selectedAppearanceLabel)
                                 .onChange(of: selectedColorSchemeRaw) { _, newValue in
                                     switch newValue {
                                     case 0: preferredColorScheme.wrappedValue = nil
@@ -94,6 +99,7 @@ struct TabGeneralSettingsView: View {
                                 .pickerStyle(.menu)
                                 .frame(width: 100)
                                 .labelsHidden()
+                                .accessibilityIdentifier("settings.chatFont")
                             }
                             
                             SettingsDivider()
@@ -105,6 +111,8 @@ struct TabGeneralSettingsView: View {
                                 Toggle("", isOn: $showSidebarAIIcons)
                                     .toggleStyle(.switch)
                                     .labelsHidden()
+                                    .accessibilityIdentifier("settings.sidebarIcons")
+                                    .accessibilityLabel(showSidebarAIIcons ? "Sidebar icons shown" : "Sidebar icons hidden")
                             }
                         }
                     }
@@ -214,14 +222,22 @@ struct TabGeneralSettingsView: View {
         .onAppear {
             selectedColorSchemeRaw = preferredColorSchemeRaw
         }
+        .alert(item: $backupError) { error in
+            Alert(
+                title: Text(error.title),
+                message: Text(error.message),
+                dismissButton: .default(Text("OK"))
+            )
+        }
     }
     
     // MARK: - Backup/Restore Helpers
     private func handleExportResult(_ result: Result<[ChatBackup], Error>) {
         switch result {
         case .failure(let error):
-            WardenLog.app.error("Failed to load chats for export: \(error.localizedDescription, privacy: .public)")
-            showErrorAlert("Export Failed", "Failed to load chat data: \(error.localizedDescription)")
+            WardenLog.app.error("Unable to prepare local export")
+            _ = error
+            showErrorAlert("Export Failed", "Warden could not prepare a local backup. Your existing chats were not changed.")
         case .success(let chats):
             let encoder = JSONEncoder()
             encoder.outputFormatting = .prettyPrinted
@@ -236,11 +252,11 @@ struct TabGeneralSettingsView: View {
                     do {
                         try data.write(to: url)
                     } catch {
-                        showErrorAlert("Export Failed", "Failed to write backup file: \(error.localizedDescription)")
+                        showErrorAlert("Export Failed", "Warden could not write the local backup. Your existing chats were not changed.")
                     }
                 }
             } catch {
-                showErrorAlert("Export Failed", "Failed to encode chat data: \(error.localizedDescription)")
+                showErrorAlert("Export Failed", "Warden could not encode a local backup. Your existing chats were not changed.")
             }
         }
     }
@@ -253,23 +269,17 @@ struct TabGeneralSettingsView: View {
             Task {
                 let result = await store.saveToCoreData(chats: chats)
                 if case .failure(let error) = result {
-                    showErrorAlert("Import Failed", "Failed to save imported chats: \(error.localizedDescription)")
+                    _ = error
+                    showErrorAlert("Import Failed", "Warden could not import this backup. Your existing chats were not changed.")
                 }
             }
         } catch {
-            WardenLog.app.error("Import failed: \(error.localizedDescription, privacy: .public)")
+            WardenLog.app.error("Local backup import failed")
+            showErrorAlert("Import Failed", "The selected backup could not be read.")
         }
     }
     
     private func showErrorAlert(_ title: String, _ message: String) {
-        DispatchQueue.main.async {
-            let alert = NSAlert()
-            alert.messageText = title
-            alert.informativeText = message
-            alert.alertStyle = .critical
-            alert.addButton(withTitle: "OK")
-            alert.runModal()
-        }
+        backupError = BackupErrorAlert(title: title, message: message)
     }
 }
-
