@@ -339,6 +339,13 @@ struct WardenApp: App {
     }
     
     private func autoConnectMCPServers() {
+        guard UserDefaults.standard.bool(forKey: "autoConnectMCPServers") else {
+            #if DEBUG
+            WardenLog.app.debug("MCP auto-connect disabled; connect servers manually from settings")
+            #endif
+            return
+        }
+
         // Auto-connect MCP servers after a delay to allow app initialization to complete
         Task {
             // Wait 3 seconds to ensure app is fully initialized

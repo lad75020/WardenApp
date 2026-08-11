@@ -1,10 +1,8 @@
 import Foundation
 
 // MARK: - Gemini (Google AI Studio) REST API
-// This handler targets the native Gemini REST endpoints:
-//   POST https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key=...
-//   POST https://generativelanguage.googleapis.com/v1beta/models/{model}:streamGenerateContent?alt=sse&key=...
-//
+// This handler targets the native Gemini REST endpoints and sends the API key
+// in the x-goog-api-key header so secrets never appear in logged URLs:
 // Warden's AppConstants historically used an OpenAI-compatible URL for Gemini.
 // We intentionally ignore the exact path of `baseURL` and only reuse scheme+host+version.
 
@@ -23,10 +21,11 @@ final class GeminiHandler: BaseAPIHandler {
     // MARK: Models
 
     override func fetchModels() async throws -> [AIModel] {
-        // GET /v1beta/models?key=...
+        // GET /v1beta/models
         let url = try geminiEndpoint(path: "/models", model: nil, stream: false)
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
+        request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
 
         do {
             let (data, response) = try await session.data(for: request)
@@ -62,6 +61,7 @@ final class GeminiHandler: BaseAPIHandler {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
 
         // Extract special markers
         let imageUUIDPattern = "<image-([a-fA-F0-9-]+)>"
@@ -277,9 +277,6 @@ private extension GeminiHandler {
         components.path = endpointPath
 
         var items = components.queryItems ?? []
-        if !items.contains(where: { $0.name == "key" }) {
-            items.append(URLQueryItem(name: "key", value: apiKey))
-        }
         if stream {
             // Required for SSE streaming responses
             if !items.contains(where: { $0.name == "alt" }) {

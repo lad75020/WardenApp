@@ -31,14 +31,32 @@ class MCPManager: ObservableObject {
     // ... (load/save/add/update/delete/connect/disconnect methods remain same) ...
     
     func loadConfigs() {
-        if let data = UserDefaults.standard.data(forKey: configsKey),
-           let decoded = try? JSONDecoder().decode([MCPServerConfig].self, from: data) {
-            self.configs = decoded
+        guard let data = UserDefaults.standard.data(forKey: configsKey),
+              var decoded = try? JSONDecoder().decode([MCPServerConfig].self, from: data) else {
+            return
+        }
+
+        var shouldRewriteStoredConfigs = false
+        for index in decoded.indices {
+            for (key, value) in decoded[index].environment {
+                if let resolved = resolveEnvironmentSecretMarker(value, configID: decoded[index].id, environmentKey: key) {
+                    decoded[index].environment[key] = resolved
+                } else if isSensitiveEnvironmentKey(key), !value.isEmpty {
+                    try? storeEnvironmentSecret(value, configID: decoded[index].id, environmentKey: key)
+                    shouldRewriteStoredConfigs = true
+                }
+            }
+        }
+
+        self.configs = decoded
+        if shouldRewriteStoredConfigs {
+            saveConfigs()
         }
     }
     
     func saveConfigs() {
-        if let encoded = try? JSONEncoder().encode(configs) {
+        let configsForStorage = configs.map(sanitizedConfigForStorage)
+        if let encoded = try? JSONEncoder().encode(configsForStorage) {
             UserDefaults.standard.set(encoded, forKey: configsKey)
         }
     }
@@ -63,6 +81,9 @@ class MCPManager: ObservableObject {
     }
     
     func deleteConfig(id: UUID) {
+        if let config = configs.first(where: { $0.id == id }) {
+            cleanupEnvironmentSecrets(for: config)
+        }
         configs.removeAll { $0.id == id }
         saveConfigs()
         Task {
@@ -86,7 +107,7 @@ class MCPManager: ObservableObject {
                     throw NSError(domain: "MCPManager", code: 400, userInfo: [NSLocalizedDescriptionKey: "Missing command for Stdio transport"])
                 }
                 
-                let transport = ProcessStdioTransport(command: command, arguments: config.arguments, environment: config.environment)
+                let transport = ProcessStdioTransport(command: command, arguments: config.arguments, environment: resolvedEnvironment(for: config))
                 _ = try await client.connect(transport: transport)
                 
             case .sse:
@@ -218,34 +239,103 @@ class MCPManager: ObservableObject {
         var result: [[String: Any]] = []
         for item in content {
             switch item {
-            case .text(let text):
+            case .text(text: let text, annotations: _, _meta: _):
                 result.append(["type": "text", "text": text])
-            case .image(let img):
-                result.append(["type": "image", "mimeType": img.mimeType])
-            case .resource(let res):
-                var dict: [String: Any] = ["type": "resource",  "uri": res.uri, "mimeType": res.mimeType]
-                if let text = res.text {
+            case .image(data: _, mimeType: let mimeType, annotations: _, _meta: _):
+                result.append(["type": "image", "mimeType": mimeType])
+            case .audio(data: _, mimeType: let mimeType, annotations: _, _meta: _):
+                result.append(["type": "audio", "mimeType": mimeType])
+            case .resource(resource: let resource, annotations: _, _meta: _):
+                var dict: [String: Any] = ["type": "resource", "uri": resource.uri]
+                if let mimeType = resource.mimeType {
+                    dict["mimeType"] = mimeType
+                }
+                if let text = resource.text {
                     dict["text"] = text
                 }
                 result.append(dict)
-            @unknown default:
-                // Handle any future cases
-                result.append(["type": "unknown"])
+            case .resourceLink(uri: let uri, name: let name, title: let title, description: let description, mimeType: let mimeType, annotations: _):
+                var dict: [String: Any] = ["type": "resource_link", "uri": uri, "name": name]
+                if let title { dict["title"] = title }
+                if let description { dict["description"] = description }
+                if let mimeType { dict["mimeType"] = mimeType }
+                result.append(dict)
             }
         }
         
         return result
     }
     
+    private func isSensitiveEnvironmentKey(_ key: String) -> Bool {
+        let lowercased = key.lowercased()
+        return ["token", "key", "secret", "password", "passwd", "auth", "bearer", "credential"].contains { lowercased.contains($0) }
+    }
+
+    private func environmentSecretIdentifier(configID: UUID, environmentKey: String) -> String {
+        "mcp_\(configID.uuidString)_\(environmentKey)"
+    }
+
+    private func environmentSecretMarker(configID: UUID, environmentKey: String) -> String {
+        "keychain://mcp-env/\(configID.uuidString)/\(environmentKey)"
+    }
+
+    private func storeEnvironmentSecret(_ value: String, configID: UUID, environmentKey: String) throws {
+        try TokenManager.setToken(value, for: "mcp_env", identifier: environmentSecretIdentifier(configID: configID, environmentKey: environmentKey))
+    }
+
+    private func resolveEnvironmentSecretMarker(_ value: String, configID: UUID, environmentKey: String) -> String? {
+        guard value.hasPrefix("keychain://mcp-env/") else { return nil }
+        return try? TokenManager.getToken(for: "mcp_env", identifier: environmentSecretIdentifier(configID: configID, environmentKey: environmentKey))
+    }
+
+    private func sanitizedConfigForStorage(_ config: MCPServerConfig) -> MCPServerConfig {
+        var sanitized = config
+        for (key, value) in config.environment where isSensitiveEnvironmentKey(key) && !value.isEmpty {
+            if value.hasPrefix("keychain://mcp-env/") {
+                continue
+            }
+            do {
+                try storeEnvironmentSecret(value, configID: config.id, environmentKey: key)
+                sanitized.environment[key] = environmentSecretMarker(configID: config.id, environmentKey: key)
+            } catch {
+                WardenLog.app.error("Failed to store MCP environment secret for \(key, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            }
+        }
+        return sanitized
+    }
+
+    private func resolvedEnvironment(for config: MCPServerConfig) -> [String: String] {
+        var environment = config.environment
+        for (key, value) in config.environment {
+            if let resolved = resolveEnvironmentSecretMarker(value, configID: config.id, environmentKey: key) {
+                environment[key] = resolved
+            }
+        }
+        return environment
+    }
+
+    private func cleanupEnvironmentSecrets(for config: MCPServerConfig) {
+        for key in config.environment.keys where isSensitiveEnvironmentKey(key) {
+            try? TokenManager.deleteToken(for: "mcp_env", identifier: environmentSecretIdentifier(configID: config.id, environmentKey: key))
+        }
+    }
+
     func testConnection(config: MCPServerConfig) async throws -> Int {
         let client = Client(name: "Warden-Test", version: "1.0")
+        var stdioTransport: ProcessStdioTransport?
+        defer {
+            if let stdioTransport {
+                Task { await stdioTransport.disconnect() }
+            }
+        }
         
         switch config.transportType {
         case .stdio:
             guard let command = config.command else {
                 throw NSError(domain: "MCPManager", code: 400, userInfo: [NSLocalizedDescriptionKey: "Missing command for Stdio transport"])
             }
-            let transport = ProcessStdioTransport(command: command, arguments: config.arguments, environment: config.environment)
+            let transport = ProcessStdioTransport(command: command, arguments: config.arguments, environment: resolvedEnvironment(for: config))
+            stdioTransport = transport
             _ = try await client.connect(transport: transport)
             
         case .sse:

@@ -1,76 +1,79 @@
-<div align="center">
-FORK OF https://github.com/SidhuK/WardenApp, for additional library support
-<img src="./assets/Logo.png" width="128" />
+# WardenApp
 
-# Warden
-### The Native AI Chat Experience for macOS
+WardenApp is a fork of Warden, a native SwiftUI macOS AI chat client with multi-provider, local-model, search, and developer-tool support.
 
-![macOS](https://img.shields.io/badge/macOS-000000?style=for-the-badge&logo=apple&logoColor=white)
-![Swift](https://img.shields.io/badge/Swift-FA7343?style=for-the-badge&logo=swift&logoColor=white)
-![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg?style=for-the-badge)
+## Highlights
 
-<a href="https://findly.tools/wardenapp?utm_source=wardenapp" target="_blank">
-  <img 
-    src="https://findly.tools/badges/findly-tools-badge-light.svg" 
-    alt="Featured on findly.tools" 
-    width="150" 
-  />
-</a>
+- Native macOS app built in SwiftUI; no Electron or web wrapper.
+- Supports hosted providers such as OpenAI, Anthropic, Gemini, Perplexity, and OpenRouter, plus local Ollama and LM Studio workflows.
+- Stores chat data with Core Data and includes database migration/patch helpers.
+- Stores API tokens in the macOS Keychain rather than Core Data.
+- Includes web search, code-oriented workflows, syntax highlighting, file/image attachments, and Apple Silicon-friendly native UI behavior.
+- This fork notes additional library support compared with the upstream SidhuK/WardenApp project.
 
-<br/>
+## Repository layout
 
-Warden is a fast, beautiful, and privacy-focused AI client built purely in SwiftUI.
-No Electron, no web wrappers—just a premium native experience.
+- `Warden/` - app source, SwiftUI UI, models, stores, utilities, assets, Core Data model, and entitlements.
+- `Warden.xcodeproj/` - Xcode project.
+- `WardenTests/` - unit tests.
+- `WardenUITests/` - UI tests.
+- `Warden.xctestplan` - shared test plan covering unit and UI test targets.
+- `Packages/` - local package dependencies used by the app.
+- `MLXZImageSwiftCLI/` - related local CLI/package support.
+- `assets/` and `AppIcon.icon/` - app branding and screenshots.
+- `scripts/` - local automation helpers.
+- `Setup.MD` - OpenRouter setup guide and token-storage notes.
 
-<br/>
+## Prerequisites
 
-![Warden Dark Mode](./assets/Dark%20Mode.png)
+- macOS with a recent Xcode capable of building the project.
+- Swift toolchain supplied by Xcode.
+- API keys for hosted providers you want to use, or local Ollama/LM Studio services for local models.
+- Developer signing configuration if you plan to distribute a built app.
 
-</div>
+## Installation and setup
 
-## ✨ Why Warden?
+Open the project in Xcode:
 
-Most AI apps today are just websites wrapped in a window (Electron). They feel heavy, drain battery, and don't integrate well with macOS.
+```bash
+open Warden.xcodeproj
+```
 
-Warden is different. It's built with 100% native code, making it:
-- **Blazing Fast**: Launches instantly, uses minimal RAM (<150MB).
-- **Battery Friendly**: Optimized for Apple Silicon efficiency.
-- **Truly Private**: Your data never leaves your device (except to your chosen AI provider).
+Build and run from Xcode with `Cmd+R`.
 
-## 🚀 Features
+To configure OpenRouter after launching the app:
 
-- **Multi-Model Support**: Use OpenAI, Anthropic (Claude), Gemini, Perplexity,Oenrouter and more using your own API key.
-- **Local AI**: Full support for Ollama and LM Studio.
-- **Search Capabilities**: Real-time web search integration with citation support.
-- **Developer Tools**: Native code execution and syntax highlighting.
-- **Fluid Design**: Animations and interactions that feel right at home on your Mac, including liquid glass support for MacOS 26.
+1. Open Warden preferences with `Cmd+,`.
+2. Choose the API Services tab.
+3. Add a service, set API Type to `OpenRouter`, and keep the default API URL unless you need a custom endpoint.
+4. Paste the API token, choose or refresh the model list, test the connection, and save.
+5. Set the service as default if desired.
 
-## 📥 Installation
+## Run and development commands
 
-### Manual Download
-
-<div align="center">
-
-| **Typical User** | **Developer** |
-| :---: | :---: |
-| [**Download Installer**](https://github.com/lad75020/WardenApp/releases)<br>Simply drag to Applications | [**Build from Source**](#build-from-source)<br>Clone and run in Xcode |
-
-</div>
-
-<br>
-
-### Build from Source
+The inspected README documents the source workflow as:
 
 ```bash
 git clone https://github.com/lad75020/WardenApp.git
 cd WardenApp
 open Warden.xcodeproj
-# Press Cmd+R to run
 ```
 
-<div align="center">
+Then build/run in Xcode. No root package-manager scripts were present in the project root.
 
-Created by [Karat Sidhu](https://x.com/karat_sidhu)
-Licensed under Apache 2.0
+## Testing and checks
 
-</div>
+The test plan includes `WardenTests` and `WardenUITests`. Run them from Xcode, or with xcodebuild when the local scheme is available:
+
+```bash
+xcodebuild -project Warden.xcodeproj -scheme Warden -testPlan Warden test
+```
+
+If the scheme or destination differs locally, choose the matching scheme and macOS destination from Xcode.
+
+## Configuration and security notes
+
+- API tokens are stored in the macOS Keychain under the app's service/account scheme.
+- Deleting an API service may stop use of a token but may not remove the underlying Keychain entry; remove it manually in Keychain Access if needed.
+- Provider requests leave the device only for the API service or local endpoint selected by the user.
+- Core Data load failures fall back to an in-memory store for the current session where implemented, so investigate database errors before relying on persistence.

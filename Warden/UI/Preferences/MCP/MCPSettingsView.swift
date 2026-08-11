@@ -5,6 +5,7 @@ struct MCPSettingsView: View {
     @StateObject private var manager = MCPManager.shared
     @State private var showingAddSheet = false
     @State private var selectedConfig: MCPServerConfig?
+    @AppStorage("autoConnectMCPServers") private var autoConnectMCPServers = false
     
     var body: some View {
         MasterDetailLayout(masterWidth: 280) {
@@ -38,6 +39,13 @@ struct MCPSettingsView: View {
                         }
                     }
                 }
+
+                Toggle("Auto-connect on launch", isOn: $autoConnectMCPServers)
+                    .font(.system(size: 12))
+                    .toggleStyle(.checkbox)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .help("Disabled by default so persisted MCP subprocess configs cannot run automatically at startup.")
                 
                 // List
                 if manager.configs.isEmpty {

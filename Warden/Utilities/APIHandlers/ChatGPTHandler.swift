@@ -100,7 +100,7 @@ class ChatGPTHandler: BaseAPIHandler {
             combinedPrompt = combinedPrompt.replacingOccurrences(of: filePattern, with: "", options: .regularExpression)
             combinedPrompt = combinedPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
 
-            log.debug("Image generation prompt: \(combinedPrompt, privacy: .public)")
+            log.debug("Image generation prompt length: \(combinedPrompt.count, privacy: .public) character(s)")
 
             var jsonDict: [String: Any] = [
                 "model": self.model,

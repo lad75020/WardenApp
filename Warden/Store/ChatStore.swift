@@ -321,29 +321,37 @@ final class ChatStore: ObservableObject {
     private func migrateFromJSONIfNeeded() {
         guard !UserDefaults.standard.bool(forKey: migrationKey) else { return }
 
-        do {
-            let fileURL = try ChatStore.fileURL()
-            let data = try Data(contentsOf: fileURL)
-            let oldChats = try JSONDecoder().decode([ChatBackup].self, from: data)
+        Task { [weak self] in
+            do {
+                let fileURL = try ChatStore.fileURL()
+                let data = try await Task.detached(priority: .utility) {
+                    try Data(contentsOf: fileURL)
+                }.value
+                let oldChats = try await Task.detached(priority: .utility) {
+                    try JSONDecoder().decode([ChatBackup].self, from: data)
+                }.value
 
-            Task {
+                guard let self else { return }
                 let result = await saveToCoreData(chats: oldChats)
                 if case .failure(let error) = result {
                     WardenLog.coreData.error("Migration from JSON failed: \(error.localizedDescription, privacy: .public)")
                     self.showAlert(title: "Migration Error",
                                    message: "Failed to migrate old chat data. Your existing chats may not be available. Error: \(error.localizedDescription)")
-                } else {
-                    #if DEBUG
-                    WardenLog.coreData.debug("Migration from JSON successful")
-                    #endif
+                    return
                 }
-                
+
+                #if DEBUG
+                WardenLog.coreData.debug("Migration from JSON successful")
+                #endif
                 UserDefaults.standard.set(true, forKey: migrationKey)
                 try? FileManager.default.removeItem(at: fileURL)
+            } catch {
+                if (error as NSError).code == NSFileReadNoSuchFileError {
+                    UserDefaults.standard.set(true, forKey: migrationKey)
+                } else {
+                    WardenLog.coreData.error("Error migrating chats: \(error.localizedDescription, privacy: .public)")
+                }
             }
-        } catch {
-            UserDefaults.standard.set(true, forKey: migrationKey)
-            WardenLog.coreData.error("Error migrating chats: \(error.localizedDescription, privacy: .public)")
         }
     }
 

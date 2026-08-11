@@ -81,7 +81,8 @@ struct WebViewWrapper: NSViewRepresentable {
     
     func makeNSView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
-        configuration.defaultWebpagePreferences.allowsContentJavaScript = true
+        configuration.defaultWebpagePreferences.allowsContentJavaScript = false
+        configuration.websiteDataStore = .nonPersistent()
         
         // Set custom user agent if provided
         if let userAgent = userAgent {
@@ -124,7 +125,7 @@ struct WebViewWrapper: NSViewRepresentable {
             context.coordinator.lastRefreshTrigger = refreshTrigger
             context.coordinator.lastUserAgent = userAgent
             isLoading = true
-            webView.loadHTMLString(htmlContent, baseURL: nil)
+            webView.loadHTMLString(Self.securedHTMLDocument(htmlContent), baseURL: nil)
         }
         
         // Apply zoom level
@@ -135,6 +136,29 @@ struct WebViewWrapper: NSViewRepresentable {
     
     func makeCoordinator() -> Coordinator {
         Coordinator(parent: self)
+    }
+
+    private static func securedHTMLDocument(_ html: String) -> String {
+        let csp = "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; img-src data: blob:; media-src data: blob:; style-src 'unsafe-inline'; font-src data:; script-src 'none'; connect-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'\">"
+        guard html.range(of: "Content-Security-Policy", options: .caseInsensitive) == nil else {
+            return html
+        }
+        if let headRange = html.range(of: "<head>", options: .caseInsensitive) {
+            var secured = html
+            secured.insert(contentsOf: "\n    \(csp)", at: headRange.upperBound)
+            return secured
+        }
+        return """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            \(csp)
+        </head>
+        <body>
+            \(html)
+        </body>
+        </html>
+        """
     }
     
     class Coordinator: NSObject, WKNavigationDelegate {
@@ -164,8 +188,17 @@ struct WebViewWrapper: NSViewRepresentable {
         }
         
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-            // Allow all navigation for now - could add restrictions for security
-            decisionHandler(.allow)
+            if navigationAction.navigationType == .other && navigationAction.request.url == nil {
+                decisionHandler(.allow)
+                return
+            }
+
+            if let url = navigationAction.request.url, url.scheme == "about" || url.isFileURL {
+                decisionHandler(.allow)
+                return
+            }
+
+            decisionHandler(.cancel)
         }
     }
 }

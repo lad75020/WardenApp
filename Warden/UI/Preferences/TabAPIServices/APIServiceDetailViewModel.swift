@@ -254,7 +254,7 @@ final class APIServiceDetailViewModel: ObservableObject {
 
                 #if DEBUG
                 WardenLog.app.debug(
-                    "Model fetch failed (type=\(self.type, privacy: .public), name=\(self.name, privacy: .public), url=\(self.url, privacy: .public)): \(error.localizedDescription, privacy: .public)"
+                    "Model fetch failed (type=\(self.type, privacy: .public), name=\(self.name, privacy: .public), url=\(URL(string: self.url)?.redactedForLogging ?? "<invalid>", privacy: .public)): \(error.localizedDescription, privacy: .public)"
                 )
                 #endif
             }
@@ -271,10 +271,22 @@ final class APIServiceDetailViewModel: ObservableObject {
     }
 
     func saveAPIService() {
+        guard let serviceURL = URL(string: url) else {
+            userNotification = UserNotification(type: .error, message: "Invalid API service URL.")
+            return
+        }
+        if !apiKey.isEmpty && !serviceURL.allowsSensitiveTransport {
+            userNotification = UserNotification(
+                type: .error,
+                message: "Refusing to save a remote HTTP API URL with an API key. Use HTTPS, or localhost for local services."
+            )
+            return
+        }
+
         let serviceToSave = apiService ?? APIServiceEntity(context: viewContext)
         serviceToSave.name = name
         serviceToSave.type = type
-        serviceToSave.url = URL(string: url)
+        serviceToSave.url = serviceURL
         serviceToSave.model = model
         serviceToSave.contextSize = Int16(contextSize)
         serviceToSave.useStreamResponse = useStreamResponse

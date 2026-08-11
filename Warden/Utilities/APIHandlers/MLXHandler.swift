@@ -144,6 +144,125 @@ final class MLXHandler: APIService {
 
     // MARK: - Core generation
 
+    struct MLXModelMetadata: Decodable {
+        let modelType: String?
+
+        enum CodingKeys: String, CodingKey {
+            case modelType = "model_type"
+        }
+    }
+
+    static let mlxVisionModelTypes: Set<String> = [
+        "fastvlm",
+        "gemma3",
+        "idefics3",
+        "lfm2-vl",
+        "lfm2_vl",
+        "llava_qwen2",
+        "mistral3",
+        "paligemma",
+        "pixtral",
+        "qwen2_5_vl",
+        "qwen2_vl",
+        "qwen3_vl",
+        "smolvlm"
+    ]
+
+    static func mlxModelType(at modelURL: URL) -> String? {
+        let configURL = modelURL.appendingPathComponent("config.json")
+        guard let data = try? Data(contentsOf: configURL),
+              let metadata = try? JSONDecoder().decode(MLXModelMetadata.self, from: data)
+        else {
+            return nil
+        }
+        return metadata.modelType?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    static func isMLXVisionModel(at modelURL: URL) -> Bool {
+        guard let modelType = mlxModelType(at: modelURL) else { return false }
+        return isMLXVisionModel(modelType: modelType)
+    }
+
+    static func isMLXVisionModel(modelType: String?) -> Bool {
+        guard let modelType else { return false }
+        return mlxVisionModelTypes.contains(modelType)
+    }
+
+    static func prepareMLXLoadDirectory(for modelURL: URL, modelType: String?) throws -> URL {
+        guard isMLXVisionModel(modelType: modelType), hasNestedSafetensors(in: modelURL) else {
+            return modelURL
+        }
+
+        return try createSanitizedMLXLoadDirectory(for: modelURL)
+    }
+
+    static func hasNestedSafetensors(in modelURL: URL) -> Bool {
+        let rootPath = modelURL.standardizedFileURL.path
+        guard let enumerator = FileManager.default.enumerator(
+            at: modelURL,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return false
+        }
+
+        for case let url as URL in enumerator where url.pathExtension == "safetensors" {
+            if url.deletingLastPathComponent().standardizedFileURL.path != rootPath {
+                return true
+            }
+        }
+        return false
+    }
+
+    static func createSanitizedMLXLoadDirectory(for modelURL: URL) throws -> URL {
+        let sanitizedName = Data(modelURL.standardizedFileURL.path.utf8)
+            .base64EncodedString()
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "=", with: "")
+        let sanitizedRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("warden_mlx_model_load", isDirectory: true)
+            .appendingPathComponent(sanitizedName, isDirectory: true)
+
+        if FileManager.default.fileExists(atPath: sanitizedRoot.path) {
+            return sanitizedRoot
+        }
+
+        try FileManager.default.createDirectory(at: sanitizedRoot, withIntermediateDirectories: true)
+        try mirrorMLXLoadDirectoryContents(from: modelURL, to: sanitizedRoot, rootURL: modelURL)
+        return sanitizedRoot
+    }
+
+    private static func mirrorMLXLoadDirectoryContents(from sourceURL: URL, to destinationURL: URL, rootURL: URL) throws {
+        let fm = FileManager.default
+        let children = try fm.contentsOfDirectory(
+            at: sourceURL,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        )
+
+        for source in children {
+            let destination = destinationURL.appendingPathComponent(source.lastPathComponent)
+            let isDirectory = (try? source.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+
+            if isDirectory {
+                try fm.createDirectory(at: destination, withIntermediateDirectories: true)
+                try mirrorMLXLoadDirectoryContents(from: source, to: destination, rootURL: rootURL)
+                continue
+            }
+
+            if source.pathExtension == "safetensors",
+               source.deletingLastPathComponent().standardizedFileURL.path != rootURL.standardizedFileURL.path {
+                continue
+            }
+
+            if fm.fileExists(atPath: destination.path) {
+                try fm.removeItem(at: destination)
+            }
+            try fm.createSymbolicLink(at: destination, withDestinationURL: source)
+        }
+    }
+
     private func sendMessage(
         _ requestMessages: [[String: String]],
         tools: [[String: Any]]?,
@@ -188,6 +307,9 @@ final class MLXHandler: APIService {
             let extraction = extractImageInputs(from: rawPrompt)
             let prompt = extraction.prompt
             let imageData = extraction.imageData
+            let modelType = Self.mlxModelType(at: modelURL)
+            let isVisionModel = Self.isMLXVisionModel(modelType: modelType)
+            let modelLoadURL = try Self.prepareMLXLoadDirectory(for: modelURL, modelType: modelType)
 
             #if canImport(FluxSwift)
             if let fluxInfo = findFluxModelInfo(at: modelURL) {
@@ -203,11 +325,22 @@ final class MLXHandler: APIService {
                 return try await generateImage(prompt: prompt, modelURL: stableDiffusionRoot)
             }
 
-            if !imageData.isEmpty {
-                return try await generateVision(prompt: prompt, imageData: imageData, temperature: temperature, onToken: onToken)
+            if isVisionModel || !imageData.isEmpty {
+                return try await generateVision(
+                    prompt: prompt,
+                    imageData: imageData,
+                    modelURL: modelLoadURL,
+                    temperature: temperature,
+                    onToken: onToken
+                )
             }
 
-            return try await generateText(prompt: prompt, temperature: temperature, onToken: onToken)
+            return try await generateText(
+                prompt: prompt,
+                modelURL: modelLoadURL,
+                temperature: temperature,
+                onToken: onToken
+            )
         }
         #endif
     }
@@ -416,10 +549,11 @@ final class MLXHandler: APIService {
 
     private func generateText(
         prompt: String,
+        modelURL: URL,
         temperature: Float,
         onToken: ((String) -> Bool)?
     ) async throws -> String {
-        let container = try await loadTextContainer(modelURL: URL(fileURLWithPath: model))
+        let container = try await loadTextContainer(modelURL: modelURL)
         let parameters = GenerateParameters(temperature: temperature)
 
         let input = try await container.prepare(input: UserInput(prompt: prompt))
@@ -440,10 +574,11 @@ final class MLXHandler: APIService {
     private func generateVision(
         prompt: String,
         imageData: [Data],
+        modelURL: URL,
         temperature: Float,
         onToken: ((String) -> Bool)?
     ) async throws -> String {
-        let container = try await loadVisionContainer(modelURL: URL(fileURLWithPath: model))
+        let container = try await loadVisionContainer(modelURL: modelURL)
         let parameters = GenerateParameters(temperature: temperature)
 
         var images: [UserInput.Image] = []

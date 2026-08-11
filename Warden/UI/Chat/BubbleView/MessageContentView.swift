@@ -19,6 +19,8 @@ struct MessageContentView: View {
     @State private var selectedImage: IdentifiableImage?
     @State private var resolvedImages: [UUID: NSImage] = [:]
     @State private var resolvedFiles: [UUID: FileAttachment] = [:]
+    @State private var remoteImages: [String: NSImage] = [:]
+    @State private var failedRemoteImages: Set<String> = []
     @State private var missingImages: Set<UUID> = []
     @State private var missingFiles: Set<UUID> = []
 
@@ -320,6 +322,27 @@ struct MessageContentView: View {
         }
     }
     
+    private static func loadImage(from url: URL) async throws -> NSImage {
+        let data: Data
+        if url.isFileURL {
+            data = try await Task.detached(priority: .utility) {
+                try Data(contentsOf: url)
+            }.value
+        } else {
+            let (remoteData, response) = try await URLSession.shared.data(from: url)
+            if let httpResponse = response as? HTTPURLResponse,
+               !(200...299).contains(httpResponse.statusCode) {
+                throw URLError(.badServerResponse)
+            }
+            data = remoteData
+        }
+
+        guard let image = NSImage(data: data) else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        return image
+    }
+    
     @ViewBuilder
     private func renderRemoteImage(urlString: String) -> some View {
         // 1) Try to decode as a bare base64 image (possibly surrounded by other text)
@@ -345,27 +368,27 @@ struct MessageContentView: View {
         // 3) Try as a normal URL
         else if let url = URL(string: urlString) {
             ZStack {
-                ProgressView()
-                    .scaleEffect(0.8)
-                    .frame(width: 24, height: 24)
-                    .padding(.bottom, 3)
-                
-                if let data = try? Data(contentsOf: url), let nsImage = NSImage(data: data) {
+                if let nsImage = remoteImages[urlString] {
                     renderImage(nsImage)
+                } else if failedRemoteImages.contains(urlString) {
+                    Text(urlString)
+                        .textSelection(.enabled)
+                } else {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                        .frame(width: 24, height: 24)
+                        .padding(.bottom, 3)
                 }
             }
             .task(id: urlString) {
-                if let data = try? Data(contentsOf: url), let nsImage = NSImage(data: data) {
-                    var hasher = Hasher()
-                    hasher.combine(urlString)
-                    let hash = hasher.finalize()
-                    let uuidBytes = withUnsafeBytes(of: hash.bigEndian) { Data($0) }
-                    let padded = uuidBytes + Data(repeating: 0, count: max(0, 16 - uuidBytes.count))
-                    let uuid = padded.withUnsafeBytes { ptr -> UUID in
-                        let bytes = ptr.bindMemory(to: UInt8.self)
-                        return UUID(uuid: (bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7], bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]))
-                    }
-                    resolvedImages[uuid] = nsImage
+                guard remoteImages[urlString] == nil, !failedRemoteImages.contains(urlString) else { return }
+                do {
+                    let nsImage = try await Self.loadImage(from: url)
+                    guard !Task.isCancelled else { return }
+                    remoteImages[urlString] = nsImage
+                } catch {
+                    guard !Task.isCancelled else { return }
+                    failedRemoteImages.insert(urlString)
                 }
             }
         }

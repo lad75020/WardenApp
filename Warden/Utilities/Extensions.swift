@@ -30,6 +30,43 @@ extension Data {
     }
 }
 
+extension URL {
+    var redactedForLogging: String {
+        guard var components = URLComponents(url: self, resolvingAgainstBaseURL: false) else {
+            return absoluteString
+        }
+        let sensitiveNames = Set(["key", "api_key", "apikey", "token", "access_token", "auth", "authorization", "password", "secret"])
+        components.queryItems = components.queryItems?.map { item in
+            sensitiveNames.contains(item.name.lowercased()) ? URLQueryItem(name: item.name, value: "<redacted>") : item
+        }
+        return components.string ?? absoluteString
+    }
+
+    var isLoopbackOrLocalhost: Bool {
+        guard let host = host?.lowercased() else { return false }
+        return host == "localhost" || host == "127.0.0.1" || host == "::1" || host.hasSuffix(".localhost")
+    }
+
+    var isLocalOnlyScheme: Bool {
+        let scheme = scheme?.lowercased()
+        return scheme == "local" || scheme == "file"
+    }
+
+    var allowsSensitiveTransport: Bool {
+        let scheme = scheme?.lowercased()
+        return scheme == "https" || isLocalOnlyScheme || (scheme == "http" && isLoopbackOrLocalhost)
+    }
+}
+
+extension URLRequest {
+    var containsSensitiveCredential: Bool {
+        if value(forHTTPHeaderField: "Authorization")?.isEmpty == false { return true }
+        guard let url, let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems else { return false }
+        let sensitiveNames = Set(["key", "api_key", "apikey", "token", "access_token", "auth", "authorization", "password", "secret"])
+        return items.contains { sensitiveNames.contains($0.name.lowercased()) && ($0.value?.isEmpty == false) }
+    }
+}
+
 extension Date {
     func formattedTimestamp() -> String {
         let formatter = DateFormatter()

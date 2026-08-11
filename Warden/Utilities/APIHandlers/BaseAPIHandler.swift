@@ -51,13 +51,14 @@ class BaseAPIHandler: APIService {
         requestMessages: requestMessages,
         tools: tools,
         model: model,
-        temperature: 1,
+        temperature: temperature,
         stream: true
     )
+    try validateSensitiveTransport(for: request)
     
     #if DEBUG
     let log = WardenLog.streaming
-    log.debug("Starting stream: \(request.url?.absoluteString ?? "nil", privacy: .public)")
+    log.debug("Starting stream: \(request.url?.redactedForLogging ?? "nil", privacy: .public)")
     #endif
     
     return AsyncThrowingStream { continuation in
@@ -74,7 +75,7 @@ class BaseAPIHandler: APIService {
                 if !(200...299).contains(statusCode) {
                     let errorBody = try await self.collectResponseBody(from: stream)
                     if let errorString = String(data: errorBody, encoding: .utf8) {
-                        log.error("HTTP error \(statusCode): \(errorString, privacy: .public)")
+                        log.error("HTTP error \(statusCode): \(errorBody.count, privacy: .public) byte redacted body")
                         throw APIError.serverError("HTTP \(statusCode): \(errorString)")
                     } else {
                         throw APIError.serverError("HTTP \(statusCode)")
@@ -89,7 +90,9 @@ class BaseAPIHandler: APIService {
                         } else {
                             valueString = "\(value)"
                         }
-                        log.debug("Header: \(key, privacy: .public) = \(valueString, privacy: .public)")
+                        let lowercasedKey = String(describing: key).lowercased()
+                        let redactedValue = lowercasedKey == "authorization" || lowercasedKey == "set-cookie" || lowercasedKey.contains("token") || lowercasedKey.contains("key") ? "<redacted>" : valueString
+                        log.debug("Header: \(String(describing: key), privacy: .public) = \(redactedValue, privacy: .private)")
                     }
                 }
                 #endif
@@ -111,7 +114,7 @@ class BaseAPIHandler: APIService {
                     
                     if let messageData = messageData {
                         #if DEBUG
-                        log.debug("Yielding chunk: \(String(messageData.prefix(50)), privacy: .public)...")
+                        log.debug("Yielding chunk: \(messageData.count, privacy: .public) character(s)")
                         #endif
                         continuation.yield((messageData, toolCalls))
                     }

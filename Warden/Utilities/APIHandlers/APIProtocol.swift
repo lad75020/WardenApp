@@ -143,6 +143,13 @@ extension APIService {
         return !string.starts(with: ":")
     }
 
+    func validateSensitiveTransport(for request: URLRequest) throws {
+        guard request.containsSensitiveCredential,
+              let url = request.url,
+              !url.allowsSensitiveTransport else { return }
+        throw APIError.noApiService("Refusing to send credentials over insecure remote URL: \(url.redactedForLogging)")
+    }
+
     /// Default implementation of non-streaming message sending
     /// Consolidates shared request/response handling across all handlers
     /// Handlers only need to override parseJSONResponse for their specific format
@@ -154,6 +161,8 @@ extension APIService {
             temperature: temperature,
             stream: false
         )
+
+        try validateSensitiveTransport(for: request)
 
         let (data, response) = try await session.data(for: request)
         let result = self.handleAPIResponse(response, data: data, error: nil)

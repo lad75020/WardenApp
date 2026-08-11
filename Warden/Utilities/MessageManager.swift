@@ -786,7 +786,7 @@ final class MessageManager: ObservableObject {
         if let service = chat.apiService {
             let isImageService =
                 (service.model?.localizedCaseInsensitiveContains("image") ?? false) ||
-            ((service.name?.localizedCaseInsensitiveContains("image")) != nil)
+                (service.name?.localizedCaseInsensitiveContains("image") ?? false)
             if isImageService {
                 #if DEBUG
                     WardenLog.app.debug("Chat name generation skipped for image-generation service")
