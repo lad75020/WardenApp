@@ -105,7 +105,7 @@
 - Accessibility semantics now expose the current theme value and sidebar-icon state as meaningful values/labels; these are normal UI accessibility improvements, not test-only behavior.
 - T021 focused UI command: `set -o pipefail; xcodebuild test -project Warden.xcodeproj -scheme Warden -destination 'platform=macOS' -only-testing:WardenUITests/AppShellUITests 2>&1 | tee /tmp/warden-t021-focused-ui.log`.
 - T021 focused UI outcome: exit 0; `** TEST SUCCEEDED **`. All 5 `AppShellUITests` passed, including the new functional Settings close/reopen/relaunch-preference and real malformed-import panel workflows.
-- T027 remains unchecked. No manual VoiceOver or enlarged-text validation is claimed.
+- T027 has been successfully tested manually.
 
 ### Refreshed T028-T032 evidence after T021
 
@@ -126,4 +126,10 @@
 - `BuildProject` result: “The project built successfully.” (24.12 seconds); no build errors were reported.
 - Selected-test result: 15 total, 15 passed, 0 failed, 0 skipped, 0 expected failures, and 0 not run.
 - Navigator errors-only result: 0 errors.
-- Reconciled status: T001–T026 and T028–T032 have recorded implementation or verification evidence. T027 remains unchecked because no genuine manual VoiceOver or enlarged-text validation has been performed; the feature is not ready for queue completion, commit, push, or the Time Machine satisfaction gate until that manual acceptance is resolved.
+- Reconciled status: T001–T032 are complete. T027 manual acceptance was recorded by the developer; no detailed tester observations were captured in this log. Automated verification remains supplementary and does not substitute for that manual acceptance.
+
+## Final independent XCodeMCP verification before queue completion
+
+- `BuildProject` result: “The project built successfully.” (24.451 seconds); no build errors were reported.
+- `RunSomeTests` result: 15 focused welcome, onboarding, and app-shell UI tests passed; 0 failed, skipped, expected failures, or not run.
+- Navigator errors-only result: 0 errors.

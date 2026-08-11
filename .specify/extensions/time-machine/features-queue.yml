@@ -1,7 +1,7 @@
 analyzed_at: "2026-08-11T17:29:16Z"
 project_root: "/Volumes/WDBlack4TB/Code/WardenApp"
 total_features: 12
-completed: 0
+completed: 1
 features:
   - id: "app-shell-and-onboarding"
     name: "App Shell and Onboarding"
@@ -14,12 +14,12 @@ features:
       - "Warden/UI/Preferences/PreferencesView.swift"
       - "Warden/UI/Preferences/TabGeneralSettingsView.swift"
       - "Warden/Utilities/SettingsWindowManager.swift"
-    status: in-progress # pending | in-progress | done | skipped
-    current_phase: implement # null | specify | clarify | plan | tasks | implement
+    status: done # pending | in-progress | done | skipped
+    current_phase: null # null | specify | clarify | plan | tasks | implement
     branch: "feature/time-machine-app-shell-and-onboarding"
-    pushed: null # null | true | false
+    pushed: true # null | true | false
     started_at: "2026-08-11T17:46:35Z"
-    completed_at: null
+    completed_at: "2026-08-11T19:39:12Z"
 
   - id: "persistence-and-chat-history"
     name: "Persistence and Chat History"
