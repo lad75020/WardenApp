@@ -6,7 +6,11 @@ import CoreData
 struct SettingsView: View {
     @EnvironmentObject private var store: ChatStore
     @Environment(\.managedObjectContext) private var viewContext
-    @State private var selectedTab: PreferencesTabs = .general
+    @State private var selectedTab: PreferencesTabs
+
+    init(initialTab: PreferencesTabs = .general) {
+        _selectedTab = State(initialValue: initialTab)
+    }
     
     var body: some View {
         VStack(spacing: 0) {
@@ -36,6 +40,7 @@ struct SettingsView: View {
                     TabGeneralSettingsView()
                 case .apiServices:
                     TabAPIServicesView()
+                        .accessibilityIdentifier("settings.apiServices")
                 case .aiPersonas:
                     TabAIPersonasView()
                         .environment(\.managedObjectContext, viewContext)

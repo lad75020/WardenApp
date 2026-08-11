@@ -223,12 +223,10 @@ final class ChatViewModel: ObservableObject {
             )
             #endif
             
-            // Mark as failed to prevent future attempts
+            // Mark as failed to prevent future attempts. The chat remains readable and
+            // is surfaced through UnavailableChatRecoveryView for explicit, non-destructive
+            // recovery; no blocking modal is shown (persistence-and-chat-history spec).
             messageManagerCreationFailed = true
-            
-            // Show error to user
-            showInvalidChatAlert()
-            
             return nil
         }
         
@@ -291,19 +289,6 @@ final class ChatViewModel: ObservableObject {
     
     func stopStreaming() {
         messageManager?.stopStreaming()
-    }
-    
-    // MARK: - Invalid Chat Handling
-    
-    private func showInvalidChatAlert() {
-        DispatchQueue.main.async {
-            let alert = NSAlert()
-            alert.messageText = "Invalid Chat Configuration"
-            alert.informativeText = "This chat has an invalid API configuration and cannot be used. Please delete this chat or configure a valid API service."
-            alert.alertStyle = .warning
-            alert.addButton(withTitle: "OK")
-            alert.runModal()
-        }
     }
     
     /// Check if this chat has a valid configuration

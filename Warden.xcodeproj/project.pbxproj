@@ -212,6 +212,11 @@
 		DAD2E19560A64CC290850A1D /* ChatService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09C5F31F2F664B9BBD13C0CC /* ChatService.swift */; };
 		F508922783C94D36A9947657 /* MCPSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E14DF97A8974C028719A178 /* MCPSettingsView.swift */; };
 		FAFC89E8E4A6414588B6B15C /* MCPServerConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B4DE0E203854D60AC391E45 /* MCPServerConfig.swift */; };
+		F10000000000000000000001 /* UnavailableChatRecoveryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000002 /* UnavailableChatRecoveryView.swift */; };
+		F10000000000000000000003 /* ChatHistoryRecoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000004 /* ChatHistoryRecoveryTests.swift */; };
+		F1000000000000000000000B /* DatabasePatcherMigrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1000000000000000000000C /* DatabasePatcherMigrationTests.swift */; };
+		F10000000000000000000005 /* PersistenceRecoveryTestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000006 /* PersistenceRecoveryTestSupport.swift */; };
+		F10000000000000000000007 /* PersistenceRecoveryUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000008 /* PersistenceRecoveryUITests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -422,6 +427,11 @@
 		C4FF23892EED7B3000C17D8B /* AttachmentResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentResolver.swift; sourceTree = "<group>"; };
 		C4FF238B2EED7FD300C17D8B /* StreamingTaskController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingTaskController.swift; sourceTree = "<group>"; };
 		C4FF238C2EED7FD300C17D8B /* WardenSignpost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WardenSignpost.swift; sourceTree = "<group>"; };
+		F10000000000000000000002 /* UnavailableChatRecoveryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnavailableChatRecoveryView.swift; sourceTree = "<group>"; };
+		F10000000000000000000004 /* ChatHistoryRecoveryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatHistoryRecoveryTests.swift; sourceTree = "<group>"; };
+		F1000000000000000000000C /* DatabasePatcherMigrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DatabasePatcherMigrationTests.swift; sourceTree = "<group>"; };
+		F10000000000000000000006 /* PersistenceRecoveryTestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistenceRecoveryTestSupport.swift; sourceTree = "<group>"; };
+		F10000000000000000000008 /* PersistenceRecoveryUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistenceRecoveryUITests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -608,6 +618,7 @@
 				4A254A6B2CEA69DF00F66935 /* CodeView */,
 				4A885C512CEA3B130018BBED /* HTMLPreviewView.swift */,
 				4A5F64B929C64F9D000403F7 /* ChatView.swift */,
+				F10000000000000000000002 /* UnavailableChatRecoveryView.swift */,
 				C479718C2EBF3E410097C000 /* MessageListView.swift */,
 				C43A76372ED5672E006DA5E2 /* Components */,
 				4A8E2E0A2C56FCFD00F077F2 /* ChatViewModel.swift */,
@@ -796,6 +807,7 @@
 			isa = PBXGroup;
 			children = (
 				A1B2C3D4E5F60708090A0B03 /* AppShell */,
+				F10000000000000000000009 /* Persistence */,
 				4ABDBE6729F86E6300661B2D /* Utilities */,
 			);
 			path = WardenTests;
@@ -811,15 +823,34 @@
 			path = AppShell;
 			sourceTree = "<group>";
 		};
+		F10000000000000000000009 /* Persistence */ = {
+			isa = PBXGroup;
+			children = (
+				F10000000000000000000004 /* ChatHistoryRecoveryTests.swift */,
+				F1000000000000000000000C /* DatabasePatcherMigrationTests.swift */,
+			);
+			path = Persistence;
+			sourceTree = "<group>";
+		};
 		4A399CB329BC8FF200E98796 /* WardenUITests */ = {
 			isa = PBXGroup;
 			children = (
 				A1B2C3D4E5F60708090A0B07 /* AppShellTestSupport.swift */,
 				A1B2C3D4E5F60708090A0B09 /* AppShellUITests.swift */,
+				F1000000000000000000000A /* Persistence */,
 				4A399CB429BC8FF200E98796 /* WardenUITests.swift */,
 				4A399CB629BC8FF200E98796 /* WardenUITestsLaunchTests.swift */,
 			);
 			path = WardenUITests;
+			sourceTree = "<group>";
+		};
+		F1000000000000000000000A /* Persistence */ = {
+			isa = PBXGroup;
+			children = (
+				F10000000000000000000006 /* PersistenceRecoveryTestSupport.swift */,
+				F10000000000000000000008 /* PersistenceRecoveryUITests.swift */,
+			);
+			path = Persistence;
 			sourceTree = "<group>";
 		};
 		4ABDBE6429F86B3900661B2D /* Configuration */ = {
@@ -1177,6 +1208,7 @@
 				4A2B9E952CE1272E00C8042F /* RequestMessagesTransformer.swift in Sources */,
 				4AB4B0912D778B1D00CA41B6 /* OpenRouterHandler.swift in Sources */,
 				4A5F64BA29C64F9D000403F7 /* ChatView.swift in Sources */,
+				F10000000000000000000001 /* UnavailableChatRecoveryView.swift in Sources */,
 				4AFEE7212C472F53006F99FB /* APIProtocol.swift in Sources */,
 				4A885C542CEA3D960018BBED /* PreviewStateManager.swift in Sources */,
 				4AA681C72D3DAB40005C4E6E /* ChatBottomContainerView.swift in Sources */,
@@ -1256,6 +1288,8 @@
 				A1B2C3D4E5F60708090A0B01 /* AppShellTestSupport.swift in Sources */,
 				A1B2C3D4E5F60708090A0B04 /* WelcomeExperienceStateTests.swift in Sources */,
 				A00100050001000100010001 /* OnboardingFlowTests.swift in Sources */,
+				F10000000000000000000003 /* ChatHistoryRecoveryTests.swift in Sources */,
+				F1000000000000000000000B /* DatabasePatcherMigrationTests.swift in Sources */,
 				4ABDBE6B29F86E8D00661B2D /* MessageParserTests.swift in Sources */,
 				C4D1E2F42F0652E300B80002 /* SSEStreamParserTests.swift in Sources */,
 			);
@@ -1265,6 +1299,8 @@
 			files = (
 				A1B2C3D4E5F60708090A0B06 /* AppShellTestSupport.swift in Sources */,
 				A1B2C3D4E5F60708090A0B08 /* AppShellUITests.swift in Sources */,
+				F10000000000000000000005 /* PersistenceRecoveryTestSupport.swift in Sources */,
+				F10000000000000000000007 /* PersistenceRecoveryUITests.swift in Sources */,
 				4A399CB729BC8FF200E98796 /* WardenUITestsLaunchTests.swift in Sources */,
 				4A399CB529BC8FF200E98796 /* WardenUITests.swift in Sources */,
 			);

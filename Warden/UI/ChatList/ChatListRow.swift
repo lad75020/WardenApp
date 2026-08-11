@@ -46,6 +46,10 @@ struct ChatListRow: View {
         return selectedChat.objectID == chat.objectID
     }
 
+    private var isServiceUnavailable: Bool {
+        !store.availability(for: chat).isAvailable
+    }
+
     var body: some View {
         Button {
             let currentEvent = NSApp.currentEvent
@@ -102,6 +106,7 @@ struct ChatListRow: View {
             }
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(isServiceUnavailable ? "Chat with unavailable service" : "Chat")
         .onHover { hovering in
             isHovered = hovering
         }

@@ -9,6 +9,7 @@ struct MessageCell: View {
     let viewContext: NSManagedObjectContext
     @State private var isHovered = false
     @Environment(\.colorScheme) var colorScheme
+    @EnvironmentObject private var store: ChatStore
     @AppStorage("showSidebarAIIcons") private var showSidebarAIIcons: Bool = true
 
     var searchText: String = ""
@@ -88,6 +89,13 @@ struct MessageCell: View {
                             .font(.body)
                             .lineLimit(1)
                             .truncationMode(.tail)
+                    }
+
+                    if !store.availability(for: chat).isAvailable {
+                        Text("Service unavailable")
+                            .font(.caption)
+                            .accessibilityLabel("Service unavailable; repair is required before sending")
+                            .accessibilityIdentifier("chatList.serviceUnavailable")
                     }
                     
                     // Snippet removed

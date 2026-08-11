@@ -34,9 +34,7 @@ class DatabasePatcher {
 #endif
             }
             catch {
-                WardenLog.coreData.error(
-                    "Failed to add default assistants: \(error.localizedDescription, privacy: .public)"
-                )
+                WardenLog.coreData.error("Failed to add default assistants")
             }
         }
     }
@@ -64,7 +62,7 @@ class DatabasePatcher {
             }
         }
         catch {
-            WardenLog.coreData.error("Error patching persona ordering: \(error.localizedDescription, privacy: .public)")
+            WardenLog.coreData.error("Failed to patch persona ordering")
         }
     }
     
@@ -85,7 +83,7 @@ class DatabasePatcher {
             patchPersonaOrdering(context: context)
         }
         catch {
-            WardenLog.coreData.error("Error resetting persona ordering: \(error.localizedDescription, privacy: .public)")
+            WardenLog.coreData.error("Failed to reset persona ordering")
         }
     }
     
@@ -103,9 +101,7 @@ class DatabasePatcher {
                     service.imageUploadsAllowed = config.imageUploadsSupported ?? false
                     needsSave = true
 #if DEBUG
-                    WardenLog.coreData.debug(
-                        "Enabled image uploads for API service: \(service.name ?? "Unnamed", privacy: .public)"
-                    )
+                    WardenLog.coreData.debug("Enabled image upload setting for a service")
 #endif
                 }
             }
@@ -118,9 +114,7 @@ class DatabasePatcher {
             }
         }
         catch {
-            WardenLog.coreData.error(
-                "Error patching image uploads for API services: \(error.localizedDescription, privacy: .public)"
-            )
+            WardenLog.coreData.error("Failed to patch image upload settings")
         }
     }
     
@@ -148,9 +142,7 @@ class DatabasePatcher {
                         service.url = newUrl
                         needsSave = true
 #if DEBUG
-                        WardenLog.coreData.debug(
-                            "Migrated Ollama service '\(service.name ?? "Unnamed", privacy: .public)' from /api/generate to /api/chat"
-                        )
+                        WardenLog.coreData.debug("Migrated Ollama service endpoint")
 #endif
                     }
                 }
@@ -165,14 +157,11 @@ class DatabasePatcher {
             
             defaults.set(true, forKey: migrationKey)
         } catch {
-            WardenLog.coreData.error(
-                "Error migrating Ollama services: \(error.localizedDescription, privacy: .public)"
-            )
+            WardenLog.coreData.error("Failed to migrate Ollama service endpoints")
         }
     }
     
     static func migrateExistingConfiguration(context: NSManagedObjectContext) {
-        let apiServiceManager = APIServiceManager(viewContext: context)
         let defaults = UserDefaults.standard
         if defaults.bool(forKey: "APIServiceMigrationCompleted") {
             return
@@ -197,20 +186,39 @@ class DatabasePatcher {
         }
         
         guard let url = URL(string: apiUrl) else {
-            WardenLog.coreData.error("Invalid migrated API URL: \(apiUrl, privacy: .public)")
+            WardenLog.coreData.error("Migrated API configuration has an invalid URL")
             defaults.set(true, forKey: "APIServiceMigrationCompleted")
             return
         }
         
-        let apiService = apiServiceManager.createAPIService(
-            name: name,
-            type: type,
-            url: url,
-            model: gptModel,
-            contextSize: chatContext.toInt16() ?? 15,
-            useStreamResponse: useStream,
-            generateChatNames: useChatGptForNames
+        let serviceRequest = NSFetchRequest<APIServiceEntity>(entityName: "APIServiceEntity")
+        serviceRequest.predicate = NSPredicate(
+            format: "name == %@ AND type == %@ AND url == %@ AND model == %@",
+            name, type, url as CVarArg, gptModel
         )
+
+        let apiService: APIServiceEntity
+        do {
+            if let existingService = try context.fetch(serviceRequest).first {
+                apiService = existingService
+            } else {
+                apiService = APIServiceEntity(context: context)
+                apiService.id = UUID()
+                apiService.name = name
+                apiService.type = type
+                apiService.url = url
+                apiService.model = gptModel
+                apiService.contextSize = chatContext.toInt16() ?? 15
+                apiService.useStreamResponse = useStream
+                apiService.generateChatNames = useChatGptForNames
+                apiService.tokenIdentifier = UUID().uuidString
+                try context.save()
+            }
+        } catch {
+            context.rollback()
+            WardenLog.coreData.error("Failed to prepare migrated API configuration")
+            return
+        }
         
         if let token = defaults.string(forKey: "gptToken") {
             if token != "", let apiServiceId = apiService.id {
@@ -247,33 +255,7 @@ class DatabasePatcher {
             }
         }
         catch {
-            WardenLog.coreData.error(
-                "Error setting default assistant: \(error.localizedDescription, privacy: .public)"
-            )
-        }
-        
-        // Update Chats
-        let fetchRequest = NSFetchRequest<ChatEntity>(entityName: "ChatEntity")
-        do {
-            let existingChats = try context.fetch(fetchRequest)
-#if DEBUG
-            WardenLog.coreData.debug("Found \(existingChats.count, privacy: .public) existing chat(s) to update")
-#endif
-            
-            for chat in existingChats {
-                chat.apiService = apiService
-                chat.gptModel = apiService.model ?? AppConstants.chatGptDefaultModel
-            }
-            
-            try context.save()
-#if DEBUG
-            WardenLog.coreData.debug("Successfully updated all existing chats with new API service")
-#endif
-        }
-        catch {
-            WardenLog.coreData.error(
-                "Error updating existing chats: \(error.localizedDescription, privacy: .public)"
-            )
+            WardenLog.coreData.error("Failed to set migrated default assistant")
         }
         
         defaults.set(apiService.objectID.uriRepresentation().absoluteString, forKey: "defaultApiService")
@@ -316,9 +298,7 @@ class DatabasePatcher {
                     persona.color = symbol
                     needsSave = true
 #if DEBUG
-                    WardenLog.coreData.debug(
-                        "Migrated persona '\(persona.name ?? "", privacy: .public)' from color to symbol"
-                    )
+                    WardenLog.coreData.debug("Migrated a persona color setting")
 #endif
                 }
             }
@@ -333,9 +313,7 @@ class DatabasePatcher {
             defaults.set(true, forKey: "PersonaSymbolMigrationCompleted")
         }
         catch {
-            WardenLog.coreData.error(
-                "Error migrating persona colors to symbols: \(error.localizedDescription, privacy: .public)"
-            )
+            WardenLog.coreData.error("Failed to migrate persona color settings")
         }
     }
 }

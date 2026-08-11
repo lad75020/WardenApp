@@ -5,6 +5,7 @@ import os
 
 struct ChatView: View {
     let viewContext: NSManagedObjectContext
+    let onDeleteUnavailableChat: (ChatEntity) -> Void
     @State var chat: ChatEntity
     @State private var waitingForResponse = false
     @AppStorage("gptToken") var gptToken = ""
@@ -57,8 +58,13 @@ struct ChatView: View {
     )
     private var apiServices: FetchedResults<APIServiceEntity>
 
-    init(viewContext: NSManagedObjectContext, chat: ChatEntity) {
+    init(
+        viewContext: NSManagedObjectContext,
+        chat: ChatEntity,
+        onDeleteUnavailableChat: @escaping (ChatEntity) -> Void = { _ in }
+    ) {
         self.viewContext = viewContext
+        self.onDeleteUnavailableChat = onDeleteUnavailableChat
         self._chat = State(initialValue: chat)
 
         self._chatViewModel = StateObject(
@@ -71,11 +77,32 @@ struct ChatView: View {
     }
 
     var body: some View {
+        let availability = store.availability(for: chat)
         // Check if this is a new chat (no messages)
         let isNewChat = chat.messages.count == 0 && !chat.waitingForResponse && currentError == nil
         
         Group {
-            if isNewChat {
+            if !availability.isAvailable {
+                VStack(spacing: 0) {
+                    UnavailableChatRecoveryView(
+                        chat: chat,
+                        availability: availability,
+                        candidates: store.validRepairCandidates(),
+                        onRepair: repairChat,
+                        onOpenServiceSettings: {
+                            SettingsWindowManager.shared.openServiceSettingsWindow()
+                        },
+                        onDelete: {
+                            onDeleteUnavailableChat(chat)
+                        }
+                    )
+                    .padding()
+
+                    // Retained messages remain readable even while sending is unavailable.
+                    mainChatContent
+                        .accessibilityLabel("Retained chat history; sending is disabled until repaired")
+                }
+            } else if isNewChat {
                 if chatViewModel.sortedMessages.isEmpty && !isStreaming {
                     CenteredInputView(
                         newMessage: $newMessage,
@@ -407,6 +434,13 @@ struct ChatView: View {
 
 extension ChatView {
     func sendMessage(ignoreMessageInput: Bool = false, retryContent: String? = nil) {
+        guard store.availability(for: chat).isAvailable else {
+            currentError = ErrorMessage(
+                apiError: .noApiService("This chat is unavailable. Repair its service before sending."),
+                timestamp: Date()
+            )
+            return
+        }
         guard chatViewModel.canSendMessage else {
             currentError = ErrorMessage(
                 apiError: .noApiService("No API service selected. Select the API service to send your first message"),
@@ -494,6 +528,23 @@ extension ChatView {
                     handleSendResult(result)
                 }
             }
+        }
+    }
+
+    private func repairChat(with service: APIServiceEntity) {
+        do {
+            try store.repairUnavailableChat(chat, with: service)
+            NotificationCenter.default.post(
+                name: NSNotification.Name("RecreateMessageManager"),
+                object: nil,
+                userInfo: ["chatId": chat.id]
+            )
+        } catch {
+            // The recovery view intentionally receives only a non-sensitive generic result.
+            currentError = ErrorMessage(
+                apiError: .noApiService("The repair could not be saved. Your chat history is unchanged."),
+                timestamp: Date()
+            )
         }
     }
     
@@ -898,4 +949,3 @@ extension ChatView {
         )
     }
 }
-

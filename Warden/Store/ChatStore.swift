@@ -5,14 +5,59 @@ import os
 
 let migrationKey = "com.example.chatApp.migrationFromJSONCompleted"
 
+/// A derived, non-persisted state for a chat's current service relationship.
+/// It deliberately contains no service credentials or chat content.
+enum ChatServiceAvailability: Equatable {
+    case available
+    case missingService
+    case invalidService
+
+    var isAvailable: Bool {
+        self == .available
+    }
+
+    var recoverySummary: String {
+        switch self {
+        case .available:
+            return "Service available"
+        case .missingService:
+            return "This chat is unavailable because its service is no longer configured."
+        case .invalidService:
+            return "This chat is unavailable because its service configuration needs attention."
+        }
+    }
+}
+
+enum ChatRecoveryError: LocalizedError {
+    case chatIsAlreadyAvailable
+    case serviceIsNotAValidRepairCandidate
+    case saveFailed
+
+    var errorDescription: String? {
+        switch self {
+        case .chatIsAlreadyAvailable:
+            return "This chat is already available."
+        case .serviceIsNotAValidRepairCandidate:
+            return "The selected service is no longer available for repair."
+        case .saveFailed:
+            return "The repair could not be saved. Your chat history is unchanged."
+        }
+    }
+}
+
 @MainActor
 final class ChatStore: ObservableObject {
     let persistenceController: PersistenceController
     let viewContext: NSManagedObjectContext
+    private let persistenceSave: (NSManagedObjectContext) throws -> Void
 
-    init(persistenceController: PersistenceController) {
+    init(
+        persistenceController: PersistenceController,
+        persistenceSave: @escaping (NSManagedObjectContext) throws -> Void = { try $0.save() }
+    ) {
         self.persistenceController = persistenceController
         self.viewContext = persistenceController.container.viewContext
+        self.persistenceSave = persistenceSave
 
         migrateFromJSONIfNeeded()
         
@@ -101,103 +146,139 @@ final class ChatStore: ObservableObject {
 
     func loadFromCoreData() async -> Result<[ChatBackup], Error> {
         let fetchRequest = NSFetchRequest<ChatEntity>(entityName: "ChatEntity")
-        
-        return await Task { () -> Result<[ChatBackup], Error> in
-            return await withCheckedContinuation { continuation in
-                viewContext.perform {
-                    do {
-                        let chatEntities = try self.viewContext.fetch(fetchRequest)
-                        
-                        // Filter out chats with invalid API configurations
-                        let validChats = chatEntities.filter { chatEntity in
-                            guard let apiService = chatEntity.apiService else {
-                                // If chat has no API service, it's invalid - log and skip
-                                WardenLog.coreData.warning(
-                                    "Deleting chat \(chatEntity.id, privacy: .public) - no API service attached"
-                                )
-                                self.viewContext.delete(chatEntity)
-                                return false
-                            }
-                            
-                            // Verify API service configuration is valid
-                            guard let apiConfig = APIServiceManager.createAPIConfiguration(for: apiService) else {
-                                // If API configuration is invalid, delete the chat
-                                WardenLog.coreData.warning(
-                                    "Deleting chat \(chatEntity.id, privacy: .public) - invalid API configuration"
-                                )
-                                self.viewContext.delete(chatEntity)
-                                return false
-                            }
-                            
-                            return true
-                        }
-                        
-                        let chats = validChats.map { ChatBackup(chatEntity: $0) }
-                        
-                        // Save context if we deleted any invalid chats
-                        if validChats.count < chatEntities.count {
-                            do {
-                                try self.viewContext.save()
-                                WardenLog.coreData.info(
-                                    "Cleaned up \(chatEntities.count - validChats.count, privacy: .public) invalid chats"
-                                )
-                            } catch {
-                                WardenLog.coreData.error(
-                                    "Error saving after cleaning invalid chats: \(error.localizedDescription, privacy: .public)"
-                                )
-                            }
-                        }
-                        
-                        continuation.resume(returning: .success(chats))
-                    } catch {
-                        continuation.resume(returning: .failure(error))
-                    }
+        fetchRequest.sortDescriptors = [
+            NSSortDescriptor(keyPath: \ChatEntity.updatedDate, ascending: false),
+            NSSortDescriptor(keyPath: \ChatEntity.createdDate, ascending: false)
+        ]
+
+        do {
+            let chatEntities = try viewContext.fetch(fetchRequest)
+
+            // Availability is derived. Loading must never delete retained history.
+            let sortedChats = chatEntities.sorted {
+                if $0.updatedDate != $1.updatedDate {
+                    return $0.updatedDate > $1.updatedDate
                 }
+                if $0.createdDate != $1.createdDate {
+                    return $0.createdDate > $1.createdDate
+                }
+                return $0.id.uuidString < $1.id.uuidString
             }
-        }.value
+            return .success(sortedChats.map(ChatBackup.init))
+        } catch {
+            return .failure(error)
+        }
+    }
+
+    // MARK: - Retained chat recovery
+
+    func availability(for chat: ChatEntity) -> ChatServiceAvailability {
+        guard let service = chat.apiService else {
+            return .missingService
+        }
+        return APIServiceManager.createAPIConfiguration(for: service) == nil ? .invalidService : .available
+    }
+
+    func validRepairCandidates() -> [APIServiceEntity] {
+        let request = NSFetchRequest<APIServiceEntity>(entityName: "APIServiceEntity")
+        request.sortDescriptors = [
+            NSSortDescriptor(keyPath: \APIServiceEntity.addedDate, ascending: false),
+            NSSortDescriptor(keyPath: \APIServiceEntity.name, ascending: true)
+        ]
+
+        do {
+            return try viewContext.fetch(request).filter {
+                APIServiceManager.createAPIConfiguration(for: $0) != nil
+            }.sorted { ($0.id?.uuidString ?? "") < ($1.id?.uuidString ?? "") }
+        } catch {
+            // Fetch errors are intentionally not surfaced with raw Core Data details.
+            return []
+        }
+    }
+
+    /// Explicitly remaps an unavailable chat. No chat content or relationships other than
+    /// `apiService` are changed by this operation.
+    func repairUnavailableChat(_ chat: ChatEntity, with service: APIServiceEntity) throws {
+        guard !availability(for: chat).isAvailable else {
+            throw ChatRecoveryError.chatIsAlreadyAvailable
+        }
+        guard validRepairCandidates().contains(where: { $0.objectID == service.objectID }) else {
+            throw ChatRecoveryError.serviceIsNotAValidRepairCandidate
+        }
+
+        let previousService = chat.apiService
+        chat.apiService = service
+        do {
+            try viewContext.save()
+        } catch {
+            chat.apiService = previousService
+            viewContext.rollback()
+            throw ChatRecoveryError.saveFailed
+        }
+    }
+
+    /// Deletes a retained unavailable chat only after a user-facing confirmation.
+    /// Callers must clear any selected-chat reference before invoking this method.
+    func deleteUnavailableChat(_ chat: ChatEntity) throws {
+        guard !availability(for: chat).isAvailable else {
+            throw ChatRecoveryError.chatIsAlreadyAvailable
+        }
+
+        viewContext.delete(chat)
+        do {
+            try viewContext.save()
+        } catch {
+            viewContext.rollback()
+            throw ChatRecoveryError.saveFailed
+        }
     }
 
     func saveToCoreData(chats: [ChatBackup]) async -> Result<Int, Error> {
-        return await Task { () -> Result<Int, Error> in
-            return await withCheckedContinuation { continuation in
-                viewContext.perform {
-                    do {
-                        let defaultApiService = self.getDefaultAPIService()
-                        
-                        for oldChat in chats {
-                            let existingChats: [ChatEntity] = self.fetchEntities(
-                                entityName: "ChatEntity",
-                                predicate: NSPredicate(format: "id == %@", oldChat.id as CVarArg)
-                            )
-                            
-                            guard existingChats.isEmpty else { continue }
-                            
-                            let chatEntity = ChatEntity(context: self.viewContext)
-                            chatEntity.id = oldChat.id
-                            chatEntity.newChat = oldChat.newChat
-                            chatEntity.temperature = oldChat.temperature ?? 0.0
-                            chatEntity.top_p = oldChat.top_p ?? 0.0
-                            chatEntity.behavior = oldChat.behavior
-                            chatEntity.newMessage = oldChat.newMessage ?? ""
-                            chatEntity.createdDate = Date()
-                            chatEntity.updatedDate = Date()
-                            chatEntity.requestMessages = oldChat.requestMessages
-                            chatEntity.gptModel = oldChat.gptModel ?? AppConstants.chatGptDefaultModel
-                            chatEntity.name = oldChat.name ?? ""
-                            
-                            self.attachAPIService(to: chatEntity, from: oldChat, default: defaultApiService)
-                            self.attachPersona(to: chatEntity, name: oldChat.personaName)
-                            self.addMessages(to: chatEntity, from: oldChat.messages)
-                        }
-                        
-                        try self.viewContext.save()
-                        continuation.resume(returning: .success(chats.count))
-                    } catch {
-                        continuation.resume(returning: .failure(error))
-                    }
-                }
+        do {
+            let defaultApiService = getDefaultAPIService()
+            var importedIDs = Set<UUID>()
+            var importedCount = 0
+
+            for oldChat in chats {
+                // A legacy export can contain the same chat more than once. Keep
+                // the first record deterministically and never duplicate it.
+                guard importedIDs.insert(oldChat.id).inserted else { continue }
+                let existingChats: [ChatEntity] = fetchEntities(
+                    entityName: "ChatEntity",
+                    predicate: NSPredicate(format: "id == %@", oldChat.id as CVarArg)
+                )
+
+                guard existingChats.isEmpty else { continue }
+
+                let chatEntity = ChatEntity(context: viewContext)
+                chatEntity.id = oldChat.id
+                chatEntity.newChat = oldChat.newChat
+                chatEntity.temperature = oldChat.temperature ?? 0.0
+                chatEntity.top_p = oldChat.top_p ?? 0.0
+                chatEntity.behavior = oldChat.behavior
+                chatEntity.newMessage = oldChat.newMessage ?? ""
+                chatEntity.createdDate = Date()
+                chatEntity.updatedDate = Date()
+                chatEntity.requestMessages = oldChat.requestMessages
+                chatEntity.gptModel = oldChat.gptModel ?? AppConstants.chatGptDefaultModel
+                chatEntity.name = oldChat.name ?? ""
+
+                attachAPIService(to: chatEntity, from: oldChat, default: defaultApiService)
+                attachPersona(to: chatEntity, name: oldChat.personaName)
+                addMessages(to: chatEntity, from: oldChat.messages)
+                importedCount += 1
             }
-        }.value
+
+            if viewContext.hasChanges {
+                try persistenceSave(viewContext)
+            }
+            return .success(importedCount)
+        } catch {
+            // A failed import must not leave partially inserted legacy records in
+            // the caller's context. The source JSON and migration flag are retained.
+            viewContext.rollback()
+            return .failure(error)
+        }
     }
     
     private func getDefaultAPIService() -> APIServiceEntity? {
@@ -221,7 +302,9 @@ final class ChatStore: ObservableObject {
             limit: 1
         )
         
-        chat.apiService = services.first ?? defaultService
+        // A legacy record that names a service must remain unavailable when that exact
+        // service no longer exists. Falling back would silently change provider context.
+        chat.apiService = services.first
     }
     
     private func attachPersona(to chat: ChatEntity, name: String?) {
@@ -334,9 +417,9 @@ final class ChatStore: ObservableObject {
                 guard let self else { return }
                 let result = await saveToCoreData(chats: oldChats)
                 if case .failure(let error) = result {
-                    WardenLog.coreData.error("Migration from JSON failed: \(error.localizedDescription, privacy: .public)")
+                    WardenLog.coreData.error("Legacy chat migration save failed")
                     self.showAlert(title: "Migration Error",
-                                   message: "Failed to migrate old chat data. Your existing chats may not be available. Error: \(error.localizedDescription)")
+                                   message: "Your existing chats could not be migrated. They have not been removed.")
                     return
                 }
 
@@ -349,7 +432,7 @@ final class ChatStore: ObservableObject {
                 if (error as NSError).code == NSFileReadNoSuchFileError {
                     UserDefaults.standard.set(true, forKey: migrationKey)
                 } else {
-                    WardenLog.coreData.error("Error migrating chats: \(error.localizedDescription, privacy: .public)")
+                    WardenLog.coreData.error("Legacy chat migration could not be completed")
                 }
             }
         }
@@ -716,53 +799,12 @@ final class ChatStore: ObservableObject {
         messageManager.generateChatNameIfNeeded(chat: chat, force: true)
     }
     
-    // MARK: - Cleanup Invalid Chats
-    
-    /// Clean up all chats with invalid API configurations
-    /// This can be called on app startup to prevent loading issues
+    // MARK: - Legacy compatibility
+
+    /// Kept for source compatibility. Invalid service relationships are now retained and
+    /// surfaced through `availability(for:)`; cleanup is deliberately non-destructive.
     func cleanupInvalidChats() {
-        viewContext.perform {
-            let fetchRequest = NSFetchRequest<ChatEntity>(entityName: "ChatEntity")
-            
-            do {
-                let chats = try self.viewContext.fetch(fetchRequest)
-                var invalidChatCount = 0
-                
-                for chat in chats {
-                    guard let apiService = chat.apiService else {
-                        // Chat has no API service - invalid
-                        self.viewContext.delete(chat)
-                        invalidChatCount += 1
-                        continue
-                    }
-                    
-                    // Verify API service configuration is valid
-                    guard APIServiceManager.createAPIConfiguration(for: apiService) != nil else {
-                        // API configuration is invalid - delete chat
-                        self.viewContext.delete(chat)
-                        invalidChatCount += 1
-                        continue
-                    }
-                }
-                
-                if invalidChatCount > 0 {
-                    do {
-                        try self.viewContext.save()
-                        WardenLog.coreData.info(
-                            "Cleaned up \(invalidChatCount, privacy: .public) invalid chats on startup"
-                        )
-                    } catch {
-                        WardenLog.coreData.error(
-                            "Error saving after cleaning invalid chats: \(error.localizedDescription, privacy: .public)"
-                        )
-                    }
-                }
-            } catch {
-                WardenLog.coreData.error(
-                    "Error fetching chats for cleanup: \(error.localizedDescription, privacy: .public)"
-                )
-            }
-        }
+        // No-op by design. Deletion is available only through deleteUnavailableChat(_:).
     }
 }
 
@@ -775,4 +817,3 @@ extension Array {
         }
     }
 }
-

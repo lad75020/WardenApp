@@ -66,6 +66,16 @@ final class SettingsWindowManager: ObservableObject {
     }
     
     func openSettingsWindow() {
+        openSettingsWindow(initialTab: .general)
+    }
+
+    /// Opens the existing service configuration workflow without exposing or handling
+    /// credentials in callers such as unavailable-chat recovery.
+    func openServiceSettingsWindow() {
+        openSettingsWindow(initialTab: .apiServices)
+    }
+
+    private func openSettingsWindow(initialTab: PreferencesTabs) {
         // Keep one owner even when the window is miniaturized or temporarily ordered out.
         if let existingWindow = settingsWindow {
             existingWindow.deminiaturize(nil)
@@ -85,7 +95,7 @@ final class SettingsWindowManager: ObservableObject {
         }()
         
         // Create the settings view with required environment objects and color scheme
-        let settingsView = SettingsView()
+        let settingsView = SettingsView(initialTab: initialTab)
             .environmentObject(ChatStore(persistenceController: PersistenceController.shared))
             .environment(\.managedObjectContext, PersistenceController.shared.container.viewContext)
             .preferredColorScheme(colorScheme)

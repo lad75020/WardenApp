@@ -126,6 +126,11 @@ struct ContentView: View {
             selectedChat = restoredChat
             return
         }
+        if ProcessInfo.processInfo.arguments.contains("-PersistenceRecoveryUITestMode"),
+           let fixtureChat = chats.first {
+            selectedChat = fixtureChat
+            return
+        }
         lastOpenedChatId = ""
     }
 
@@ -254,8 +259,12 @@ struct ContentView: View {
                 // Show project summary when project is selected
                 ProjectSummaryView(project: project)
                     .frame(minWidth: 400)
-            } else if selectedChat != nil {
-                ChatView(viewContext: viewContext, chat: selectedChat!)
+            } else if let selectedChat {
+                ChatView(
+                    viewContext: viewContext,
+                    chat: selectedChat,
+                    onDeleteUnavailableChat: deleteUnavailableChat
+                )
                     .frame(minWidth: 400)
                     .id(openedChatId)
             }
@@ -286,6 +295,21 @@ struct ContentView: View {
         )
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("appShell.detail")
+    }
+
+    private func deleteUnavailableChat(_ chat: ChatEntity) {
+        // Clear selection before the managed object can be deleted.
+        if selectedChat?.objectID == chat.objectID {
+            selectedChat = nil
+            lastOpenedChatId = ""
+        }
+
+        do {
+            try store.deleteUnavailableChat(chat)
+        } catch {
+            // Keep recovery errors non-sensitive and avoid rendering raw persistence errors.
+            // The retained chat remains visible because the deletion was rolled back.
+        }
     }
 }
 

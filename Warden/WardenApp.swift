@@ -5,17 +5,38 @@ import Darwin
 import os
 
 class PersistenceController {
-    static let shared = PersistenceController(
-        inMemory: ProcessInfo.processInfo.arguments.contains("-AppShellUITestMode")
-    )
+    static let shared: PersistenceController = {
+        let processInfo = ProcessInfo.processInfo
+        let usesPersistentRecoveryFixture = processInfo.arguments.contains("-PersistenceRecoveryPersistentFixtureMode")
+        let storeURL: URL? = {
+            guard usesPersistentRecoveryFixture,
+                  let storeID = processInfo.environment["WARDEN_PERSISTENCE_RECOVERY_STORE_ID"] else { return nil }
+            let url = FileManager.default.temporaryDirectory
+                .appendingPathComponent("warden-persistence-ui-test-\(storeID)")
+                .appendingPathExtension("sqlite")
+            if processInfo.environment["WARDEN_PERSISTENCE_RECOVERY_RESET_STORE"] == "1" {
+                for candidate in [url, url.appendingPathExtension("shm"), url.appendingPathExtension("wal")] {
+                    try? FileManager.default.removeItem(at: candidate)
+                }
+            }
+            return url
+        }()
+
+        return PersistenceController(
+            inMemory: processInfo.arguments.contains("-AppShellUITestMode") && !usesPersistentRecoveryFixture,
+            persistentStoreURL: storeURL
+        )
+    }()
 
     let container: NSPersistentContainer
 
-    init(inMemory: Bool = false) {
+    init(inMemory: Bool = false, persistentStoreURL: URL? = nil) {
         container = NSPersistentContainer(name: "wardenDataModel")
         
         if inMemory {
             container.persistentStoreDescriptions.first!.url = URL(fileURLWithPath: "/dev/null")
+        } else if let persistentStoreURL {
+            container.persistentStoreDescriptions.first!.url = persistentStoreURL
         }
         
         container.viewContext.automaticallyMergesChangesFromParent = true
@@ -28,15 +49,13 @@ class PersistenceController {
         
 	        container.loadPersistentStores(completionHandler: { (storeDescription, error) in
 	            if let error = error as NSError? {
-	                WardenLog.coreData.critical(
-	                    "Core Data failed to load: \(error.localizedDescription, privacy: .public)"
-	                )
+                WardenLog.coreData.critical("Core Data persistent store unavailable")
                 
                 // Show user-friendly error dialog
                 DispatchQueue.main.async {
                     let alert = NSAlert()
                     alert.messageText = "Database Error"
-                    alert.informativeText = "Failed to load the application database. The app will use a temporary database for this session. Your data is safe, but changes won't be saved until you restart the app.\n\nError: \(error.localizedDescription)"
+                    alert.informativeText = "The application database could not be opened. A temporary database will be used for this session. Your existing data has not been replaced, but changes will not be saved until you restart the app."
                     alert.alertStyle = .critical
                     alert.addButton(withTitle: "OK")
                     alert.runModal()
@@ -49,9 +68,7 @@ class PersistenceController {
 	                self.container.persistentStoreDescriptions = [inMemoryDescription]
 	                self.container.loadPersistentStores { _, fallbackError in
 	                    if let fallbackError = fallbackError {
-	                        WardenLog.coreData.critical(
-	                            "In-memory store fallback failed: \(fallbackError.localizedDescription, privacy: .public)"
-	                        )
+                            WardenLog.coreData.critical("Temporary Core Data fallback unavailable")
 	                    }
 	                }
 	                return
@@ -92,7 +109,64 @@ struct WardenApp: App {
 
         DatabasePatcher.applyPatches(context: persistenceController.container.viewContext)
         DatabasePatcher.migrateExistingConfiguration(context: persistenceController.container.viewContext)
+        seedPersistenceRecoveryUITestFixtureIfRequested()
         
+    }
+
+    /// A deterministic UI-test fixture. The valid-history mode uses a test-only local
+    /// store so termination and relaunch exercise real Core Data restoration. It never
+    /// accesses credentials or a network and is never enabled during normal launches.
+    private func seedPersistenceRecoveryUITestFixtureIfRequested() {
+        let processInfo = ProcessInfo.processInfo
+        guard processInfo.arguments.contains("-PersistenceRecoveryUITestMode") else { return }
+
+        let context = persistenceController.container.viewContext
+        context.performAndWait {
+            let chatRequest = NSFetchRequest<ChatEntity>(entityName: "ChatEntity")
+            guard (try? context.count(for: chatRequest)) == 0 else { return }
+
+            let isValidHistoryFixture = processInfo.environment["WARDEN_PERSISTENCE_RECOVERY_FIXTURE"] == "valid-history"
+            let chat = ChatEntity(context: context)
+            chat.id = UUID(uuidString: "00000000-0000-0000-0000-000000000002")!
+            chat.name = isValidHistoryFixture ? "Persisted valid chat" : "Unavailable chat"
+            chat.createdDate = Date(timeIntervalSince1970: 1)
+            chat.updatedDate = Date(timeIntervalSince1970: 1)
+            chat.gptModel = AppConstants.chatGptDefaultModel
+            chat.newChat = false
+            chat.newMessage = ""
+
+            if isValidHistoryFixture || processInfo.environment["WARDEN_PERSISTENCE_RECOVERY_HAS_CANDIDATE"] == "1" {
+                let service = APIServiceEntity(context: context)
+                service.id = UUID(uuidString: "00000000-0000-0000-0000-000000000003")
+                service.name = isValidHistoryFixture ? "Fixture local service" : "Test service"
+                service.type = "Ollama"
+                service.url = URL(string: "http://127.0.0.1:11434")
+                service.model = "test-model"
+                service.addedDate = Date(timeIntervalSince1970: 1)
+
+                if isValidHistoryFixture {
+                    chat.apiService = service
+
+                    let request = MessageEntity(context: context)
+                    request.id = 1
+                    request.body = "Fixture request"
+                    request.timestamp = Date(timeIntervalSince1970: 2)
+                    request.own = true
+                    request.chat = chat
+                    chat.addToMessages(request)
+
+                    let response = MessageEntity(context: context)
+                    response.id = 2
+                    response.body = "Fixture response"
+                    response.timestamp = Date(timeIntervalSince1970: 3)
+                    response.own = false
+                    response.chat = chat
+                    chat.addToMessages(response)
+                }
+            }
+
+            try? context.save()
+        }
     }
 
     var body: some Scene {
