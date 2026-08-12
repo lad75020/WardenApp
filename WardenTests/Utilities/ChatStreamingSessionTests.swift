@@ -87,7 +87,8 @@ final class StreamingTaskControllerTests: XCTestCase {
         await controller.cancel(conversationID: conversation, requestID: request)
         await controller.replace(conversationID: conversation, requestID: request, task: task)
 
-        XCTAssertFalse(await controller.isCurrent(conversationID: conversation, requestID: request))
+        let isCurrent = await controller.isCurrent(conversationID: conversation, requestID: request)
+        XCTAssertFalse(isCurrent)
         XCTAssertTrue(task.isCancelled)
     }
 }

@@ -4,6 +4,21 @@ import SwiftUI
 import AppKit
 import os
 
+enum TableSerialization {
+    static func tabSeparated(header: [String], rows: [[String]]) -> String {
+        ([header] + rows).map { $0.joined(separator: "\t") }.joined(separator: "\n")
+    }
+
+    static func jsonData(header: [String], rows: [[String]]) throws -> Data {
+        let objects = rows.map { row in
+            Dictionary(uniqueKeysWithValues: header.enumerated().map { index, title in
+                (title, index < row.count ? row[index] : "")
+            })
+        }
+        return try JSONSerialization.data(withJSONObject: objects, options: [.prettyPrinted, .sortedKeys])
+    }
+}
+
 
 struct TableHeaderView: View {
     let header: [String]
@@ -56,25 +71,14 @@ struct TableView: View {
     @State private var isCopiedJSON = false
     
     private func copyTableToClipboard() {
-        let headerString = header.joined(separator: "\t")
-        let tableDataString = tableData.map { $0.joined(separator: "\t") }.joined(separator: "\n")
-        let tableString = "\(headerString)\n\(tableDataString)"
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        pasteboard.setString(tableString, forType: .string)
+        pasteboard.setString(TableSerialization.tabSeparated(header: header, rows: tableData), forType: .string)
     }
     
     private func copyTableAsJSONToClipboard() {
-        let tableDictArray = tableData.map { rowData -> [String: String] in
-            var rowDict: [String: String] = [:]
-            for (index, value) in rowData.enumerated() {
-                rowDict[header[index]] = value
-            }
-            return rowDict
-        }
-        
         do {
-            let jsonData = try JSONSerialization.data(withJSONObject: tableDictArray, options: .prettyPrinted)
+            let jsonData = try TableSerialization.jsonData(header: header, rows: tableData)
             if let jsonString = String(data: jsonData, encoding: .utf8) {
                 #if os(macOS)
                 let pasteboard = NSPasteboard.general

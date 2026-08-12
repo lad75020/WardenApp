@@ -4,6 +4,33 @@ import SwiftUI
 import WebKit
 import os
 
+enum HTMLPreviewSecurity {
+    static let contentSecurityPolicy = "default-src 'none'; img-src data: blob:; media-src data: blob:; style-src 'unsafe-inline'; font-src data:; script-src 'none'; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"
+
+    static func securedHTMLDocument(_ html: String) -> String {
+        let csp = "<meta http-equiv=\"Content-Security-Policy\" content=\"\(contentSecurityPolicy)\">"
+        // Wrapping rather than trusting an author-provided CSP ensures our policy
+        // is always present. Multiple CSPs are intersected by WebKit.
+        return """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            \(csp)
+        </head>
+        <body>
+            \(html)
+        </body>
+        </html>
+        """
+    }
+
+    static func allowsNavigation(url: URL?, navigationType: WKNavigationType) -> Bool {
+        // loadHTMLString's initial document has no request URL. Every URL-backed
+        // navigation, including about:, file:, data:, and external links, is denied.
+        url == nil && navigationType == .other
+    }
+}
+
 struct HTMLPreviewView: View {
     let htmlContent: String
     let zoomLevel: Double
@@ -83,6 +110,7 @@ struct WebViewWrapper: NSViewRepresentable {
         let configuration = WKWebViewConfiguration()
         configuration.defaultWebpagePreferences.allowsContentJavaScript = false
         configuration.websiteDataStore = .nonPersistent()
+        configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
         
         // Set custom user agent if provided
         if let userAgent = userAgent {
@@ -125,7 +153,7 @@ struct WebViewWrapper: NSViewRepresentable {
             context.coordinator.lastRefreshTrigger = refreshTrigger
             context.coordinator.lastUserAgent = userAgent
             isLoading = true
-            webView.loadHTMLString(Self.securedHTMLDocument(htmlContent), baseURL: nil)
+            webView.loadHTMLString(HTMLPreviewSecurity.securedHTMLDocument(htmlContent), baseURL: nil)
         }
         
         // Apply zoom level
@@ -138,29 +166,6 @@ struct WebViewWrapper: NSViewRepresentable {
         Coordinator(parent: self)
     }
 
-    private static func securedHTMLDocument(_ html: String) -> String {
-        let csp = "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; img-src data: blob:; media-src data: blob:; style-src 'unsafe-inline'; font-src data:; script-src 'none'; connect-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'\">"
-        guard html.range(of: "Content-Security-Policy", options: .caseInsensitive) == nil else {
-            return html
-        }
-        if let headRange = html.range(of: "<head>", options: .caseInsensitive) {
-            var secured = html
-            secured.insert(contentsOf: "\n    \(csp)", at: headRange.upperBound)
-            return secured
-        }
-        return """
-        <!DOCTYPE html>
-        <html>
-        <head>
-            \(csp)
-        </head>
-        <body>
-            \(html)
-        </body>
-        </html>
-        """
-    }
-    
     class Coordinator: NSObject, WKNavigationDelegate {
         var parent: WebViewWrapper
         var lastContent: String = ""
@@ -179,26 +184,21 @@ struct WebViewWrapper: NSViewRepresentable {
         
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
             parent.isLoading = false
-            WardenLog.app.error("WebView navigation failed: \(error.localizedDescription, privacy: .public)")
+            WardenLog.app.error("HTML preview navigation failed")
         }
         
         func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
             parent.isLoading = false
-            WardenLog.app.error("WebView provisional navigation failed: \(error.localizedDescription, privacy: .public)")
+            WardenLog.app.error("HTML preview provisional navigation failed")
         }
         
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-            if navigationAction.navigationType == .other && navigationAction.request.url == nil {
-                decisionHandler(.allow)
-                return
-            }
-
-            if let url = navigationAction.request.url, url.scheme == "about" || url.isFileURL {
-                decisionHandler(.allow)
-                return
-            }
-
-            decisionHandler(.cancel)
+            decisionHandler(
+                HTMLPreviewSecurity.allowsNavigation(
+                    url: navigationAction.request.url,
+                    navigationType: navigationAction.navigationType
+                ) ? .allow : .cancel
+            )
         }
     }
 }

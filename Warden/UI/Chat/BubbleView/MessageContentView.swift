@@ -7,6 +7,13 @@ struct IdentifiableImage: Identifiable {
     let id = UUID()
     let image: NSImage
 }
+
+enum MessageParseSession {
+    static func isCurrent(expectedSource: String, currentSource: String) -> Bool {
+        expectedSource == currentSource
+    }
+}
+
 struct MessageContentView: View {
     let message: String
     let isStreaming: Bool
@@ -118,12 +125,15 @@ struct MessageContentView: View {
                 Button(action: {
                     isParsingFullMessage = true
                     // Parse the full message in background: very long messages may take long time to parse (and even cause app crash)
-                    fullParseTask?.cancel()
-                    fullParseTask = Task.detached(priority: .userInitiated) {
-                        let parser = MessageParser(colorScheme: colorScheme)
-                        let elements = parser.parseMessageFromString(input: message)
-                        await MainActor.run {
-                            fullParsedElements = elements
+                fullParseTask?.cancel()
+                let sourceMessage = message
+                fullParseTask = Task.detached(priority: .userInitiated) {
+                    let parser = MessageParser(colorScheme: colorScheme)
+                    let elements = parser.parseMessageFromString(input: sourceMessage)
+                    guard !Task.isCancelled else { return }
+                    await MainActor.run {
+                        guard !Task.isCancelled, MessageParseSession.isCurrent(expectedSource: sourceMessage, currentSource: message) else { return }
+                        fullParsedElements = elements
                             showFullMessage = true
                             isParsingFullMessage = false
                         }
@@ -166,6 +176,7 @@ struct MessageContentView: View {
 
             truncatedParseTask?.cancel()
             if isStreaming {
+                let sourceMessage = truncated
                 truncatedParseTask = Task.detached(priority: .userInitiated) {
                     let parser = MessageParser(colorScheme: colorScheme)
                     #if DEBUG
@@ -180,11 +191,12 @@ struct MessageContentView: View {
                         truncated.count
                     )
                     #endif
-                    let elements = parser.parseMessageFromString(input: truncated)
+                    let elements = parser.parseMessageFromString(input: sourceMessage)
                     #if DEBUG
                     os_signpost(.end, log: WardenSignpost.rendering, name: "MessageParse", signpostID: signpostID)
                     #endif
                     await MainActor.run {
+                        guard !Task.isCancelled, message.hasPrefix(sourceMessage) else { return }
                         truncatedParsedElements = elements
                     }
                 }
@@ -234,6 +246,7 @@ struct MessageContentView: View {
     /// Full re-parsing (original behavior)
     private func refreshWithFullParser() {
         fullParseTask?.cancel()
+        let sourceMessage = message
         fullParseTask = Task.detached(priority: .userInitiated) {
             guard !Task.isCancelled else { return }
             let parser = MessageParser(colorScheme: colorScheme)
@@ -249,11 +262,12 @@ struct MessageContentView: View {
                 message.count
             )
             #endif
-            let elements = parser.parseMessageFromString(input: message)
+            let elements = parser.parseMessageFromString(input: sourceMessage)
             #if DEBUG
             os_signpost(.end, log: WardenSignpost.rendering, name: "MessageParse", signpostID: signpostID)
             #endif
             await MainActor.run {
+                guard !Task.isCancelled, MessageParseSession.isCurrent(expectedSource: sourceMessage, currentSource: message) else { return }
                 fullParsedElements = elements
             }
         }

@@ -198,6 +198,7 @@ struct CodeView: View {
                         .foregroundColor(.blue)
                 }
                 .buttonStyle(PlainButtonStyle())
+                .accessibilityLabel("Refresh HTML preview")
                 
                 // Zoom controls
                 HStack(spacing: 4) {
@@ -207,6 +208,7 @@ struct CodeView: View {
                             .foregroundColor(.secondary)
                     }
                     .buttonStyle(PlainButtonStyle())
+                    .accessibilityLabel("Zoom out HTML preview")
                     .disabled(zoomLevel <= 0.5)
                     
                     Text("\(Int(zoomLevel * 100))%")
@@ -220,6 +222,7 @@ struct CodeView: View {
                             .foregroundColor(.secondary)
                     }
                     .buttonStyle(PlainButtonStyle())
+                    .accessibilityLabel("Zoom in HTML preview")
                     .disabled(zoomLevel >= 2.0)
                 }
                 
@@ -256,6 +259,7 @@ struct CodeView: View {
                     .cornerRadius(4)
                 }
                 .menuStyle(BorderlessButtonMenuStyle())
+                .accessibilityLabel("Preview device: \(selectedDevice.rawValue)")
                 
                 // Close preview button
                 Button(action: { 
@@ -268,6 +272,7 @@ struct CodeView: View {
                         .foregroundColor(.secondary)
                 }
                 .buttonStyle(PlainButtonStyle())
+                .accessibilityLabel("Close HTML preview")
             }
         }
         .padding(.horizontal, 16)

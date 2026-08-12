@@ -23,6 +23,10 @@ struct ThinkingProcessView: View {
                 }
             }
             .buttonStyle(PlainButtonStyle())
+            .accessibilityLabel("Reasoning")
+            .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
+            .accessibilityHint("Show or hide the assistant reasoning")
+            .accessibilityAddTraits(.isButton)
 
             if isExpanded {
                 Text(content)

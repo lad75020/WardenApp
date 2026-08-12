@@ -249,11 +249,14 @@ struct MarkdownView: View {
                 .foregroundColor(textColor)
                 .padding(.top, level <= 2 ? 16 : 8)
                 .padding(.bottom, 4)
+                .textSelection(.enabled)
+                .accessibilityAddTraits(.isHeader)
             
         case .paragraph(let attributedText):
             // Use AttributedText for proper link handling (clickable links)
             VStack(alignment: .leading) {
                 AttributedText(attributedText)
+                    .textSelection(.enabled)
             }
             .padding(.bottom, 4)
             
@@ -375,4 +378,4 @@ private enum MarkdownElementType {
     case orderedList([NSAttributedString])
     case blockQuote(String)
     case thematicBreak
-} 
+}
