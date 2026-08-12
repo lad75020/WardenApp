@@ -49,16 +49,16 @@
 
 ### Tests for User Story 1
 
-- [ ] T013 [P] [US1] Add persona selection/default-service regression tests in `WardenTests/PersonasModelSelection/PersonaSelectionTests.swift` covering select, clear, deleted/default-unavailable service, and subsequent behavior settings.
-- [ ] T014 [P] [US1] Add deterministic persona CRUD/order/persistence regression tests in `WardenTests/PersonasModelSelection/PersonaPersistenceTests.swift` using `WardenTests/PersonasModelSelection/PersonasModelSelectionTestSupport.swift`.
+- [x] T013 [P] [US1] Add persona selection/default-service regression tests in `WardenTests/PersonasModelSelection/PersonaSelectionTests.swift` covering select, clear, deleted/default-unavailable service, and subsequent behavior settings.
+- [x] T014 [P] [US1] Add deterministic persona CRUD/order/persistence regression tests in `WardenTests/PersonasModelSelection/PersonaPersistenceTests.swift` using `WardenTests/PersonasModelSelection/PersonasModelSelectionTestSupport.swift`.
 
 ### Implementation for User Story 1
 
-- [ ] T015 [US1] Update persona editor validation and accessible primary controls in `Warden/UI/Preferences/TabAIPersonasView.swift` while preserving existing local persistence/order and no-secret behavior.
+- [x] T015 [US1] Update persona editor validation and accessible primary controls in `Warden/UI/Preferences/TabAIPersonasView.swift` while preserving existing local persistence/order and no-secret behavior.
 - [X] T016 [US1] Update `Warden/UI/Chat/BottomContainer/PersonaSelectorView.swift` so selection/clear changes only `chat.persona`, persists safely, and requests chat-manager recreation only after a successful save.
 - [X] T017 [US1] Add the distinct validated default-service action and recoverable unavailable/save-error state in `Warden/UI/Chat/BottomContainer/PersonaSelectorView.swift`, delegating service/model updates to the shared coordinator in `Warden/Utilities/FavoriteModelsManager.swift`.
 - [X] T018 [US1] Decide that no change is needed to the noncompiled duplicate types in `Warden/UI/Chat/ChatParameters/PersonaSelectorView.swift`; do not add duplicate target membership.
-- [ ] T019 [US1] Run focused persona tests under `WardenTests/PersonasModelSelection/` and complete the persona steps in `specs/007-personas-model-selection/quickstart.md`, recording real results in `specs/007-personas-model-selection/implementation-log.md`.
+- [x] T019 [US1] Run focused persona tests under `WardenTests/PersonasModelSelection/` and complete the persona steps in `specs/007-personas-model-selection/quickstart.md`, recording real results in `specs/007-personas-model-selection/implementation-log.md`.
 
 **Checkpoint**: Persona CRUD and selection are independently usable; changing provider/model is visible, optional, validated, and chat-scoped.
 
@@ -72,15 +72,15 @@
 
 ### Tests for User Story 2
 
-- [ ] T020 [P] [US2] Add selector view-model tests in `WardenTests/PersonasModelSelection/ModelSelectorViewModelTests.swift` for search, provider grouping, selected state, duplicate model IDs, and 500-model fixture responsiveness.
-- [ ] T021 [P] [US2] Add an XCUITest in `WardenUITests/PersonasModelSelectionUITests.swift` only if `WardenUITests/PersonasModelSelectionLaunchFixture.swift` can seed local persona/service/model data without credentials; otherwise document the stable manual path in `specs/007-personas-model-selection/implementation-log.md`.
+- [x] T020 [P] [US2] Add selector view-model tests in `WardenTests/PersonasModelSelection/ModelSelectorViewModelTests.swift` for search, provider grouping, selected state, duplicate model IDs, and 500-model fixture responsiveness.
+- [x] T021 [P] [US2] Add an XCUITest in `WardenUITests/PersonasModelSelectionUITests.swift` only if `WardenUITests/PersonasModelSelectionLaunchFixture.swift` can seed local persona/service/model data without credentials; otherwise document the stable manual path in `specs/007-personas-model-selection/implementation-log.md`.
 
 ### Implementation for User Story 2
 
 - [X] T022 [US2] Refactor model item/section identity and filtered availability in `Warden/UI/Components/ModelSelectorDropdown.swift` to use the shared policy in `Warden/Utilities/FavoriteModelsManager.swift` and stable provider/model identity.
 - [X] T023 [US2] Route valid selector changes in `Warden/UI/Components/ModelSelectorDropdown.swift` through the shared coordinator in `Warden/Utilities/FavoriteModelsManager.swift`; retain the existing chat-scoped recreation contract and show non-sensitive recoverable failures.
 - [X] T024 [US2] Add accessible search, selected, loading, empty, unavailable, and failure presentation in `Warden/UI/Components/ModelSelectorDropdown.swift` using native SwiftUI `Button` controls and keyboard-operable labels.
-- [ ] T025 [US2] Run model selector focused tests and the model-selection manual steps in `specs/007-personas-model-selection/quickstart.md`, recording results in `specs/007-personas-model-selection/implementation-log.md`.
+- [x] T025 [US2] Run model selector focused tests and the model-selection manual steps in `specs/007-personas-model-selection/quickstart.md`, recording results in `specs/007-personas-model-selection/implementation-log.md`.
 
 **Checkpoint**: Model selection is independently usable, provider/model identity is stable, and unavailable entries never become actionable.
 
@@ -94,8 +94,8 @@
 
 ### Tests for User Story 3
 
-- [ ] T026 [P] [US3] Add favorite quick-access identity/eligibility tests in `WardenTests/PersonasModelSelection/FavoriteQuickAccessTests.swift` using configured and unavailable provider/model fixtures.
-- [ ] T027 [P] [US3] Add optional metadata display/policy tests in `WardenTests/PersonasModelSelection/ModelMetadataPresentationTests.swift` for missing, stale, incomplete, and capability-bearing fixture metadata.
+- [x] T026 [P] [US3] Add favorite quick-access identity/eligibility tests in `WardenTests/PersonasModelSelection/FavoriteQuickAccessTests.swift` using configured and unavailable provider/model fixtures.
+- [x] T027 [P] [US3] Add optional metadata display/policy tests in `WardenTests/PersonasModelSelection/ModelMetadataPresentationTests.swift` for missing, stale, incomplete, and capability-bearing fixture metadata.
 
 ### Implementation for User Story 3
 
