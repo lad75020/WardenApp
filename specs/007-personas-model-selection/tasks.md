@@ -18,7 +18,7 @@
 - [X] T001 Record the active branch, feature pointer, target membership, and affected paths in `specs/007-personas-model-selection/implementation-log.md`.
 - [X] T002 Inspect and preserve the canonical compiled selector in `Warden/UI/Chat/BottomContainer/PersonaSelectorView.swift`; record the unreferenced duplicate decision for `Warden/UI/Chat/ChatParameters/PersonaSelectorView.swift` in `specs/007-personas-model-selection/implementation-log.md`.
 - [X] T003 Run the current baseline build for `Warden.xcodeproj` using scheme `Warden` and record the real result in `specs/007-personas-model-selection/implementation-log.md`.
-- [ ] T004 [P] Define credential-free service/model/persona fixtures and in-memory persistence support in `WardenTests/PersonasModelSelection/PersonasModelSelectionTestSupport.swift`.
+- [x] T004 [P] Define credential-free service/model/persona fixtures and in-memory persistence support in `WardenTests/PersonasModelSelection/PersonasModelSelectionTestSupport.swift`.
 
 **Checkpoint**: The compiled persona selector and test target strategy are known; no behavior has been changed.
 
