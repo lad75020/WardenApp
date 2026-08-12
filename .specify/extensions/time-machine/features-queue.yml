@@ -202,11 +202,11 @@ features:
       - "Warden/UI/Chat/MCPAgentSelector.swift"
       - "Warden/UI/Chat/Components/ToolCallProgressView.swift"
       - "Warden/Utilities/MessageManager.swift"
-    status: pending # pending | in-progress | done | skipped
-    current_phase: null # null | specify | clarify | plan | tasks | implement
-    branch: null
+    status: in-progress # pending | in-progress | done | skipped
+    current_phase: implement # null | specify | clarify | plan | tasks | implement
+    branch: "feature/time-machine-mcp-tool-integration"
     pushed: null # null | true | false
-    started_at: null
+    started_at: "2026-08-12T08:15:27Z"
     completed_at: null
 
   - id: "multi-agent-and-quick-chat"

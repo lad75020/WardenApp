@@ -267,8 +267,7 @@ class MCPManager: ObservableObject {
     }
     
     private func isSensitiveEnvironmentKey(_ key: String) -> Bool {
-        let lowercased = key.lowercased()
-        return ["token", "key", "secret", "password", "passwd", "auth", "bearer", "credential"].contains { lowercased.contains($0) }
+        Self.isSensitiveEnvironmentKeyValue(key)
     }
 
     private func environmentSecretIdentifier(configID: UUID, environmentKey: String) -> String {
@@ -276,7 +275,18 @@ class MCPManager: ObservableObject {
     }
 
     private func environmentSecretMarker(configID: UUID, environmentKey: String) -> String {
+        Self.environmentSecretMarkerValue(configID: configID, environmentKey: environmentKey)
+    }
+
+    /// Pure marker builder exposed for deterministic tests (no side effects).
+    static nonisolated func environmentSecretMarkerValue(configID: UUID, environmentKey: String) -> String {
         "keychain://mcp-env/\(configID.uuidString)/\(environmentKey)"
+    }
+
+    /// Pure sensitive-key classifier exposed for deterministic tests.
+    static nonisolated func isSensitiveEnvironmentKeyValue(_ key: String) -> Bool {
+        let lowercased = key.lowercased()
+        return ["token", "key", "secret", "password", "passwd", "auth", "bearer", "credential"].contains { lowercased.contains($0) }
     }
 
     private func storeEnvironmentSecret(_ value: String, configID: UUID, environmentKey: String) throws {

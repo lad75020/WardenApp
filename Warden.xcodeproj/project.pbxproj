@@ -83,6 +83,7 @@
 		4D133252302C3CFA0029CD47 /* LocalChatSearch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D133251302C3CFA0029CD47 /* LocalChatSearch.swift */; };
 		4D133258302C4A8A0029CD47 /* LocalEndpointPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D133257302C4A8A0029CD47 /* LocalEndpointPolicy.swift */; };
 		4D13325A302C4BD50029CD47 /* LocalProviderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D133259302C4BD50029CD47 /* LocalProviderTests.swift */; };
+		4D133261302C66370029CD47 /* MCPToolIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D133260302C66370029CD47 /* MCPToolIntegrationTests.swift */; };
 		4D1E68322F3A6631002BF362 /* VeoUserParameters.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D1E68312F3A6631002BF362 /* VeoUserParameters.swift */; };
 		4D1E68362F3A7458002BF362 /* VeoParametersPopoverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D1E68352F3A7458002BF362 /* VeoParametersPopoverView.swift */; };
 		4D4F458E2F219ED600B042DE /* HuggingFaceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D4F458D2F219ED600B042DE /* HuggingFaceService.swift */; };
@@ -347,6 +348,7 @@
 		4D133251302C3CFA0029CD47 /* LocalChatSearch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalChatSearch.swift; sourceTree = "<group>"; };
 		4D133257302C4A8A0029CD47 /* LocalEndpointPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalEndpointPolicy.swift; sourceTree = "<group>"; };
 		4D133259302C4BD50029CD47 /* LocalProviderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalProviderTests.swift; sourceTree = "<group>"; };
+		4D133260302C66370029CD47 /* MCPToolIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MCPToolIntegrationTests.swift; sourceTree = "<group>"; };
 		4D1E68312F3A6631002BF362 /* VeoUserParameters.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VeoUserParameters.swift; sourceTree = "<group>"; };
 		4D1E68352F3A7458002BF362 /* VeoParametersPopoverView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VeoParametersPopoverView.swift; sourceTree = "<group>"; };
 		4D2F6A992F0C3EC700064D55 /* Warden.xctestplan */ = {isa = PBXFileReference; lastKnownFileType = text; path = Warden.xctestplan; sourceTree = "<group>"; };
@@ -843,6 +845,7 @@
 				D00400000000000000000009 /* TestSupport */,
 				D00400000000000000000010 /* Performance */,
 				D00400000000000000000017 /* UI */,
+				4D13325F302C66370029CD47 /* MCP */,
 			);
 			path = WardenTests;
 			sourceTree = "<group>";
@@ -902,6 +905,14 @@
 				4D9E2AC52F43B7CE00C2E2CD /* MLXHandler+Flux.swift */,
 			);
 			path = APIHandlers;
+			sourceTree = "<group>";
+		};
+		4D13325F302C66370029CD47 /* MCP */ = {
+			isa = PBXGroup;
+			children = (
+				4D133260302C66370029CD47 /* MCPToolIntegrationTests.swift */,
+			);
+			path = MCP;
 			sourceTree = "<group>";
 		};
 		A1B2C3D4E5F60708090A0B03 /* AppShell */ = {
@@ -1370,6 +1381,7 @@
 				D0040000000000000000000F /* ChatStreamingPerformanceTests.swift in Sources */,
 				D00400000000000000000012 /* ChatViewModelStreamingTests.swift in Sources */,
 				D00400000000000000000014 /* ChatViewModelRetryTests.swift in Sources */,
+				4D133261302C66370029CD47 /* MCPToolIntegrationTests.swift in Sources */,
 				4D13325A302C4BD50029CD47 /* LocalProviderTests.swift in Sources */,
 				D00400000000000000000016 /* MessageListScrollBehaviorTests.swift in Sources */,
 			);
