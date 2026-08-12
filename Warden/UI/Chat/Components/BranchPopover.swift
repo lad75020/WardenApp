@@ -15,7 +15,7 @@ struct BranchPopover: View {
     @StateObject private var favoriteManager = FavoriteModelsManager.shared
     @StateObject private var metadataCache = ModelMetadataCache.shared
     
-    @State private var hoveredItem: String? = nil
+    @State private var hoveredItem: ModelSelectionIdentity? = nil
     @State private var isCreating = false
     @State private var errorMessage: String?
     

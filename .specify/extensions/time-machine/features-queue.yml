@@ -127,11 +127,11 @@ features:
       - "Warden/Utilities/SelectedModelsManager.swift"
       - "Warden/Utilities/ModelCacheManager.swift"
       - "Warden/Utilities/ModelMetadata.swift"
-    status: pending # pending | in-progress | done | skipped
-    current_phase: null # null | specify | clarify | plan | tasks | implement
-    branch: null
+    status: in-progress # pending | in-progress | done | skipped
+    current_phase: implement # null | specify | clarify | plan | tasks | implement
+    branch: "feature/time-machine-personas-and-model-selection"
     pushed: null # null | true | false
-    started_at: null
+    started_at: "2026-08-12T01:57:25Z"
     completed_at: null
 
   - id: "web-search-and-citations"

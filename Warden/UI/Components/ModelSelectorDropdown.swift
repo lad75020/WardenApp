@@ -23,13 +23,16 @@ final class ModelSelectorViewModel: ObservableObject {
     }
     
     struct ModelItem: Identifiable, Equatable {
-        let id: String // "provider_modelId"
+        let id: ModelSelectionIdentity
         let provider: String
         let modelId: String
         let isFavorite: Bool
-        
-        static func == (lhs: ModelItem, rhs: ModelItem) -> Bool {
-            return lhs.id == rhs.id && lhs.isFavorite == rhs.isFavorite
+
+        init(provider: String, modelId: String, isFavorite: Bool) {
+            self.id = ModelSelectionIdentity(provider: provider, modelID: modelId)
+            self.provider = provider
+            self.modelId = modelId
+            self.isFavorite = isFavorite
         }
     }
     
@@ -105,12 +108,11 @@ final class ModelSelectorViewModel: ObservableObject {
         
         for (provider, models) in filtered {
             let items = models.compactMap { modelId -> ModelItem? in
-                let uniqueId = "\(provider)_\(modelId)"
-                if searchText.isEmpty && excludeIds.contains(uniqueId) {
+                let identity = ModelSelectionIdentity(provider: provider, modelID: modelId)
+                if searchText.isEmpty && excludeIds.contains(identity) {
                     return nil
                 }
                 return ModelItem(
-                    id: uniqueId,
                     provider: provider,
                     modelId: modelId,
                     isFavorite: favoriteManager.isFavorite(provider: provider, model: modelId)
@@ -217,7 +219,6 @@ final class ModelSelectorViewModel: ObservableObject {
             for model in models {
                 if favoriteManager.isFavorite(provider: provider, model: model) {
                     items.append(ModelItem(
-                        id: "\(provider)_\(model)",
                         provider: provider,
                         modelId: model,
                         isFavorite: true
@@ -258,7 +259,8 @@ struct StandaloneModelSelector: View {
     @StateObject private var favoriteManager = FavoriteModelsManager.shared
     @StateObject private var metadataCache = ModelMetadataCache.shared
     
-    @State private var hoveredItem: String? = nil
+    @State private var hoveredItem: ModelSelectionIdentity?
+    @State private var selectionError: String?
     
     var isExpanded: Bool = true
     var onDismiss: (() -> Void)? = nil
@@ -294,24 +296,41 @@ struct StandaloneModelSelector: View {
             
             ScrollView(.vertical, showsIndicators: true) {
                 LazyVStack(spacing: 2, pinnedViews: [.sectionHeaders]) {
-                    ForEach(viewModel.filteredSections) { section in
-                        if section.id == "favorites" {
-                            Section {
-                                ForEach(section.items) { item in
-                                    modelRow(item: item)
+                    if viewModel.filteredSections.isEmpty {
+                        VStack(spacing: 8) {
+                            Image(systemName: "cpu")
+                                .font(.system(size: 18))
+                                .foregroundStyle(.secondary)
+                            Text("No models available")
+                                .font(.system(size: 12, weight: .medium))
+                            Text("Configure a service or adjust its visible models in Preferences.")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.center)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 24)
+                        .accessibilityElement(children: .combine)
+                    } else {
+                        ForEach(viewModel.filteredSections) { section in
+                            if section.id == "favorites" {
+                                Section {
+                                    ForEach(section.items) { item in
+                                        modelRow(item: item)
+                                    }
+                                } header: {
+                                    sectionHeader(section.title, icon: "star.fill")
                                 }
-                            } header: {
-                                sectionHeader(section.title, icon: "star.fill")
-                            }
-                        } else if section.id == "search" {
-                            // Empty search results header if needed
-                        } else {
-                            Section {
-                                ForEach(section.items) { item in
-                                    modelRow(item: item)
+                            } else if section.id == "search" {
+                                // Empty search results header if needed
+                            } else {
+                                Section {
+                                    ForEach(section.items) { item in
+                                        modelRow(item: item)
+                                    }
+                                } header: {
+                                    providerSectionHeader(title: section.title, provider: section.id)
                                 }
-                            } header: {
-                                providerSectionHeader(title: section.title, provider: section.id)
                             }
                         }
                     }
@@ -323,6 +342,17 @@ struct StandaloneModelSelector: View {
         }
         .frame(minWidth: 320, maxWidth: 380)
         .background(Color(NSColor.controlBackgroundColor))
+        .alert(
+            "Model Not Changed",
+            isPresented: Binding(
+                get: { selectionError != nil },
+                set: { if !$0 { selectionError = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { selectionError = nil }
+        } message: {
+            Text(selectionError ?? "")
+        }
     }
     
     private func sectionHeader(_ title: String, icon: String? = nil) -> some View {
@@ -399,8 +429,23 @@ struct StandaloneModelSelector: View {
         let formattedModel = ModelMetadata.formatModelComponents(modelId: item.modelId, provider: item.provider)
         
         return Button(action: {
-            handleModelChange(providerType: item.provider, model: item.modelId)
-            onDismiss?()
+            guard let service = apiServices.first(where: { $0.type == item.provider }) else {
+                selectionError = "This service is no longer configured."
+                return
+            }
+
+            switch ChatModelSelectionCoordinator.apply(
+                service: service,
+                modelID: item.modelId,
+                to: chat,
+                services: Array(apiServices),
+                context: viewContext
+            ) {
+            case .success:
+                onDismiss?()
+            case .failure(let error):
+                selectionError = error.localizedDescription
+            }
         }) {
             HStack(spacing: 10) {
                 // Model name
@@ -475,25 +520,6 @@ struct StandaloneModelSelector: View {
         .onHover { hovering in
             hoveredItem = hovering ? item.id : nil
         }
-    }
-    
-    private func handleModelChange(providerType: String, model: String) {
-        guard let service = apiServices.first(where: { $0.type == providerType }) else { return }
-        
-        chat.apiService = service
-        chat.gptModel = model
-        chat.updatedDate = Date()
-        
-        // Force immediate UI refresh for the sidebar and other observers
-        chat.objectWillChange.send()
-        
-        try? viewContext.save()
-        
-        NotificationCenter.default.post(
-            name: NSNotification.Name("RecreateMessageManager"),
-            object: nil,
-            userInfo: ["chatId": chat.id]
-        )
     }
 }
 

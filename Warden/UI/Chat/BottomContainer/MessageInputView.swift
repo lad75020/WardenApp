@@ -209,7 +209,7 @@ struct MessageInputView: View {
                             if let chat = chat {
                                 PersonaSelectorView(chat: chat)
                                     .environment(\.managedObjectContext, viewContext)
-                                    .frame(width: 400, height: 80)
+                                    .frame(width: 400, height: 116)
                                     .background(Color(nsColor: .windowBackgroundColor))
                             } else {
                                 Text("Persona selection only available in active chats")
