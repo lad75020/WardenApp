@@ -619,6 +619,57 @@ class MessageParserTests: XCTestCase {
     }
 }
 
+@MainActor
+final class PersonasModelSelectionRegressionTests: XCTestCase {
+    func testModelIdentityRoundTripRetainsOpaqueProviderAndModelValues() throws {
+        let identity = ModelSelectionIdentity(
+            provider: "open:router",
+            modelID: "vendor:model/with:separators"
+        )
+
+        let encoded = try JSONEncoder().encode([identity])
+        let decoded = try JSONDecoder().decode([ModelSelectionIdentity].self, from: encoded)
+
+        XCTAssertEqual(decoded, [identity])
+    }
+
+    func testLegacyFavoriteMigrationKeepsModelSeparators() throws {
+        let legacy = try JSONEncoder().encode(["openrouter:vendor:model/with:separators"])
+
+        XCTAssertEqual(
+            FavoriteModelsManager.decodeFavorites(from: legacy),
+            [ModelSelectionIdentity(provider: "openrouter", modelID: "vendor:model/with:separators")]
+        )
+    }
+
+    func testSelectionPolicyRejectsUnconfiguredOrInvisibleModels() {
+        let configured = ModelSelectionIdentity(provider: "chatgpt", modelID: "gpt-4o")
+        let hidden = ModelSelectionIdentity(provider: "chatgpt", modelID: "gpt-4o-mini")
+
+        XCTAssertTrue(
+            ModelSelectionPolicy.isSelectable(
+                configured,
+                configuredProviders: ["chatgpt"],
+                visibleModels: [configured]
+            )
+        )
+        XCTAssertFalse(
+            ModelSelectionPolicy.isSelectable(
+                hidden,
+                configuredProviders: ["chatgpt"],
+                visibleModels: [configured]
+            )
+        )
+        XCTAssertFalse(
+            ModelSelectionPolicy.isSelectable(
+                configured,
+                configuredProviders: ["claude"],
+                visibleModels: [configured]
+            )
+        )
+    }
+}
+
 final class MessageParserSSEStreamParserTests: XCTestCase {
     func testParsesSingleSSEDataLineWithoutTrailingNewline() async throws {
         let input = "data: {\"a\":1}"
