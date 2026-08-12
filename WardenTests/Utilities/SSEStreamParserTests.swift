@@ -39,6 +39,21 @@ final class SSEStreamParserTests: XCTestCase {
 
         XCTAssertEqual(events, ["hello"])
     }
+
+    func testFragmentedCRLFMultilineAndMalformedNeighborKeepEventOrder() async throws {
+        let chunks = [
+            Data("data: first\r".utf8),
+            Data("\ndata: second\r\n\r\ndata: {bad}\r\n\r\ndata: final".utf8),
+            Data("\r\n\r\n".utf8)
+        ]
+        var events: [String] = []
+
+        try await SSEStreamParser.parse(chunks: chunks, deliveryMode: .bufferedEvents) { payload in
+            events.append(payload)
+        }
+
+        XCTAssertEqual(events, ["first\nsecond", "{bad}", "final"])
+    }
 }
 
 final class MLXHandlerModelTypeTests: XCTestCase {
@@ -100,4 +115,3 @@ final class MLXHandlerModelTypeTests: XCTestCase {
         return directory
     }
 }
-

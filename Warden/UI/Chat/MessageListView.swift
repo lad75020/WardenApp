@@ -1,6 +1,16 @@
 import SwiftUI
 import CoreData
 
+enum MessageListScrollBehavior {
+    static func shouldFollowStreaming(distanceFromBottom: CGFloat, threshold: CGFloat = 48) -> Bool {
+        distanceFromBottom <= threshold
+    }
+
+    static func shouldAutoScrollPersistedMessage(isStreaming: Bool, userIsScrolling: Bool) -> Bool {
+        isStreaming && !userIsScrolling
+    }
+}
+
 /// Extracted message list to:
 /// - Reduce body size in ChatView
 /// - Make rendering behavior easier to tune
@@ -198,7 +208,10 @@ struct MessageListView: View {
         }
         .onChange(of: sortedMessages.last?.body) { _, _ in
             // Only auto-scroll while streaming and if user has not scrolled away
-            guard isStreaming, !userIsScrolling else { return }
+            guard MessageListScrollBehavior.shouldAutoScrollPersistedMessage(
+                isStreaming: isStreaming,
+                userIsScrolling: userIsScrolling
+            ) else { return }
 
             scrollDebounceWorkItem?.cancel()
             let workItem = DispatchWorkItem {

@@ -5,10 +5,17 @@ import os
 
 @MainActor
 final class ChatViewModel: ObservableObject {
+    enum RetryState: Equatable {
+        case retryable
+        case configurationError
+        case unavailable
+    }
     @Published var messages: NSOrderedSet
     @Published var streamingAssistantText: String = ""
+    @Published private(set) var streamingPhase: ChatStreamingSession.Phase = .idle
     private let chat: ChatEntity
     private let viewContext: NSManagedObjectContext
+    private let streamingSession: ChatStreamingSession
 
     private var _messageManager: MessageManager?
     var messageManager: MessageManager? {
@@ -32,12 +39,7 @@ final class ChatViewModel: ObservableObject {
                 if let cachedQuery = cachedSearchQuery {
                     _messageManager?.lastSearchQuery = cachedQuery
                 }
-                if let manager = _messageManager {
-                    setupStreamingBindings(for: manager)
-                } else {
-                    streamingAssistantText = ""
-                    messageManagerCancellables.removeAll()
-                }
+                if _messageManager == nil { messageManagerCancellables.removeAll() }
             }
             return _messageManager
         }
@@ -60,9 +62,11 @@ final class ChatViewModel: ObservableObject {
         self.chat = chat
         self.messages = chat.messages
         self.viewContext = viewContext
+        self.streamingSession = ChatStreamingSessionRegistry.shared.session(for: chat.id)
         
         // Subscribe to search results changes to cache them
         setupSearchResultsCaching()
+        setupStreamingSessionBindings()
         
         // Load selected MCP agents
         loadSelectedMCPAgents()
@@ -104,15 +108,24 @@ final class ChatViewModel: ObservableObject {
             .store(in: &cancellables)
     }
     
-    private func setupStreamingBindings(for manager: MessageManager) {
-        messageManagerCancellables.removeAll()
-        
-        manager.$streamingAssistantText
+    private func setupStreamingSessionBindings() {
+        // A recreated view model must render the already-active session before it receives
+        // its next publisher event.
+        streamingAssistantText = streamingSession.visibleAssistantText
+        streamingPhase = streamingSession.phase
+        streamingSession.$visibleAssistantText
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] text in
-                self?.streamingAssistantText = text
-            }
-            .store(in: &messageManagerCancellables)
+            .assign(to: &$streamingAssistantText)
+        streamingSession.$phase
+            .receive(on: DispatchQueue.main)
+            .assign(to: &$streamingPhase)
+    }
+
+    var isStreaming: Bool {
+        switch streamingPhase {
+        case .starting, .streaming, .cancelling, .finishing: return true
+        case .idle, .failed: return false
+        }
     }
 
     func sendMessage(_ message: String, contextSize: Int, completion: @escaping (Result<Void, Error>) -> Void) {
@@ -153,6 +166,55 @@ final class ChatViewModel: ObservableObject {
                 }
             }
         }
+    }
+
+    func retryLastTurn(
+        contextSize: Int,
+        useStreamResponse: Bool,
+        completion: @escaping (Result<Void, Error>) -> Void
+    ) {
+        guard let userTurn = sortedMessages.last(where: { $0.own }),
+              let intent = retryIntent(for: userTurn),
+              let messageManager else {
+            completion(.failure(APIError.noApiService("No retryable message is available")))
+            return
+        }
+        let finish: (Result<Void, Error>) -> Void = { [weak self] result in
+            self?.reloadMessages()
+            completion(result)
+        }
+        if useStreamResponse {
+            messageManager.retryMessageStream(
+                userTurn: intent.userTurn,
+                assistantTarget: intent.assistantTarget,
+                in: chat,
+                contextSize: contextSize,
+                completion: finish
+            )
+        } else {
+            messageManager.retryMessage(
+                userTurn: intent.userTurn,
+                assistantTarget: intent.assistantTarget,
+                in: chat,
+                contextSize: contextSize,
+                completion: finish
+            )
+        }
+    }
+
+    func retryIntent(for userTurn: MessageEntity) -> MessageManager.RetryIntent? {
+        guard userTurn.own,
+              let userIndex = sortedMessages.firstIndex(where: { $0.objectID == userTurn.objectID }) else {
+            return nil
+        }
+        let assistantTarget = sortedMessages.dropFirst(userIndex + 1).prefix(while: { !$0.own }).first
+        return MessageManager.RetryIntent(userTurn: userTurn, assistantTarget: assistantTarget)
+    }
+
+    static func retryState(for error: Error) -> RetryState {
+        guard let apiError = error as? APIError else { return .retryable }
+        if case .noApiService = apiError { return .configurationError }
+        return .retryable
     }
     
     @MainActor
@@ -253,12 +315,7 @@ final class ChatViewModel: ObservableObject {
         messageManagerCreationFailed = false
         _messageManager = createMessageManager()
         
-        if let manager = _messageManager {
-            setupStreamingBindings(for: manager)
-        } else {
-            streamingAssistantText = ""
-            messageManagerCancellables.removeAll()
-        }
+        if _messageManager == nil { messageManagerCancellables.removeAll() }
     }
 
     var canSendMessage: Bool {
@@ -290,7 +347,17 @@ final class ChatViewModel: ObservableObject {
     }
     
     func stopStreaming() {
-        messageManager?.stopStreaming()
+        if let requestID = streamingSession.requestID {
+            _ = streamingSession.cancel(requestID: requestID)
+            Task { await StreamingTaskController.shared.cancel(conversationID: chat.id, requestID: requestID) }
+        }
+        chat.waitingForResponse = false
+    }
+
+    func invalidateStreamingBeforeDeletion() {
+        ChatStreamingSessionRegistry.shared.invalidate(conversationID: chat.id)
+        Task { await StreamingTaskController.shared.invalidate(conversationID: chat.id) }
+        chat.waitingForResponse = false
     }
     
     // MARK: - Invalid Chat Handling
@@ -313,6 +380,7 @@ final class ChatViewModel: ObservableObject {
     
     /// Function to safely delete this chat if it's invalid
     func deleteInvalidChat() {
+        invalidateStreamingBeforeDeletion()
         viewContext.delete(chat)
         do {
             try viewContext.save()

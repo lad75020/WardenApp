@@ -98,6 +98,23 @@ final class SSEStreamParser {
 
         try await parser.flushBufferedEvent()
     }
+
+    /// Test and transport-neutral entry point for arbitrarily fragmented deliveries.
+    /// Concatenating bytes before structural parsing intentionally mirrors URLSession's byte
+    /// stream: a CRLF pair or UTF-8 scalar may be split between deliveries.
+    static func parse(
+        chunks: [Data],
+        format: StreamFormat = .sse,
+        deliveryMode: DeliveryMode = .bufferedWithCompatibilityFlush,
+        onEvent: @escaping (String) async throws -> Void
+    ) async throws {
+        var bytes = Data()
+        bytes.reserveCapacity(chunks.reduce(0) { $0 + $1.count })
+        for chunk in chunks {
+            bytes.append(chunk)
+        }
+        try await parse(data: bytes, format: format, deliveryMode: deliveryMode, onEvent: onEvent)
+    }
 }
 
 private extension SSEStreamParser {
