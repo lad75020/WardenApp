@@ -29,18 +29,28 @@ enum BranchingError: LocalizedError {
     }
 }
 
+enum BranchSelectionGate {
+    static func branchToOpen(after result: Result<ChatEntity, Error>) -> ChatEntity? {
+        guard case let .success(branch) = result else { return nil }
+        return branch
+    }
+}
+
 /// Manages creation of conversation branches from existing chats.
 /// Uses modern Swift concurrency patterns for clean async handling.
 @MainActor
 final class ChatBranchingManager {
     private let viewContext: NSManagedObjectContext
+    private let save: (NSManagedObjectContext) throws -> Void
     private let openChat: (ChatEntity) -> Void
     
     init(
         viewContext: NSManagedObjectContext,
+        save: @escaping (NSManagedObjectContext) throws -> Void = { try $0.save() },
         openChat: @escaping (ChatEntity) -> Void = ChatBranchingManager.postOpenChatNotification
     ) {
         self.viewContext = viewContext
+        self.save = save
         self.openChat = openChat
     }
     
@@ -87,18 +97,20 @@ final class ChatBranchingManager {
         
         // Save the branch
         do {
-            try viewContext.save()
+            try save(viewContext)
         } catch {
             viewContext.rollback()
             throw BranchingError.saveFailed(error)
         }
         
-        // Notify to open the new chat
-        openChat(newChat)
-        
         // Auto-generate response for user branches
         if origin == .user && autoGenerate {
             try await generateResponseForBranch(newChat, with: targetService)
+        }
+
+        // Selection changes only after all branch work has succeeded.
+        if let branchToOpen = BranchSelectionGate.branchToOpen(after: .success(newChat)) {
+            openChat(branchToOpen)
         }
         
         return newChat
@@ -261,6 +273,6 @@ final class ChatBranchingManager {
         
         // Immediately save after response generation completes (don't rely on debounced save)
         chat.updatedDate = Date()
-        try viewContext.save()
+        try save(viewContext)
     }
 }

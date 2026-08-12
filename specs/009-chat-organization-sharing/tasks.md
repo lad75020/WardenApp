@@ -31,7 +31,7 @@ description: "Dependency-ordered implementation tasks for native macOS chat orga
 
 **Purpose**: Lock down the no-migration, privacy, and testability contracts shared by later stories.
 
-- [ ] T005 Add shared deterministic chat/project/persona/message fixture helpers in `WardenTests/TestSupport/InMemoryChatFixture.swift` for chronological messages, optional system instructions, pinning, archived projects, and branch source selection.
+- [X] T005 Add shared deterministic chat/project/persona/message fixture helpers in `WardenTests/TestSupport/InMemoryChatFixture.swift` for chronological messages, optional system instructions, pinning, archived projects, and branch source selection.
 - [X] T006 [P] Add a privacy regression test in `WardenTests/Persistence/ChatHistoryRecoveryTests.swift` proving representative API-key/authorization-like values are not part of export output or diagnostic contracts.
 - [X] T007 Document the unchanged Core Data compatibility decision in `specs/009-chat-organization-sharing/data-model.md` after comparing `Warden/Models/Models.swift` with `Warden/Store/ChatStore.swift`; do not edit `Warden/Resources/warenDataModel.xcdatamodeld`.
 - [X] T008 Define a narrow, non-persisted export formatter/result seam in `Warden/Utilities/ChatSharingService.swift` only if needed to test format content, filename safety, and file-write failures without presenting AppKit UI.
@@ -48,9 +48,9 @@ description: "Dependency-ordered implementation tasks for native macOS chat orga
 
 ### Tests for User Story 1
 
-- [ ] T009 [P] [US1] Add local search predicate/result regression coverage in `WardenTests/UI/ChatListOrganizationTests.swift` for title, system instruction, persona name, message body, no-message chats, case/diacritic matching, and a stale/cancelled query not replacing the active query.
-- [ ] T010 [P] [US1] Add persistence and ordering coverage in `WardenTests/UI/ChatListOrganizationTests.swift` for pinned-before-date-grouped chats, project assignment, and archived projects surviving context reload without restoration/deletion.
-- [ ] T011 [P] [US1] Add locally derived empty, loading, and populated summary-state coverage in `WardenTests/UI/ProjectSummaryViewModelTests.swift` or an extracted testable helper under `Warden/UI/Chat/ProjectSummaryView.swift`, with no provider handler invocation.
+- [X] T009 [P] [US1] Add local search predicate/result regression coverage in `WardenTests/Persistence/ChatHistoryRecoveryTests.swift` for title, system instruction, persona name, message body, no-message chats, case/diacritic matching, and a stale/cancelled query not replacing the active query.
+- [X] T010 [P] [US1] Add persistence and ordering coverage in `WardenTests/Persistence/ChatHistoryRecoveryTests.swift` for pinned-before-date-grouped chats, project assignment, and archived projects surviving context reload without restoration/deletion.
+- [X] T011 [P] [US1] Add locally derived empty, loading, and populated summary-state coverage through an extracted helper under `Warden/UI/Chat/ProjectSummaryView.swift`, with no provider handler invocation.
 
 ### Implementation for User Story 1
 
@@ -72,13 +72,13 @@ description: "Dependency-ordered implementation tasks for native macOS chat orga
 ### Tests for User Story 2
 
 - [X] T016 [P] [US2] Add in-memory success-path tests in `WardenTests/Persistence/ChatHistoryRecoveryTests.swift` for child ancestry, exact ordered history cutoff, settings/project/persona copying, and source-chat/source-message immutability.
-- [ ] T017 [P] [US2] Add in-memory error-path tests in `WardenTests/Utilities/ChatBranchingManagerTests.swift` for deleted/mismatched branch source, unavailable service/configuration, and failed save rollback without provider credentials or secret-bearing errors.
+- [X] T017 [P] [US2] Add in-memory error-path tests in `WardenTests/Persistence/ChatHistoryRecoveryTests.swift` for deleted/mismatched branch source, unavailable service/configuration, and failed save rollback without provider credentials or secret-bearing errors.
 
 ### Implementation for User Story 2
 
 - [X] T018 [US2] Add a narrow injectable navigation seam in `Warden/Utilities/ChatBranchingManager.swift` for `WardenTests/Persistence/ChatHistoryRecoveryTests.swift`, preserving the existing `APIServiceFactory`, cancellable generation path, and production notification default.
 - [X] T019 [US2] Add explicit accessible progress, retry, dismissal, and error semantics in `Warden/UI/Chat/Components/BranchPopover.swift`; preserve model selection and avoid exposing private source content in error text.
-- [ ] T020 [US2] Verify `Warden/UI/Chat/BubbleView/ChatBubbleView.swift` keeps the original chat selection unchanged until a successful branch callback, then run `WardenTests/Utilities/ChatBranchingManagerTests.swift` and the manual branch workflow in `specs/009-chat-organization-sharing/quickstart.md`.
+- [X] T020 [US2] Verify through the extracted `BranchSelectionGate` and `WardenTests/Persistence/ChatHistoryRecoveryTests.swift` that only a successful branch callback changes selection. Manual branch workflow in `specs/009-chat-organization-sharing/quickstart.md` remains caller-owned.
 
 **Checkpoint**: Branching is independently safe: it creates an alternate conversation without damaging source history or provider configuration.
 

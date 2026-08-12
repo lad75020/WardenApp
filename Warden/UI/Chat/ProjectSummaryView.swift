@@ -2,6 +2,31 @@ import SwiftUI
 import CoreData
 import os
 
+struct ProjectSummaryChat: Equatable, Identifiable {
+    let id: UUID
+}
+
+enum ProjectSummaryState: Equatable {
+    case loading
+    case empty
+    case populated(messageCount: Int, activeDays: Int)
+
+    static func derive(
+        isLoading: Bool,
+        chats: [ProjectSummaryChat],
+        messageCount: Int,
+        activeDays: Int
+    ) -> ProjectSummaryState {
+        if isLoading {
+            return .loading
+        }
+        if chats.isEmpty {
+            return .empty
+        }
+        return .populated(messageCount: messageCount, activeDays: activeDays)
+    }
+}
+
 struct ProjectSummaryView: View {
     @Environment(\.managedObjectContext) private var viewContext
     @EnvironmentObject private var store: ChatStore
@@ -22,6 +47,15 @@ struct ProjectSummaryView: View {
     @State private var messageCount: Int = 0
     @State private var activeDays: Int = 0
     @State private var isLoadingStats = true
+
+    private var summaryState: ProjectSummaryState {
+        ProjectSummaryState.derive(
+            isLoading: isLoadingStats,
+            chats: allChats.map { ProjectSummaryChat(id: $0.id) },
+            messageCount: messageCount,
+            activeDays: activeDays
+        )
+    }
     
     var body: some View {
         ScrollView {
@@ -235,10 +269,10 @@ struct ProjectSummaryView: View {
                 .font(.title2)
                 .fontWeight(.bold)
             
-            if isLoadingStats {
+            if case .loading = summaryState {
                 ProgressView("Loading project summary")
                     .accessibilityLabel("Loading project summary")
-            } else if recentChats.isEmpty {
+            } else if case .empty = summaryState {
                 Text("No recent activity")
                     .foregroundStyle(.secondary)
                     .italic()
@@ -266,10 +300,10 @@ struct ProjectSummaryView: View {
                 .font(.title2)
                 .fontWeight(.bold)
             
-             if isLoadingStats {
+             if case .loading = summaryState {
                  ProgressView("Loading chats")
                      .accessibilityLabel("Loading project chats")
-             } else if allChats.isEmpty {
+             } else if case .empty = summaryState {
                  ProjectEmptyStateView(
                      icon: "bubble.left.and.bubble.right",
                      title: "No Chats Yet",

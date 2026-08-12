@@ -255,6 +255,60 @@ final class ChatHistoryRecoveryTests: XCTestCase {
         XCTAssertFalse(messageIDs.contains(unmatchedChat.id))
     }
 
+    func testLocalChatSearchIncludesNoMessageChatsAndDoesNotPublishStaleQueryResults() throws {
+        let noMessageChat = makeChat()
+        noMessageChat.name = "Roadmap"
+        let messageChat = makeChat()
+        messageChat.addToMessages(makeMessage(id: 401, timestamp: 1, body: "Roadmap details"))
+        try context.save()
+
+        let activeIDs = try LocalChatSearch.matchingIDs(for: "roadmap", in: context)
+        let staleIDs = try LocalChatSearch.matchingIDs(for: "details", in: context)
+
+        XCTAssertEqual(activeIDs, Set([noMessageChat.id, messageChat.id]))
+        XCTAssertEqual(LocalChatSearch.publishedResults(activeQuery: "roadmap", query: "details", results: staleIDs), [])
+        XCTAssertEqual(LocalChatSearch.publishedResults(activeQuery: "roadmap", query: "roadmap", results: activeIDs), activeIDs)
+    }
+
+    func testPinnedProjectAndArchivedProjectPersistAcrossContextReload() throws {
+        let archivedProject = ProjectEntity(context: context)
+        archivedProject.id = UUID()
+        archivedProject.name = "Archived"
+        archivedProject.isArchived = true
+        archivedProject.createdAt = Date(timeIntervalSince1970: 1)
+        archivedProject.updatedAt = Date(timeIntervalSince1970: 2)
+
+        let pinned = makeChat()
+        pinned.name = "Pinned"
+        pinned.isPinned = true
+        pinned.updatedDate = Date(timeIntervalSince1970: 10)
+        pinned.project = archivedProject
+        let recent = makeChat()
+        recent.name = "Recent"
+        recent.updatedDate = Date(timeIntervalSince1970: 20)
+        recent.project = archivedProject
+        try context.save()
+
+        context.reset()
+        let reloadedProject = try XCTUnwrap(try context.fetch(ProjectEntity.fetchRequest()).first)
+        let reloadedChats = try context.fetch(ChatEntity.fetchRequest()).sorted {
+            $0.isPinned == $1.isPinned ? $0.updatedDate > $1.updatedDate : $0.isPinned
+        }
+
+        XCTAssertTrue(reloadedProject.isArchived)
+        XCTAssertEqual(reloadedChats.map(\.name), ["Pinned", "Recent"])
+        XCTAssertTrue(reloadedChats.allSatisfy { $0.project === reloadedProject })
+    }
+
+    func testProjectSummaryStateIsLocallyDerivedForLoadingEmptyAndPopulatedData() {
+        XCTAssertEqual(ProjectSummaryState.derive(isLoading: true, chats: [], messageCount: 0, activeDays: 0), .loading)
+        XCTAssertEqual(ProjectSummaryState.derive(isLoading: false, chats: [], messageCount: 0, activeDays: 0), .empty)
+        XCTAssertEqual(
+            ProjectSummaryState.derive(isLoading: false, chats: [ProjectSummaryChat(id: UUID())], messageCount: 4, activeDays: 2),
+            .populated(messageCount: 4, activeDays: 2)
+        )
+    }
+
     func testRecoverySourcesContainNoRecoveryLogging() throws {
         let sourceRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
@@ -547,5 +601,113 @@ final class ChatBranchingManagerTests: XCTestCase {
         XCTAssertEqual(source.messagesArray.map(\.body), sourceBodies)
         XCTAssertEqual(source.messagesArray.count, 3)
         XCTAssertEqual(later.body, "Third")
+    }
+
+    func testBranchRejectsDeletedAndMismatchedSourcesWithoutOpeningOrSaving() async throws {
+        let source = fixture.chat
+        let boundary = fixture.addMessage("Boundary", own: true)
+        let otherChat = fixture.makeChat(name: "Other")
+        let mismatched = fixture.addMessage("Other message", own: true, to: otherChat)
+        let service = validService()
+        try context.save()
+        var opened = 0
+        let manager = ChatBranchingManager(viewContext: context, openChat: { _ in opened += 1 })
+
+        context.delete(source)
+        await XCTAssertThrowsErrorAsync(try await manager.createBranch(from: source, at: boundary, origin: .assistant, targetService: service, targetModel: "fixture", autoGenerate: false)) { error in
+            guard case .invalidSourceChat = error as? BranchingError else {
+                return XCTFail("Expected an invalid source error")
+            }
+        }
+        context.rollback()
+        await XCTAssertThrowsErrorAsync(try await manager.createBranch(from: source, at: mismatched, origin: .assistant, targetService: service, targetModel: "fixture", autoGenerate: false)) { error in
+            guard case .invalidBranchMessage = error as? BranchingError else {
+                return XCTFail("Expected an invalid branch message error")
+            }
+        }
+        XCTAssertEqual(opened, 0)
+    }
+
+    func testBranchConfigurationFailureDoesNotOpenNewSelection() async throws {
+        let boundary = fixture.addMessage("Branch from me", own: true)
+        let invalidService = APIServiceEntity(context: context)
+        invalidService.id = UUID()
+        invalidService.name = "Unavailable"
+        try context.save()
+        var opened = 0
+        let manager = ChatBranchingManager(viewContext: context, openChat: { _ in opened += 1 })
+
+        await XCTAssertThrowsErrorAsync(try await manager.createBranch(from: fixture.chat, at: boundary, origin: .user, targetService: invalidService, targetModel: "fixture", autoGenerate: true)) { error in
+            guard case .apiConfigurationFailed = error as? BranchingError else {
+                return XCTFail("Expected an API configuration error")
+            }
+        }
+        XCTAssertEqual(opened, 0)
+    }
+
+    func testFailedBranchSaveRollsBackAndDoesNotOpenNewSelection() async throws {
+        let boundary = fixture.addMessage("Boundary", own: false)
+        let service = validService()
+        try context.save()
+        let sourceID = fixture.chat.objectID
+        var opened = 0
+        let manager = ChatBranchingManager(
+            viewContext: context,
+            save: { _ in throw FixtureSaveError.forcedFailure },
+            openChat: { _ in opened += 1 }
+        )
+
+        await XCTAssertThrowsErrorAsync(try await manager.createBranch(from: fixture.chat, at: boundary, origin: .assistant, targetService: service, targetModel: "fixture", autoGenerate: false)) { error in
+            guard case .saveFailed = error as? BranchingError else {
+                return XCTFail("Expected a save failure")
+            }
+        }
+        XCTAssertEqual(opened, 0)
+        XCTAssertEqual(try context.fetch(ChatEntity.fetchRequest()).map(\.objectID), [sourceID])
+    }
+
+    func testSuccessfulBranchCallbackIsTheOnlySelectionChangingRoute() async throws {
+        let boundary = fixture.addMessage("Boundary", own: false)
+        let service = validService()
+        try context.save()
+        let originalSelection = fixture.chat
+        var selectedChat = originalSelection
+        let manager = ChatBranchingManager(viewContext: context, openChat: { branch in
+            selectedChat = branch
+        })
+
+        let branch = try await manager.createBranch(from: fixture.chat, at: boundary, origin: .assistant, targetService: service, targetModel: "fixture", autoGenerate: false)
+
+        XCTAssertNil(BranchSelectionGate.branchToOpen(after: .failure(FixtureSaveError.forcedFailure)))
+        XCTAssertTrue(selectedChat === branch)
+    }
+
+    private func validService() -> APIServiceEntity {
+        let service = APIServiceEntity(context: context)
+        service.id = UUID()
+        service.name = "Local fixture"
+        service.type = "Ollama"
+        service.url = URL(string: "http://127.0.0.1:11434")
+        service.model = "fixture"
+        service.addedDate = Date(timeIntervalSince1970: 1)
+        return service
+    }
+
+    private enum FixtureSaveError: Error {
+        case forcedFailure
+    }
+}
+
+private func XCTAssertThrowsErrorAsync(
+    _ expression: @autoclosure () async throws -> Void,
+    _ verify: (Error) -> Void = { _ in },
+    file: StaticString = #filePath,
+    line: UInt = #line
+) async {
+    do {
+        try await expression()
+        XCTFail("Expected an error", file: file, line: line)
+    } catch {
+        verify(error)
     }
 }

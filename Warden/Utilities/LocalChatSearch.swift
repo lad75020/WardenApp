@@ -2,6 +2,16 @@ import CoreData
 import Foundation
 
 enum LocalChatSearch {
+    /// Returns results only when the completed query still matches the active query.
+    /// This keeps a cancelled/background search from replacing newer local results.
+    static func publishedResults(
+        activeQuery: String,
+        query: String,
+        results: Set<UUID>
+    ) -> Set<UUID> {
+        activeQuery == query ? results : []
+    }
+
     static func matchingIDs(
         for query: String,
         in context: NSManagedObjectContext

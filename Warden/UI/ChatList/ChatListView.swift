@@ -153,8 +153,14 @@ struct ChatListView: View {
             }
 
             await MainActor.run {
-                guard !Task.isCancelled, self.searchText == query else { return }
-                self.searchResults = matchingChatIDs
+                guard !Task.isCancelled else { return }
+                let publishedResults = LocalChatSearch.publishedResults(
+                    activeQuery: self.searchText,
+                    query: query,
+                    results: matchingChatIDs
+                )
+                guard self.searchText == query else { return }
+                self.searchResults = publishedResults
                 self.debouncedSearchText = query
                 self.isSearching = false
             }
