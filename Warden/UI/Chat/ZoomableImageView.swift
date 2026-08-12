@@ -2,6 +2,29 @@
 import SwiftUI
 import os
 
+enum ImageExportFormat: Equatable {
+    case png
+    case jpeg
+
+    static func forDestination(_ url: URL) -> ImageExportFormat {
+        switch url.pathExtension.lowercased() {
+        case "jpg", "jpeg": return .jpeg
+        default: return .png
+        }
+    }
+
+    func data(for image: NSImage) -> Data? {
+        guard let tiffData = image.tiffRepresentation,
+              let bitmap = NSBitmapImageRep(data: tiffData) else { return nil }
+        switch self {
+        case .png:
+            return bitmap.representation(using: .png, properties: [:])
+        case .jpeg:
+            return bitmap.representation(using: .jpeg, properties: [.compressionFactor: 0.9])
+        }
+    }
+}
+
 struct ZoomableImageView: View {
     let image: NSImage
     let imageAspectRatio: CGFloat
@@ -11,6 +34,7 @@ struct ZoomableImageView: View {
     @State private var lastScale: CGFloat = 1.0
     @State private var offset: CGSize = .zero
     @State private var lastOffset: CGSize = .zero
+    @State private var saveError: String?
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
@@ -40,7 +64,7 @@ struct ZoomableImageView: View {
                             .onChanged { value in
                                 let delta = value / lastScale
                                 lastScale = value
-                                scale *= delta
+                                scale = min(max(scale * delta, 0.25), 5.0)
                             }
                             .onEnded { _ in
                                 lastScale = 1.0
@@ -54,6 +78,7 @@ struct ZoomableImageView: View {
                                     if scale == 1.0 {
                                         offset = .zero
                                         lastOffset = .zero
+                                        lastScale = 1.0
                                     }
                                 }
                             }
@@ -69,6 +94,7 @@ struct ZoomableImageView: View {
                     }) {
                         Image(systemName: "plus.magnifyingglass")
                     }
+                    .accessibilityLabel("Zoom in")
                     .keyboardShortcut("=", modifiers: [])
                     .keyboardShortcut("+", modifiers: [])
 
@@ -79,22 +105,27 @@ struct ZoomableImageView: View {
                     }) {
                         Image(systemName: "minus.magnifyingglass")
                     }
+                    .accessibilityLabel("Zoom out")
                     .keyboardShortcut("-", modifiers: [])
 
                     Button(action: {
                         withAnimation {
                             scale = 1.0
                             offset = .zero
+                            lastOffset = .zero
+                            lastScale = 1.0
                         }
                     }) {
                         Image(systemName: "arrow.counterclockwise")
                     }
+                    .accessibilityLabel("Reset image zoom and position")
 
                     Button(action: {
                         saveImage()
                     }) {
                         Image(systemName: "square.and.arrow.down")
                     }
+                    .accessibilityLabel("Save image as")
                     .keyboardShortcut("s", modifiers: .command)
 
                     Spacer()
@@ -103,6 +134,7 @@ struct ZoomableImageView: View {
                     }) {
                         Image(systemName: "xmark")
                     }
+                    .accessibilityLabel("Close image viewer")
                     .keyboardShortcut("q", modifiers: .command)
                 }
                 .padding(8)
@@ -114,23 +146,32 @@ struct ZoomableImageView: View {
         .aspectRatio(imageAspectRatio, contentMode: .fill)
         .padding(0)
         .frame(minWidth: imageAspectRatio > 1.4 ? 800 : nil)
+        .alert("Image Attachment", isPresented: Binding(
+            get: { saveError != nil },
+            set: { if !$0 { saveError = nil } }
+        )) {
+            Button("OK", role: .cancel) { saveError = nil }
+        } message: {
+            Text(saveError ?? "")
+        }
     }
 
     private func saveImage() {
         let savePanel = NSSavePanel()
         savePanel.allowedContentTypes = [.png, .jpeg]
         savePanel.canCreateDirectories = true
-        savePanel.nameFieldStringValue = "image"
+        savePanel.nameFieldStringValue = "image.png"
         savePanel.title = "Save Image"
         savePanel.message = "Choose where to save the image"
 
         savePanel.begin { response in
             if response == .OK, let url = savePanel.url {
-                guard let tiffData = image.tiffRepresentation,
-                    let bitmap = NSBitmapImageRep(data: tiffData),
-                    let imageData = bitmap.representation(using: .png, properties: [:])
-                else {
-                    WardenLog.app.error("Failed to convert image to data")
+                guard (try? url.checkResourceIsReachable()) != true else {
+                    saveError = "A file already exists at the selected location. Choose a different name."
+                    return
+                }
+                guard let imageData = ImageExportFormat.forDestination(url).data(for: image) else {
+                    saveError = "The image could not be prepared for saving."
                     return
                 }
 
@@ -141,7 +182,7 @@ struct ZoomableImageView: View {
                     #endif
                 }
                 catch {
-                    WardenLog.app.error("Failed to save image: \(error.localizedDescription, privacy: .public)")
+                    saveError = "The image could not be saved to the selected location."
                 }
             }
         }

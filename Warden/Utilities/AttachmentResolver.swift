@@ -8,7 +8,8 @@ final class AttachmentResolver {
     private let imageCache: NSCache<NSUUID, NSImage>
     private let fileCache: NSCache<NSUUID, FileAttachment>
 
-    private init(dataLoader: BackgroundDataLoader = BackgroundDataLoader()) {
+    /// Internal injection keeps Core Data resolution testable without touching the shared store.
+    init(dataLoader: BackgroundDataLoader = BackgroundDataLoader()) {
         self.dataLoader = dataLoader
 
         let imageCache = NSCache<NSUUID, NSImage>()

@@ -186,6 +186,14 @@ class IncrementalMessageParser {
             } else {
                 appendTextLine(line)
             }
+
+        case .videoURL:
+            if let url = extractVideoURL(line) {
+                finalizePendingBlock()
+                completedElements.append(.videoURL(url))
+            } else {
+                appendTextLine(line)
+            }
             
         case .text:
             handleTextLine(line: line)
@@ -195,7 +203,7 @@ class IncrementalMessageParser {
     // MARK: - Block Type Detection (reused from MessageParser)
     
     private enum BlockType {
-        case text, table, codeBlock, formulaBlock, formulaLine, thinking, imageUUID, imageURL, fileUUID
+        case text, table, codeBlock, formulaBlock, formulaLine, thinking, imageUUID, imageURL, fileUUID, videoURL
     }
     
     private func detectBlockType(line: String) -> BlockType {
@@ -217,6 +225,8 @@ class IncrementalMessageParser {
             return .imageURL
         } else if trimmedLine.hasPrefix("<file-uuid>") {
             return .fileUUID
+        } else if trimmedLine.hasPrefix("<video-url>") {
+            return .videoURL
         } else {
             return .text
         }
@@ -489,6 +499,18 @@ class IncrementalMessageParser {
                 .replacingOccurrences(of: "<file-uuid>", with: "")
                 .replacingOccurrences(of: "</file-uuid>", with: "")
             return UUID(uuidString: uuidString)
+        }
+        return nil
+    }
+
+    private func extractVideoURL(_ line: String) -> String? {
+        let pattern = "<video-url>(.*?)</video-url>"
+        if let range = line.range(of: pattern, options: .regularExpression) {
+            let urlString = String(line[range])
+                .replacingOccurrences(of: "<video-url>", with: "")
+                .replacingOccurrences(of: "</video-url>", with: "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return urlString.isEmpty ? nil : urlString
         }
         return nil
     }

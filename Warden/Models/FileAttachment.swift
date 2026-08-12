@@ -2,6 +2,7 @@ import CoreData
 import Combine
 import Foundation
 import AppKit
+import ImageIO
 import UniformTypeIdentifiers
 import PDFKit
 import os
@@ -18,6 +19,15 @@ enum FileAttachmentType {
     case other(String)
 }
 
+/// A safe representation reconstructed from the data Warden stores for a file attachment.
+/// It is intentionally not presented as the original file when that original is unavailable.
+struct FileAttachmentExportRepresentation {
+    let data: Data
+    let suggestedFileName: String
+    let contentType: UTType
+    let description: String
+}
+
 @MainActor
 final class FileAttachment: Identifiable, ObservableObject {
     var id: UUID = UUID()
@@ -31,10 +41,24 @@ final class FileAttachment: Identifiable, ObservableObject {
     @Published var thumbnail: NSImage?
     
     @Published var image: NSImage?
+
+    /// True only for a persisted attachment declared as an image whose stored payload cannot be decoded.
+    /// Such an attachment cannot safely fall back to its text preview.
+    private(set) var hasUnavailablePersistedImage = false
+
+    /// File preparation is complete once its type-specific content is available without an error.
+    var isReadyForSend: Bool {
+        guard !isLoading, error == nil else { return false }
+        if case .image = fileType {
+            return image != nil
+        }
+        return true
+    }
     
     private var managedObjectContext: NSManagedObjectContext?
     private var fileEntityID: NSManagedObjectID?
     private var loadTask: Task<Void, Never>?
+    private var persistedImageData: Data?
     private(set) var originalUTType: UTType
     
     init(url: URL, context: NSManagedObjectContext? = nil) {
@@ -82,14 +106,66 @@ final class FileAttachment: Identifiable, ObservableObject {
         self.originalUTType = UTType(filenameExtension: fileTypeExtension) ?? .data
         self.fileType = self.determineFileType(from: fileTypeExtension)
 
-        if let imageData, let image = NSImage(data: imageData) {
-            self.image = image
+        if case .image = self.fileType {
+            if let imageData, let image = NSImage(data: imageData) {
+                self.image = image
+                self.persistedImageData = imageData
+            } else {
+                self.hasUnavailablePersistedImage = true
+            }
         }
         if let thumbnailData, let thumbnail = NSImage(data: thumbnailData) {
             self.thumbnail = thumbnail
         }
 
         self.isLoading = false
+    }
+
+    /// Returns the faithful stored image payload when available, or a UTF-8 text reconstruction for
+    /// formats whose persisted value is text. This never claims to restore bytes Warden did not retain.
+    var exportRepresentation: FileAttachmentExportRepresentation? {
+        switch fileType {
+        case .image:
+            guard let imageData = persistedImageData,
+                  NSImage(data: imageData) != nil,
+                  let imageType = Self.imageType(for: imageData) else {
+                return nil
+            }
+            return FileAttachmentExportRepresentation(
+                data: imageData,
+                suggestedFileName: Self.exportFileName(fileName, extension: imageType.preferredFilenameExtension ?? "jpg"),
+                contentType: imageType,
+                description: "stored image representation"
+            )
+
+        case .text, .csv, .json, .xml, .markdown:
+            let fileExtension = Self.textExtension(for: fileType)
+            return FileAttachmentExportRepresentation(
+                data: Data(textContent.utf8),
+                suggestedFileName: Self.exportFileName(fileName, extension: fileExtension),
+                contentType: UTType(filenameExtension: fileExtension) ?? .plainText,
+                description: "stored text representation"
+            )
+
+        case .pdf, .rtf:
+            return FileAttachmentExportRepresentation(
+                data: Data(textContent.utf8),
+                suggestedFileName: Self.exportFileName(fileName, extension: "txt"),
+                contentType: .plainText,
+                description: "stored text extraction"
+            )
+
+        case .other:
+            guard !textContent.isEmpty, textContent != "[Binary file: \(fileName)]" else {
+                return nil
+            }
+            return FileAttachmentExportRepresentation(
+                data: Data(textContent.utf8),
+                suggestedFileName: Self.exportFileName(fileName, extension: "txt"),
+                contentType: .plainText,
+                description: "stored text representation"
+            )
+        }
     }
     
     deinit {
@@ -338,8 +414,13 @@ final class FileAttachment: Identifiable, ObservableObject {
                 self.fileType = self.determineFileType(from: typeString)
             }
 
-            if let imageData = values.0, let decodedImage = NSImage(data: imageData) {
-                self.image = decodedImage
+            if case .image = self.fileType {
+                if let imageData = values.0, let decodedImage = NSImage(data: imageData) {
+                    self.image = decodedImage
+                    self.persistedImageData = imageData
+                } else {
+                    self.hasUnavailablePersistedImage = true
+                }
             }
             if let thumbnailData = values.1, let decodedThumbnail = NSImage(data: thumbnailData) {
                 self.thumbnail = decodedThumbnail
@@ -349,9 +430,10 @@ final class FileAttachment: Identifiable, ObservableObject {
         }
     }
     
-    func saveToEntity(context: NSManagedObjectContext? = nil) {
+    @discardableResult
+    func saveToEntity(context: NSManagedObjectContext? = nil) -> Bool {
         let contextToUse = context ?? managedObjectContext
-        guard let contextToUse = contextToUse else { return }
+        guard let contextToUse = contextToUse else { return false }
         
         if context != nil {
             self.managedObjectContext = context
@@ -366,7 +448,8 @@ final class FileAttachment: Identifiable, ObservableObject {
         let thumbnailData = thumbnail.flatMap { Self.convertImageToData($0, compression: 0.7) }
         let fileEntityID = fileEntityID
 
-        contextToUse.perform { [weak self] in
+        var didSave = false
+        contextToUse.performAndWait { [weak self] in
             let entity: FileEntity
             if let fileEntityID, let existing = try? contextToUse.existingObject(with: fileEntityID) as? FileEntity {
                 entity = existing
@@ -390,9 +473,42 @@ final class FileAttachment: Identifiable, ObservableObject {
 
             do {
                 try contextToUse.save()
+                didSave = true
             } catch {
                 WardenLog.coreData.error("Error saving file to Core Data: \(error.localizedDescription, privacy: .public)")
             }
+        }
+        if let imageData {
+            persistedImageData = imageData
+        }
+        return didSave
+    }
+
+    private static func imageType(for data: Data) -> UTType? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let identifier = CGImageSourceGetType(source) else {
+            return nil
+        }
+        return UTType(identifier as String)
+    }
+
+    private static func exportFileName(_ fileName: String, extension fileExtension: String) -> String {
+        guard !fileName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return "attachment.\(fileExtension.lowercased())"
+        }
+        let stem = URL(fileURLWithPath: fileName).deletingPathExtension().lastPathComponent
+        let safeStem = stem.isEmpty ? "attachment" : stem
+        return "\(safeStem).\(fileExtension.lowercased())"
+    }
+
+    private static func textExtension(for fileType: FileAttachmentType) -> String {
+        switch fileType {
+        case .text: return "txt"
+        case .csv: return "csv"
+        case .json: return "json"
+        case .xml: return "xml"
+        case .markdown: return "md"
+        default: return "txt"
         }
     }
     

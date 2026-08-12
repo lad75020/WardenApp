@@ -258,6 +258,7 @@ struct QuickChatView: View {
             try? viewContext.save()
             quickChatEntity = nil
         }
+
         
         if quickChatEntity == nil {
             // Always create a new chat for a new session
@@ -299,6 +300,7 @@ struct QuickChatView: View {
     
     private func submitQuery() {
         guard !text.isEmpty || !attachedImages.isEmpty || !attachedFiles.isEmpty, let _ = quickChatEntity else { return }
+        guard attachedImages.allSatisfy(\.isReadyForSend) && attachedFiles.allSatisfy(\.isReadyForSend) else { return }
         
         isStreaming = true
         responseText = ""
@@ -333,23 +335,40 @@ struct QuickChatView: View {
         }
         
         for attachment in attachedImages {
-            attachment.saveToEntity(context: viewContext)
+            guard attachment.saveToEntity(context: viewContext) else {
+                isStreaming = false
+                return
+            }
             messageContents.append(MessageContent(imageAttachment: attachment))
         }
         
         for attachment in attachedFiles {
-            attachment.saveToEntity(context: viewContext)
+            guard attachment.saveToEntity(context: viewContext) else {
+                isStreaming = false
+                return
+            }
             messageContents.append(MessageContent(fileAttachment: attachment))
         }
         
         let messageBody = messageContents.toString()
         
-        // Build messages: for image models, only the current prompt; otherwise include context
+        // Create User Message Entity
+        let userMessage = MessageEntity(context: viewContext)
+        userMessage.id = Int64(chat.messages.count + 1)
+        userMessage.body = messageBody
+        userMessage.timestamp = Date()
+        userMessage.own = true
+        userMessage.chat = chat
+
+        chat.addToMessages(userMessage)
+        try? viewContext.save()
+
+        // Build the request after inserting the current user message so attachments are included.
         var messages: [[String: String]] = []
         let isImageGeneration = (apiService.type?.lowercased() == "chatgpt image") || (chat.gptModel.lowercased().hasPrefix("gpt-image"))
         if isImageGeneration {
-            if !messageBody.isEmpty {
-                messages.append(["role": "user", "content": messageBody])
+            if !userMessage.body.isEmpty {
+                messages.append(["role": "user", "content": userMessage.body])
             }
         } else {
             if !chat.systemMessage.isEmpty {
@@ -363,17 +382,6 @@ struct QuickChatView: View {
                 }
             }
         }
-        
-        // Create User Message Entity
-        let userMessage = MessageEntity(context: viewContext)
-        userMessage.id = Int64(chat.messages.count + 1)
-        userMessage.body = messageBody
-        userMessage.timestamp = Date()
-        userMessage.own = true
-        userMessage.chat = chat
-        
-        chat.addToMessages(userMessage)
-        try? viewContext.save()
         
         // Clear input
         text = ""
@@ -393,7 +401,7 @@ struct QuickChatView: View {
         try? viewContext.save()
         
         guard let config = APIServiceManager.createAPIConfiguration(for: apiService) else {
-            aiMessage.body = "Error: Invalid Configuration"
+            aiMessage.body = "Error: Configuration unavailable."
             aiMessage.waitingForResponse = false
             isStreaming = false
             try? viewContext.save()
@@ -433,7 +441,7 @@ struct QuickChatView: View {
                     }
                 } catch {
                     await MainActor.run {
-                        aiMessage.body += "\nError: \(error.localizedDescription)"
+                        aiMessage.body += "\nError: Request failed."
                         aiMessage.waitingForResponse = false
                         isStreaming = false
                         try? viewContext.save()
@@ -451,8 +459,8 @@ struct QuickChatView: View {
                         try? viewContext.save()
                         // Auto-rename chat
                         generateChatNameIfNeeded(chat: chat, apiService: apiService)
-                    case .failure(let error):
-                        aiMessage.body += "\nError: \(error.localizedDescription)"
+                    case .failure:
+                        aiMessage.body += "\nError: Request failed."
                         aiMessage.waitingForResponse = false
                         try? viewContext.save()
                     }
@@ -981,4 +989,3 @@ struct CompactModelSelector: View {
         .help(currentModelLabel)
     }
 }
-

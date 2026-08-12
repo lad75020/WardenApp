@@ -6,7 +6,7 @@ import AppKit
 
 /// Simple inline video preview + actions.
 ///
-/// Expects a local file URL (file://). Remote URLs may work, but we don't attempt caching.
+/// Generated videos are transient. Only readable, local regular files can be played or exported.
 struct VideoAttachmentView: View {
     let videoURL: URL
     var maxWidth: CGFloat = 360
@@ -14,10 +14,15 @@ struct VideoAttachmentView: View {
     @State private var player: AVPlayer? = nil
     @State private var showInFinderError: String? = nil
 
+    private var isAvailable: Bool {
+        VideoAttachmentSupport.isUsableLocalVideo(videoURL)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Group {
-                if let player {
+                if VideoAttachmentSupport.shouldDisplayPlayer(playerExists: player != nil, videoURL: videoURL),
+                   let player {
                     #if os(macOS)
                     AVPlayerViewRepresentable(player: player)
                         .frame(maxWidth: maxWidth)
@@ -30,8 +35,13 @@ struct VideoAttachmentView: View {
                         .cornerRadius(8)
                     #endif
                 } else {
-                    ProgressView()
+                    ContentUnavailableView(
+                        "Video Unavailable",
+                        systemImage: "video.slash",
+                        description: Text("This generated video is no longer available on this Mac.")
+                    )
                         .frame(width: maxWidth, height: maxWidth * 9/16)
+                        .accessibilityLabel("Generated video unavailable")
                 }
             }
 
@@ -40,17 +50,21 @@ struct VideoAttachmentView: View {
                     revealInFinder(videoURL)
                 }
                 .buttonStyle(.bordered)
+                .disabled(!isAvailable)
+                .accessibilityHint("Reveals the generated video in Finder when it is available")
 
                 Button("Save As…") {
                     saveAs(videoURL)
                 }
                 .buttonStyle(.borderedProminent)
+                .disabled(!isAvailable)
+                .accessibilityHint("Saves a copy without replacing an existing file")
 
                 Spacer()
             }
         }
         .onAppear {
-            if player == nil {
+            if player == nil, isAvailable {
                 player = AVPlayer(url: videoURL)
             }
         }
@@ -61,12 +75,23 @@ struct VideoAttachmentView: View {
 
     private func revealInFinder(_ url: URL) {
         #if os(macOS)
+        guard VideoAttachmentSupport.isUsableLocalVideo(url) else {
+            player = nil
+            showInFinderError = "This generated video is unavailable."
+            return
+        }
         NSWorkspace.shared.activateFileViewerSelecting([url])
         #endif
     }
 
     private func saveAs(_ url: URL) {
         #if os(macOS)
+        guard VideoAttachmentSupport.isUsableLocalVideo(url) else {
+            player = nil
+            showInFinderError = "This generated video is unavailable."
+            return
+        }
+
         let panel = NSSavePanel()
         panel.canCreateDirectories = true
         panel.nameFieldStringValue = url.lastPathComponent.isEmpty ? "video.mp4" : url.lastPathComponent
@@ -75,18 +100,51 @@ struct VideoAttachmentView: View {
 
         panel.begin { response in
             guard response == .OK, let dest = panel.url else { return }
-            do {
-                // If saving to the same place, no-op.
-                if dest.standardizedFileURL == url.standardizedFileURL { return }
-                if FileManager.default.fileExists(atPath: dest.path) {
-                    try FileManager.default.removeItem(at: dest)
+            guard let errorMessage = VideoAttachmentSupport.exportError(source: url, destination: dest) else {
+                do {
+                    try FileManager.default.copyItem(at: url, to: dest)
+                } catch {
+                    showInFinderError = "The video could not be saved to the selected location."
                 }
-                try FileManager.default.copyItem(at: url, to: dest)
-            } catch {
-                showInFinderError = "Failed to save video: \(error.localizedDescription)"
+                return
             }
+            showInFinderError = errorMessage
         }
         #endif
+    }
+}
+
+enum VideoAttachmentSupport {
+    static func isUsableLocalVideo(_ url: URL) -> Bool {
+        guard url.isFileURL else { return false }
+
+        let path = url.path
+        guard FileManager.default.isReadableFile(atPath: path),
+              let attributes = try? FileManager.default.attributesOfItem(atPath: path),
+              attributes[.type] as? FileAttributeType == .typeRegular,
+              let size = attributes[.size] as? NSNumber,
+              size.intValue > 0 else {
+            return false
+        }
+        return true
+    }
+
+    static func shouldDisplayPlayer(playerExists: Bool, videoURL: URL) -> Bool {
+        playerExists && isUsableLocalVideo(videoURL)
+    }
+
+    /// Returns a localized-safe explanation when a copy must not proceed.
+    static func exportError(source: URL, destination: URL) -> String? {
+        guard isUsableLocalVideo(source) else {
+            return "This generated video is unavailable."
+        }
+        guard source.standardizedFileURL != destination.standardizedFileURL else {
+            return "Choose a different location for the saved copy."
+        }
+        if (try? destination.checkResourceIsReachable()) == true {
+            return "A file already exists at the selected location. Choose a different name."
+        }
+        return nil
     }
 }
 

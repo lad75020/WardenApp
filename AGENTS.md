@@ -35,5 +35,5 @@ Changes crossing module boundaries must name the owning module in the implementa
 
 <!-- SPECKIT START -->
 ## Active Spec Kit Plan
-- `specs/004-core-chat-streaming/plan.md`
+- `specs/006-attachments-media/plan.md`
 <!-- SPECKIT END -->

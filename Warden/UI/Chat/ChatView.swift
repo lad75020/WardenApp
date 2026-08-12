@@ -468,6 +468,14 @@ extension ChatView {
             return
         }
 
+        guard retryContent != nil || (attachedImages.allSatisfy(\.isReadyForSend) && attachedFiles.allSatisfy(\.isReadyForSend)) else {
+            currentError = ErrorMessage(
+                apiError: .unknown("Finish preparing or remove attachments before sending."),
+                timestamp: Date()
+            )
+            return
+        }
+
         resetError()
 
         let messageBody: String
@@ -478,10 +486,26 @@ extension ChatView {
             messageBody = retryText
         } else if ignoreMessageInput {
              // Legacy retry/send logic (mostly unused now with explicit retryContent)
-            messageBody = prepareMessageBody(clearInput: false)
+            guard let preparedMessageBody = prepareMessageBody(clearInput: false) else {
+                currentError = ErrorMessage(
+                    apiError: .unknown("Couldn't save attachment. Try again."),
+                    timestamp: Date()
+                )
+                return
+            }
+            messageBody = preparedMessageBody
         } else {
             // Normal send
-            messageBody = prepareMessageBody(clearInput: true)
+            guard let preparedMessageBody = prepareMessageBody(clearInput: true) else {
+                currentError = ErrorMessage(
+                    apiError: .unknown("Couldn't save attachment. Try again."),
+                    timestamp: Date()
+                )
+                return
+            }
+            messageBody = preparedMessageBody
+
+            guard !messageBody.isEmpty else { return }
             saveNewMessageInStore(with: messageBody)
             
             if isFirstMessage {
@@ -588,7 +612,7 @@ extension ChatView {
         }
     }
 
-    private func prepareMessageBody(clearInput: Bool) -> String {
+    private func prepareMessageBody(clearInput: Bool) -> String? {
         var messageContents: [MessageContent] = []
         
         if !newMessage.isEmpty {
@@ -596,12 +620,12 @@ extension ChatView {
         }
 
         for attachment in attachedImages {
-            attachment.saveToEntity(context: viewContext)
+            guard attachment.saveToEntity(context: viewContext) else { return nil }
             messageContents.append(MessageContent(imageAttachment: attachment))
         }
         
         for attachment in attachedFiles {
-            attachment.saveToEntity(context: viewContext)
+            guard attachment.saveToEntity(context: viewContext) else { return nil }
             messageContents.append(MessageContent(fileAttachment: attachment))
         }
 
@@ -763,6 +787,14 @@ extension ChatView {
             )
             return
         }
+
+        guard attachedImages.allSatisfy(\.isReadyForSend) && attachedFiles.allSatisfy(\.isReadyForSend) else {
+            currentError = ErrorMessage(
+                apiError: .unknown("Finish preparing or remove attachments before sending."),
+                timestamp: Date()
+            )
+            return
+        }
         
         // Ensure we don't exceed the 3-service limit
         let limitedServices = Array(selectedMultiAgentServices.prefix(3))
@@ -774,7 +806,13 @@ extension ChatView {
         resetError()
         
         // Use centralized message preparation to handle input and potential attachments (even if multi-agent currently only uses text content)
-        let messageBody = prepareMessageBody(clearInput: true)
+        guard let messageBody = prepareMessageBody(clearInput: true) else {
+            currentError = ErrorMessage(
+                apiError: .unknown("Couldn't save attachment. Try again."),
+                timestamp: Date()
+            )
+            return
+        }
         guard !messageBody.isEmpty else { return }
         
         // Save user message (with attachments if any)

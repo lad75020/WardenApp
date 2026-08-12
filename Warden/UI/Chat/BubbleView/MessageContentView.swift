@@ -1,6 +1,7 @@
 import Foundation
 import AttributedText
 import SwiftUI
+import AppKit
 import os
 
 struct IdentifiableImage: Identifiable {
@@ -30,6 +31,7 @@ struct MessageContentView: View {
     @State private var failedRemoteImages: Set<String> = []
     @State private var missingImages: Set<UUID> = []
     @State private var missingFiles: Set<UUID> = []
+    @State private var fileActionError: String?
 
     @State private var truncatedParsedElements: [MessageElements]
     @State private var fullParsedElements: [MessageElements]
@@ -87,6 +89,9 @@ struct MessageContentView: View {
             truncatedParseTask?.cancel()
             fullParseTask?.cancel()
             refreshParsedElements(force: true)
+        }
+        .alert(item: $fileActionError) { message in
+            Alert(title: Text("File Attachment"), message: Text(message), dismissButton: .default(Text("OK")))
         }
         .onChange(of: colorScheme) { _ in
             refreshParsedElements(force: true)
@@ -318,8 +323,7 @@ struct MessageContentView: View {
         if let image = resolvedImages[uuid] {
             renderImage(image)
         } else if missingImages.contains(uuid) {
-            Text("\(MessageContent.imageTagStart)\(uuid.uuidString)\(MessageContent.imageTagEnd)")
-                .textSelection(.enabled)
+            unavailableAttachmentView(kind: "Image", systemImage: "photo.badge.exclamationmark")
         } else {
             ProgressView()
                 .scaleEffect(0.8)
@@ -415,13 +419,12 @@ struct MessageContentView: View {
 
     @ViewBuilder
     private func renderVideo(urlString: String) -> some View {
-        // Support file://... URLs produced by VeoHandler.
+        // VideoAttachmentView validates the transient local URL before playback or export.
         if let url = URL(string: urlString) {
             VideoAttachmentView(videoURL: url, maxWidth: 360)
                 .padding(.bottom, 3)
         } else {
-            Text(urlString)
-                .textSelection(.enabled)
+            unavailableAttachmentView(kind: "Video", systemImage: "video.slash")
         }
     }
     
@@ -512,10 +515,13 @@ struct MessageContentView: View {
     @ViewBuilder
     private func renderFileAttachmentReference(uuid: UUID) -> some View {
         if let attachment = resolvedFiles[uuid] {
-            renderFileAttachment(attachment)
+            if attachment.hasUnavailablePersistedImage {
+                unavailableAttachmentView(kind: "Image file", systemImage: "photo.badge.exclamationmark")
+            } else {
+                renderFileAttachment(attachment)
+            }
         } else if missingFiles.contains(uuid) {
-            Text("\(MessageContent.fileTagStart)\(uuid.uuidString)\(MessageContent.fileTagEnd)")
-                .textSelection(.enabled)
+            unavailableAttachmentView(kind: "File", systemImage: "doc.badge.ellipsis")
         } else {
             ProgressView()
                 .scaleEffect(0.8)
@@ -530,6 +536,17 @@ struct MessageContentView: View {
                     }
                 }
         }
+    }
+
+    private func unavailableAttachmentView(kind: String, systemImage: String) -> some View {
+        Label("\(kind) attachment unavailable", systemImage: systemImage)
+            .font(.callout)
+            .foregroundColor(.secondary)
+            .padding(8)
+            .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
+            .cornerRadius(8)
+            .accessibilityLabel("\(kind) attachment unavailable")
+            .accessibilityHint("The original attachment could not be recovered from this conversation.")
     }
 
     @ViewBuilder
@@ -722,6 +739,8 @@ struct MessageContentView: View {
 
     @ViewBuilder
     private func renderFileAttachment(_ fileAttachment: FileAttachment) -> some View {
+        let originalFileURL = availableOriginalFileURL(for: fileAttachment)
+
         HStack(spacing: 12) {
             // File icon/thumbnail
             ZStack {
@@ -766,6 +785,40 @@ struct MessageContentView: View {
                     .padding(.vertical, 2)
                     .background(fileAttachment.fileType.color.opacity(0.1))
                     .cornerRadius(4)
+
+                HStack(spacing: 8) {
+                    Button("Open") {
+                        openFile(at: originalFileURL)
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(originalFileURL == nil)
+                    .accessibilityHint("Opens the original file when it is still available locally")
+
+                    Button("Reveal") {
+                        revealFile(at: originalFileURL)
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(originalFileURL == nil)
+                    .accessibilityHint("Reveals the original file in Finder when it is still available locally")
+
+                    Button("Save As…") {
+                        saveFile(attachment: fileAttachment, originalURL: originalFileURL)
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(originalFileURL == nil && fileAttachment.exportRepresentation == nil)
+                    .accessibilityHint("Saves the original file, or a clearly labelled stored reconstruction, without replacing an existing file")
+                }
+
+                if originalFileURL == nil {
+                    Text(fileAttachment.exportRepresentation == nil
+                         ? "Original file is unavailable; no safe stored representation can be exported."
+                         : "Original file is unavailable; Save As exports a stored representation, which may not match the original bytes.")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                        .accessibilityLabel(fileAttachment.exportRepresentation == nil
+                                            ? "Original file unavailable. No safe stored representation can be exported."
+                                            : "Original file unavailable. Save As exports a stored representation, not necessarily the original bytes.")
+                }
             }
             
             Spacer()
@@ -775,6 +828,71 @@ struct MessageContentView: View {
         .cornerRadius(12)
         .frame(maxWidth: 300)
         .padding(.bottom, 4)
+    }
+
+    private func availableOriginalFileURL(for attachment: FileAttachment) -> URL? {
+        guard let url = attachment.url, url.isFileURL else { return nil }
+        guard let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .isReadableKey]),
+              values.isRegularFile == true,
+              values.isReadable == true else {
+            return nil
+        }
+        return url
+    }
+
+    private func openFile(at url: URL?) {
+        guard let url else {
+            fileActionError = "The original file is no longer available."
+            return
+        }
+        NSWorkspace.shared.open(url)
+    }
+
+    private func revealFile(at url: URL?) {
+        guard let url else {
+            fileActionError = "The original file is no longer available."
+            return
+        }
+        NSWorkspace.shared.activateFileViewerSelecting([url])
+    }
+
+    private func saveFile(attachment: FileAttachment, originalURL: URL?) {
+        let representation = originalURL == nil ? attachment.exportRepresentation : nil
+        guard originalURL != nil || representation != nil else {
+            fileActionError = "The original file is no longer available and no safe stored representation can be exported."
+            return
+        }
+
+        let panel = NSSavePanel()
+        panel.canCreateDirectories = true
+        panel.nameFieldStringValue = originalURL?.lastPathComponent ?? representation!.suggestedFileName
+        if let representation {
+            panel.allowedContentTypes = [representation.contentType]
+        }
+        panel.title = "Save File"
+        panel.message = originalURL == nil
+            ? "Choose where to save the stored representation of this attachment"
+            : "Choose where to save a copy of the file"
+        panel.begin { response in
+            guard response == .OK, let destination = panel.url else { return }
+            guard destination.standardizedFileURL != originalURL?.standardizedFileURL else {
+                fileActionError = "Choose a different location for the saved copy."
+                return
+            }
+            guard (try? destination.checkResourceIsReachable()) != true else {
+                fileActionError = "A file already exists at the selected location. Choose a different name."
+                return
+            }
+            do {
+                if let originalURL {
+                    try FileManager.default.copyItem(at: originalURL, to: destination)
+                } else if let representation {
+                    try representation.data.write(to: destination, options: .withoutOverwriting)
+                }
+            } catch {
+                fileActionError = "The file could not be saved to the selected location."
+            }
+        }
     }
 
 }

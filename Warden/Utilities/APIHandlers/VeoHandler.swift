@@ -26,24 +26,8 @@ final class VeoHandler: BaseAPIHandler {
     private let logger = Logger(subsystem: "Warden", category: "VeoHandler")
 
     #if DEBUG
-    private func debugLogRequest(_ request: URLRequest) {
-        let method = request.httpMethod ?? "<no method>"
-        let url = request.url?.absoluteString ?? "<no url>"
-
-        var headerSummary: [String] = []
-        if let headers = request.allHTTPHeaderFields {
-            for (k, v) in headers.sorted(by: { $0.key.lowercased() < $1.key.lowercased() }) {
-                // Avoid leaking secrets into logs
-                if k.lowercased() == "authorization" || k.lowercased() == "x-goog-api-key" {
-                    headerSummary.append("\(k): <redacted>")
-                } else {
-                    headerSummary.append("\(k): \(v)")
-                }
-            }
-        }
-
-        let bodyBytes = request.httpBody?.count ?? 0
-        logger.debug("VEO request → \(method, privacy: .public) \(url, privacy: .public) headers=[\(headerSummary.joined(separator: ", "), privacy: .public)] bodyBytes=\(bodyBytes, privacy: .public)")
+    private func debugLogRequest() {
+        logger.debug("VEO request started")
     }
 
     private func debugLogResponse(_ response: URLResponse?, data: Data?) {
@@ -52,33 +36,9 @@ final class VeoHandler: BaseAPIHandler {
             return
         }
 
-        let url = http.url?.absoluteString ?? "<no url>"
         let status = http.statusCode
         let bytes = data?.count ?? 0
-
-        let wanted = [
-            "x-request-id",
-            "x-trace-id",
-            "traceparent",
-            "request-id",
-            "cf-ray",
-            "server",
-            "via"
-        ]
-        var picked: [String] = []
-        for key in wanted {
-            if let v = http.allHeaderFields.first(where: { (k, _) in
-                String(describing: k).lowercased() == key
-            })?.value {
-                picked.append("\(key): \(v)")
-            }
-        }
-
-        if (200...299).contains(status) {
-            logger.debug("VEO response ← HTTP \(status, privacy: .public) \(url, privacy: .public) bytes=\(bytes, privacy: .public)")
-        } else {
-            logger.error("VEO response ← HTTP \(status, privacy: .public) \(url, privacy: .public) bytes=\(bytes, privacy: .public) headers=[\(picked.joined(separator: ", "), privacy: .public)]")
-        }
+        logger.debug("VEO response received: HTTP \(status, privacy: .public), \(bytes, privacy: .public) bytes")
     }
     #endif
 
@@ -95,9 +55,9 @@ final class VeoHandler: BaseAPIHandler {
                 let (content, toolCalls) = try await self.generateVideo(requestMessages: requestMessages)
                 completion(.success((content, toolCalls)))
             } catch let e as APIError {
-                completion(.failure(e))
+                completion(.failure(Self.sanitizedError(e)))
             } catch {
-                completion(.failure(.unknown(error.localizedDescription)))
+                completion(.failure(.unknown("Video generation failed. Please try again.")))
             }
         }
     }
@@ -107,10 +67,16 @@ final class VeoHandler: BaseAPIHandler {
         tools: [[String : Any]]? = nil,
         temperature: Float
     ) async throws -> AsyncThrowingStream<(String?, [ToolCall]?), Error> {
-        let (content, toolCalls) = try await self.generateVideo(requestMessages: requestMessages)
-        return AsyncThrowingStream { continuation in
-            continuation.yield((content, toolCalls))
-            continuation.finish()
+        do {
+            let (content, toolCalls) = try await self.generateVideo(requestMessages: requestMessages)
+            return AsyncThrowingStream { continuation in
+                continuation.yield((content, toolCalls))
+                continuation.finish()
+            }
+        } catch let error as APIError {
+            throw Self.sanitizedError(error)
+        } catch {
+            throw APIError.unknown("Video generation failed. Please try again.")
         }
     }
 
@@ -162,7 +128,7 @@ final class VeoHandler: BaseAPIHandler {
         startReq.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [])
 
         #if DEBUG
-        debugLogRequest(startReq)
+        debugLogRequest()
         #endif
 
         let (startData, startResp) = try await session.data(for: startReq)
@@ -171,17 +137,11 @@ final class VeoHandler: BaseAPIHandler {
         debugLogResponse(startResp, data: startData)
         #endif
 
-        switch handleAPIResponse(startResp, data: startData, error: nil) {
-        case .failure(let e):
-            throw e
-        case .success(let okData):
-            guard let okData else { throw APIError.invalidResponse }
-            let start = try Self.decodeStart(from: okData)
-            let completed = try await pollOperation(name: start.name, veoModel: veoModel)
-            let videoURI = try Self.extractFirstVideoURI(from: completed)
-            let fileURL = try await downloadVideoToFile(videoURI: videoURI)
-            return ("<video-url>\(fileURL.absoluteString)</video-url>", nil)
-        }
+        let start = try Self.decodeStart(from: try responseData(startResp, data: startData))
+        let completed = try await pollOperation(name: start.name, veoModel: veoModel)
+        let videoURI = try Self.extractFirstVideoURI(from: completed)
+        let fileURL = try await downloadVideoToFile(videoURI: videoURI)
+        return ("<video-url>\(fileURL.absoluteString)</video-url>", nil)
     }
 
     // MARK: - Operations
@@ -207,7 +167,7 @@ final class VeoHandler: BaseAPIHandler {
             req.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
 
             #if DEBUG
-            debugLogRequest(req)
+            debugLogRequest()
             #endif
 
             let (data, resp) = try await session.data(for: req)
@@ -216,20 +176,13 @@ final class VeoHandler: BaseAPIHandler {
             debugLogResponse(resp, data: data)
             #endif
 
-            switch handleAPIResponse(resp, data: data, error: nil) {
-            case .failure(let e):
-                throw e
-            case .success(let okData):
-                guard let okData else { throw APIError.invalidResponse }
-                let op = try Self.decodeOperation(from: okData)
+            let op = try Self.decodeOperation(from: responseData(resp, data: data))
 
-                if op.done == true {
-                    if let err = op.error {
-                        let msg = err.message ?? "Unknown operation error"
-                        throw APIError.serverError("Veo operation failed: \(msg)")
-                    }
-                    return op
+            if op.done == true {
+                if op.error != nil {
+                    throw APIError.serverError("Video generation failed. Please try again.")
                 }
+                return op
             }
 
             try await Task.sleep(nanoseconds: delayNs)
@@ -239,6 +192,7 @@ final class VeoHandler: BaseAPIHandler {
     // MARK: - Download
 
     private func downloadVideoToFile(videoURI: String) async throws -> URL {
+        try Task.checkCancellation()
         guard let url = URL(string: videoURI) else {
             throw APIError.unknown("Invalid video URI")
         }
@@ -248,28 +202,28 @@ final class VeoHandler: BaseAPIHandler {
         req.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
 
         #if DEBUG
-        debugLogRequest(req)
+        debugLogRequest()
         #endif
 
         let (data, resp) = try await session.data(for: req)
+        try Task.checkCancellation()
 
         #if DEBUG
         debugLogResponse(resp, data: data)
         #endif
 
-        switch handleAPIResponse(resp, data: data, error: nil) {
-        case .failure(let e):
-            throw e
-        case .success(let okData):
-            guard let okData else { throw APIError.invalidResponse }
-            let folder = FileManager.default.temporaryDirectory.appendingPathComponent("WardenVideos", isDirectory: true)
-            try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let okData = try responseData(resp, data: data)
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("WardenVideos", isDirectory: true)
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
 
-            let filename = "veo-\(UUID().uuidString).mp4"
-            let fileURL = folder.appendingPathComponent(filename)
-            try okData.write(to: fileURL, options: .atomic)
-            return fileURL
+        let filename = "veo-\(UUID().uuidString).mp4"
+        let fileURL = folder.appendingPathComponent(filename)
+        try okData.write(to: fileURL, options: .atomic)
+        guard VideoAttachmentSupport.isUsableLocalVideo(fileURL) else {
+            try? FileManager.default.removeItem(at: fileURL)
+            throw APIError.invalidResponse
         }
+        return fileURL
     }
 
     // MARK: - URL building
@@ -277,7 +231,7 @@ final class VeoHandler: BaseAPIHandler {
     private func veoEndpoint(model: String, kind: VeoCallKind) throws -> URL {
         // Based on the validated curl examples.
         guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: true) else {
-            throw APIError.unknown("Invalid base URL")
+            throw APIError.unknown("Video service configuration is invalid.")
         }
 
         let version: String = {
@@ -294,7 +248,7 @@ final class VeoHandler: BaseAPIHandler {
         }
 
         guard let url = components.url else {
-            throw APIError.unknown("Invalid Veo endpoint URL")
+            throw APIError.unknown("Video service configuration is invalid.")
         }
         return url
     }
@@ -362,8 +316,7 @@ final class VeoHandler: BaseAPIHandler {
             decoder.keyDecodingStrategy = .convertFromSnakeCase
             return try decoder.decode(VeoStart.self, from: data)
         } catch {
-            let preview = String(data: data, encoding: .utf8) ?? "<non-utf8>"
-            throw APIError.decodingFailed("Failed to decode Veo start response: \(error.localizedDescription). Body: \(String(preview.prefix(600)))")
+            throw APIError.decodingFailed("Video service returned an invalid response.")
         }
     }
 
@@ -381,8 +334,7 @@ final class VeoHandler: BaseAPIHandler {
 
             return op
         } catch {
-            let preview = String(data: data, encoding: .utf8) ?? "<non-utf8>"
-            throw APIError.decodingFailed("Failed to decode Veo operation: \(error.localizedDescription). Body: \(String(preview.prefix(600)))")
+            throw APIError.decodingFailed("Video service returned an invalid response.")
         }
     }
 
@@ -395,6 +347,45 @@ final class VeoHandler: BaseAPIHandler {
             return uri
         }
         throw APIError.decodingFailed("Veo completed but no video URI found")
+    }
+
+    private func responseData(_ response: URLResponse?, data: Data?) throws -> Data {
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.invalidResponse
+        }
+
+        guard (200...299).contains(httpResponse.statusCode), let data else {
+            switch httpResponse.statusCode {
+            case 401:
+                throw APIError.unauthorized
+            case 429:
+                throw APIError.rateLimited
+            case 400...499:
+                throw APIError.serverError("Video request was rejected. Please check your settings and try again.")
+            case 500...599:
+                throw APIError.serverError("Video service is temporarily unavailable. Please try again.")
+            default:
+                throw APIError.serverError("Video service returned an unexpected response. Please try again.")
+            }
+        }
+        return data
+    }
+
+    private static func sanitizedError(_ error: APIError) -> APIError {
+        switch error {
+        case .unauthorized, .rateLimited, .invalidResponse:
+            return error
+        case .requestFailed:
+            return .unknown("Video service could not be reached. Please try again.")
+        case .decodingFailed:
+            return .decodingFailed("Video service returned an invalid response.")
+        case .serverError:
+            return .serverError("Video generation failed. Please try again.")
+        case .unknown:
+            return .unknown("Video generation failed. Please try again.")
+        case .noApiService:
+            return .noApiService("Video service is unavailable. Please check your settings.")
+        }
     }
 
     // MARK: - Veo parameters helpers
