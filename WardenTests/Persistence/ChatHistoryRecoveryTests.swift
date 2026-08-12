@@ -290,8 +290,8 @@ final class ChatHistoryRecoveryTests: XCTestCase {
         try context.save()
 
         context.reset()
-        let reloadedProject = try XCTUnwrap(try context.fetch(ProjectEntity.fetchRequest()).first)
-        let reloadedChats = try context.fetch(ChatEntity.fetchRequest()).sorted {
+        let reloadedProject = try XCTUnwrap(try context.fetch(NSFetchRequest<ProjectEntity>(entityName: "ProjectEntity")).first)
+        let reloadedChats = try context.fetch(NSFetchRequest<ChatEntity>(entityName: "ChatEntity")).sorted {
             $0.isPinned == $1.isPinned ? $0.updatedDate > $1.updatedDate : $0.isPinned
         }
 
@@ -663,7 +663,7 @@ final class ChatBranchingManagerTests: XCTestCase {
             }
         }
         XCTAssertEqual(opened, 0)
-        XCTAssertEqual(try context.fetch(ChatEntity.fetchRequest()).map(\.objectID), [sourceID])
+        XCTAssertEqual(try context.fetch(NSFetchRequest<ChatEntity>(entityName: "ChatEntity")).map(\.objectID), [sourceID])
     }
 
     func testSuccessfulBranchCallbackIsTheOnlySelectionChangingRoute() async throws {
@@ -698,14 +698,14 @@ final class ChatBranchingManagerTests: XCTestCase {
     }
 }
 
-private func XCTAssertThrowsErrorAsync(
-    _ expression: @autoclosure () async throws -> Void,
+private func XCTAssertThrowsErrorAsync<T>(
+    _ expression: @autoclosure () async throws -> T,
     _ verify: (Error) -> Void = { _ in },
     file: StaticString = #filePath,
     line: UInt = #line
 ) async {
     do {
-        try await expression()
+        _ = try await expression()
         XCTFail("Expected an error", file: file, line: line)
     } catch {
         verify(error)

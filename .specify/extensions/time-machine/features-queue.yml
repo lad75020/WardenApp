@@ -1,7 +1,7 @@
 analyzed_at: "2026-08-11T17:29:16Z"
 project_root: "/Volumes/WDBlack4TB/Code/WardenApp"
 total_features: 12
-completed: 5
+completed: 6
 features:
   - id: "app-shell-and-onboarding"
     name: "App Shell and Onboarding"
@@ -186,12 +186,12 @@ features:
       - "Warden/Utilities/HuggingFaceService.swift"
       - "Warden/Utilities/ModelMetadataFetcher.swift"
       - "MLXZImageSwiftCLI/"
-    status: in-progress # pending | in-progress | done | skipped
-    current_phase: implement # null | specify | clarify | plan | tasks | implement
-    branch: "feature/time-machine-local-ai-and-generation"
-    pushed: null # null | true | false
+    status: done # pending | in-progress | done | skipped
+    current_phase: null # null | specify | clarify | plan | tasks | implement
+    branch: "main" # feature branch was identical to main (a7d0d50) and has been removed; work landed on main
+    pushed: false # null | true | false
     started_at: "2026-08-12T06:12:29Z"
-    completed_at: null
+    completed_at: "2026-08-12T09:45:00Z"
 
   - id: "mcp-tool-integration"
     name: "MCP Tool Integration"

@@ -45,8 +45,20 @@ class APIServiceFactory {
     }()
 
     static func createAPIService(config: APIServiceConfiguration) -> APIService {
+        let rawName = config.name.lowercased()
+
+        // Local providers that ship their own APIService subclass must route by their
+        // own identity. Collapsing them through `inherits` (e.g. lmstudio -> chatgpt)
+        // would drop local-endpoint validation and return the wrong concrete handler.
+        switch rawName {
+        case "lmstudio":
+            return LMStudioHandler(config: config, session: standardSession, streamingSession: streamingSession)
+        default:
+            break
+        }
+
         let configName =
-            AppConstants.defaultApiConfigurations[config.name.lowercased()]?.inherits ?? config.name.lowercased()
+            AppConstants.defaultApiConfigurations[rawName]?.inherits ?? rawName
 
         switch configName {
         case "chatgpt":
