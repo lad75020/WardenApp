@@ -8,6 +8,9 @@ final class APIServiceDetailViewModel: ObservableObject {
     var apiService: APIServiceEntity?
     private var cancellables = Set<AnyCancellable>()
     private var notificationDismissTask: Task<Void, Never>?
+    private var modelFetchTask: Task<Void, Never>?
+    private var modelFetchGeneration = 0
+    private var connectionTestGeneration = 0
     private var lastPromptedModelPath: String?
 
     @Published var name: String = AppConstants.defaultApiConfigurations[AppConstants.defaultApiType]?.name ?? ""
@@ -30,6 +33,7 @@ final class APIServiceDetailViewModel: ObservableObject {
     @Published var modelFetchError: String? = nil
     @Published var userNotification: UserNotification?
     @Published var accessRequestPath: String?
+    @Published private(set) var isTestingConnection = false
     
     private let selectedModelsManager = SelectedModelsManager.shared
     
@@ -53,7 +57,6 @@ final class APIServiceDetailViewModel: ObservableObject {
 
         setupInitialValues()
         setupBindings()
-        fetchModelsForService()
     }
 
     private func setupInitialValues() {
@@ -109,8 +112,14 @@ final class APIServiceDetailViewModel: ObservableObject {
         $type
             .sink { [weak self] _ in
                 guard let self else { return }
+                self.invalidateModelFetch()
                 self.ensureSecurityScopedAccessIfNeeded(for: self.model)
             }
+            .store(in: &cancellables)
+
+        $url
+            .dropFirst()
+            .sink { [weak self] _ in self?.invalidateModelFetch() }
             .store(in: &cancellables)
     }
 
@@ -182,6 +191,13 @@ final class APIServiceDetailViewModel: ObservableObject {
         return normalized
     }
 
+    private func invalidateModelFetch() {
+        modelFetchGeneration += 1
+        modelFetchTask?.cancel()
+        isLoadingModels = false
+    }
+
+    /// Runs only after an explicit Refresh action; opening or editing a draft never contacts a provider.
     private func fetchModelsForService() {
         guard type.lowercased() == "ollama" || !apiKey.isEmpty else {
             fetchedModels = []
@@ -195,11 +211,11 @@ final class APIServiceDetailViewModel: ObservableObject {
             return
         }
         
-        guard let apiUrl = URL(string: url) else {
+        guard case .success(let apiUrl) = APIServiceManager.validateEndpoint(url, credential: apiKey) else {
             fetchedModels = []
             userNotification = UserNotification(
                 type: .error,
-                message: "Invalid API URL. Using default model list."
+                message: "Enter a valid HTTP or HTTPS service URL."
             )
             return
         }
@@ -217,9 +233,13 @@ final class APIServiceDetailViewModel: ObservableObject {
 
         let apiService = APIServiceFactory.createAPIService(config: config)
 
-        Task {
+        modelFetchTask?.cancel()
+        let requestGeneration = modelFetchGeneration
+        modelFetchTask = Task { [weak self] in
+            guard let self else { return }
             do {
                 let models = try await apiService.fetchModels()
+                guard !Task.isCancelled, requestGeneration == self.modelFetchGeneration else { return }
                 self.fetchedModels = models
                 self.isLoadingModels = false
 
@@ -243,19 +263,17 @@ final class APIServiceDetailViewModel: ObservableObject {
                 }
             }
             catch {
-                modelFetchError = error.localizedDescription
+                guard !Task.isCancelled, requestGeneration == self.modelFetchGeneration else { return }
+                modelFetchError = APIServiceManager.userSafeErrorMessage(for: error)
                 isLoadingModels = false
-                fetchedModels = []
 
                 userNotification = UserNotification(
                     type: .error,
-                    message: "Failed to fetch models: \(getUserFriendlyErrorMessage(error))"
+                    message: APIServiceManager.userSafeErrorMessage(for: error)
                 )
 
                 #if DEBUG
-                WardenLog.app.debug(
-                    "Model fetch failed (type=\(self.type, privacy: .public), name=\(self.name, privacy: .public), url=\(URL(string: self.url)?.redactedForLogging ?? "<invalid>", privacy: .public)): \(error.localizedDescription, privacy: .public)"
-                )
+                WardenLog.app.debug("Model discovery failed without exposing provider response details")
                 #endif
             }
         }
@@ -270,69 +288,79 @@ final class APIServiceDetailViewModel: ObservableObject {
         }
     }
 
+    func testConnection() {
+        guard !isTestingConnection else { return }
+        guard case .success(let serviceURL) = APIServiceManager.validateEndpoint(url, credential: apiKey) else {
+            let validation = APIServiceManager.validateEndpoint(url, credential: apiKey)
+            if case .failure(let error) = validation {
+                userNotification = UserNotification(type: .error, message: APIServiceManager.userSafeEndpointMessage(for: error))
+            }
+            return
+        }
+        connectionTestGeneration += 1
+        let generation = connectionTestGeneration
+        isTestingConnection = true
+        userNotification = UserNotification(type: .info, message: "Testing service connection…")
+        let config = APIServiceConfig(name: type, apiUrl: serviceURL, apiKey: apiKey, model: model)
+        let service = APIServiceFactory.createAPIService(config: config)
+        MessageManager(apiService: service, viewContext: viewContext).testAPI(model: model) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self, generation == self.connectionTestGeneration else { return }
+                self.isTestingConnection = false
+                switch result {
+                case .success:
+                    self.userNotification = UserNotification(type: .success, message: "Service connection succeeded.")
+                case .failure(let error):
+                    self.userNotification = UserNotification(type: .error, message: APIServiceManager.userSafeErrorMessage(for: error))
+                }
+            }
+        }
+    }
+
     func saveAPIService() {
-        guard let serviceURL = URL(string: url) else {
-            userNotification = UserNotification(type: .error, message: "Invalid API service URL.")
-            return
-        }
-        if !apiKey.isEmpty && !serviceURL.allowsSensitiveTransport {
-            userNotification = UserNotification(
-                type: .error,
-                message: "Refusing to save a remote HTTP API URL with an API key. Use HTTPS, or localhost for local services."
-            )
+        guard case .success(let serviceURL) = APIServiceManager.validateEndpoint(url, credential: apiKey) else {
+            let validation = APIServiceManager.validateEndpoint(url, credential: apiKey)
+            if case .failure(let error) = validation {
+                userNotification = UserNotification(type: .error, message: APIServiceManager.userSafeEndpointMessage(for: error))
+            }
             return
         }
 
-        let serviceToSave = apiService ?? APIServiceEntity(context: viewContext)
-        serviceToSave.name = name
-        serviceToSave.type = type
-        serviceToSave.url = serviceURL
-        serviceToSave.model = model
-        serviceToSave.contextSize = Int16(contextSize)
-        serviceToSave.useStreamResponse = useStreamResponse
-        serviceToSave.generateChatNames = generateChatNames
-        serviceToSave.imageUploadsAllowed = imageUploadsAllowed
-        serviceToSave.defaultPersona = defaultAiPersona
-
-        if apiService == nil {
-            serviceToSave.addedDate = Date()
-            let serviceID = UUID()
-            serviceToSave.id = serviceID
-        }
-        else {
-            serviceToSave.editedDate = Date()
-        }
-
-        if let serviceIDString = serviceToSave.id?.uuidString {
-            do {
-                try TokenManager.setToken(apiKey, for: serviceIDString)
-            }
-            catch {
-                WardenLog.app.error("Failed to set token: \(error.localizedDescription, privacy: .public)")
-            }
-        }
-
-        // Save selected models configuration
-        selectedModelsManager.saveToService(serviceToSave, context: viewContext)
-
-        do {
-            try viewContext.save()
-        }
-        catch {
-            WardenLog.coreData.error("Error saving context: \(error.localizedDescription, privacy: .public)")
+        switch APIServiceManager(viewContext: viewContext).saveAPIService(
+            apiService,
+            name: name,
+            type: type,
+            url: serviceURL,
+            model: model,
+            contextSize: Int16(contextSize),
+            useStreamResponse: useStreamResponse,
+            generateChatNames: generateChatNames,
+            imageUploadsAllowed: imageUploadsAllowed,
+            defaultPersona: defaultAiPersona,
+            credential: apiKey
+        ) {
+        case .success(let saved):
+            apiService = saved
+            selectedModelsManager.saveToService(saved, context: viewContext)
+            userNotification = UserNotification(type: .success, message: "Service saved.")
+        case .failure:
+            userNotification = UserNotification(type: .error, message: "Could not save the service. The previous configuration remains available when possible.")
         }
     }
 
-    func deleteAPIService() {
-        guard let serviceToDelete = apiService else { return }
-        viewContext.delete(serviceToDelete)
-        do {
-            try viewContext.save()
-        }
-        catch {
-            WardenLog.coreData.error("Error deleting API service: \(error.localizedDescription, privacy: .public)")
+
+    func deleteAPIService() -> Bool {
+        guard let serviceToDelete = apiService else { return false }
+        switch APIServiceManager(viewContext: viewContext).deleteAPIServiceTransactionally(serviceToDelete) {
+        case .success:
+            userNotification = UserNotification(type: .success, message: "Service deleted.")
+            return true
+        case .failure:
+            userNotification = UserNotification(type: .error, message: "Could not delete the service. It remains available for recovery.")
+            return false
         }
     }
+
 
     func onChangeApiType(_ type: String) {
         let oldConfigName = self.defaultApiConfiguration?.name ?? ""
@@ -353,12 +381,12 @@ final class APIServiceDetailViewModel: ObservableObject {
             self.useStreamResponse = true
         }
 
-        fetchModelsForService()
+        // A provider type change only updates editable defaults. Model discovery remains user initiated.
     }
 
     func onChangeApiKey(_ token: String) {
-        self.apiKey = token
-        fetchModelsForService()
+        apiKey = token
+        invalidateModelFetch()
     }
 
     func onUpdateModelsList() {

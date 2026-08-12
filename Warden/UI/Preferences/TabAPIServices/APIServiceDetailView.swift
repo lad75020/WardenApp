@@ -83,7 +83,7 @@ struct APIServiceDetailView: View {
                             Text("API Token:")
                                 .frame(width: 100, alignment: .leading)
 
-                            TextField("Paste your token here", text: $viewModel.apiKey)
+                            SecureField("Paste your token here", text: $viewModel.apiKey)
                                 .textFieldStyle(RoundedBorderTextFieldStyle())
                                 .focused($isFocused)
                                 .onChange(of: viewModel.apiKey) { oldValue, newValue in
@@ -195,13 +195,7 @@ struct APIServiceDetailView: View {
                     }
 
                     HStack {
-                        ButtonTestApiTokenAndModel(
-                            lampColor: $lampColor,
-                            gptToken: viewModel.apiKey,
-                            gptModel: viewModel.model,
-                            apiUrl: viewModel.url,
-                            apiType: viewModel.type
-                        )
+                        ButtonTestApiTokenAndModel(viewModel: viewModel)
                     }
                 }
                 .padding(8)
@@ -369,8 +363,9 @@ struct APIServiceDetailView: View {
                 title: Text("Delete Assistant"),
                 message: Text("Are you sure you want to delete this API Service? This action cannot be undone."),
                 primaryButton: .destructive(Text("Delete")) {
-                    viewModel.deleteAPIService()
-                    presentationMode.wrappedValue.dismiss()
+                    if viewModel.deleteAPIService() {
+                        presentationMode.wrappedValue.dismiss()
+                    }
                 },
                 secondaryButton: .cancel()
             )
