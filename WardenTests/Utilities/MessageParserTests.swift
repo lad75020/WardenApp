@@ -1,6 +1,7 @@
 
 
 import XCTest
+import WebKit
 @testable import Warden
 
 class MessageParserTests: XCTestCase {
@@ -257,6 +258,143 @@ class MessageParserTests: XCTestCase {
             XCTFail("Expected .text element")
         }
         
+    }
+
+    func testKeepsStructuralLookingLinesInsideCodeFenceAsCode() {
+        let input = """
+        ```swift
+        | this is not a table |
+        \\[
+        <think> this is not reasoning
+        ```
+        """
+
+        let result = parser.parseMessageFromString(input: input)
+
+        XCTAssertEqual(result.count, 1)
+        guard case .code(let code, let language, _) = result[0] else {
+            return XCTFail("Expected one code element")
+        }
+        XCTAssertEqual(language, "swift")
+        XCTAssertEqual(code, "| this is not a table |\n\\[\n<think> this is not reasoning")
+    }
+
+    func testPreservesHeaderOnlyTableRatherThanDroppingIt() {
+        let input = """
+        | First | Second |
+        | --- | --- |
+        """
+
+        let result = parser.parseMessageFromString(input: input)
+
+        XCTAssertEqual(result.count, 1)
+        guard case .table(let header, let data) = result[0] else {
+            return XCTFail("Expected a table element")
+        }
+        XCTAssertEqual(header, ["First", "Second"])
+        XCTAssertEqual(data, [])
+    }
+
+    func testFallsBackToReadableTextForEmptyUnclosedCodeFence() {
+        let input = "```swift"
+
+        let result = parser.parseMessageFromString(input: input)
+
+        XCTAssertEqual(result.count, 1)
+        guard case .text(let text) = result[0] else {
+            return XCTFail("Expected readable text fallback")
+        }
+        XCTAssertEqual(text, input)
+    }
+
+    func testPreservesSourceOrderForMarkdownTableMathAndReasoning() {
+        let input = """
+        # Heading
+        | Name | Value |
+        | --- | --- |
+        | A | 1 |
+        \\[
+        x^2
+        \\]
+        <think>Because it is deterministic.</think>
+        """
+
+        let result = parser.parseMessageFromString(input: input)
+
+        XCTAssertEqual(result.count, 4)
+        guard case .text = result[0], case .table = result[1], case .formula = result[2], case .thinking = result[3] else {
+            return XCTFail("Expected text, table, formula, and reasoning in source order")
+        }
+    }
+
+    func testUnclosedFormulaAndReasoningRemainAvailable() {
+        let input = """
+        \\[
+        x + y
+        \\]
+        <think>
+        unfinished reasoning
+        """
+
+        let result = parser.parseMessageFromString(input: input)
+
+        XCTAssertFalse(result.isEmpty)
+        XCTAssertTrue(result.contains { element in
+            if case .formula(let value) = element { return value.contains("x + y") }
+            return false
+        })
+        XCTAssertTrue(result.contains { element in
+            if case .thinking(let value, _) = element { return value.contains("unfinished reasoning") }
+            return false
+        })
+    }
+
+    func testLargePlainTextRetainsReadablePrefixAndAttachmentsAreExempt() {
+        let source = String(repeating: "a", count: AppConstants.largeMessageSymbolsThreshold + 1)
+        XCTAssertEqual(String(source.prefix(AppConstants.largeMessageSymbolsThreshold)).count, AppConstants.largeMessageSymbolsThreshold)
+        XCTAssertFalse(source.containsAttachment)
+        XCTAssertTrue("<image-uuid>00000000-0000-0000-0000-000000000000</image-uuid>".containsAttachment)
+    }
+
+    func testStaleParseSessionCannotReplaceNewerMessage() {
+        XCTAssertTrue(MessageParseSession.isCurrent(expectedSource: "new", currentSource: "new"))
+        XCTAssertFalse(MessageParseSession.isCurrent(expectedSource: "old", currentSource: "new"))
+    }
+
+    func testTableSerializationHandlesUnevenRowsAndEmptyCells() throws {
+        let header = ["Name", "Value"]
+        let rows = [["A"], ["", "2", "ignored"]]
+
+        XCTAssertEqual(TableSerialization.tabSeparated(header: header, rows: rows), "Name\tValue\nA\n\t2\tignored")
+        let data = try TableSerialization.jsonData(header: header, rows: rows)
+        let objects = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [[String: String]])
+        XCTAssertEqual(objects, [["Name": "A", "Value": ""], ["Name": "", "Value": "2"]])
+    }
+
+    func testHTMLPreviewSecurityAlwaysInjectsRestrictivePolicyAndBlocksURLs() {
+        let document = HTMLPreviewSecurity.securedHTMLDocument(
+            "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src *\"><script>window.x = 1</script>"
+        )
+
+        XCTAssertTrue(document.contains(HTMLPreviewSecurity.contentSecurityPolicy))
+        XCTAssertTrue(document.contains("script-src 'none'"))
+        XCTAssertTrue(HTMLPreviewSecurity.allowsNavigation(url: nil, navigationType: .other))
+        XCTAssertFalse(HTMLPreviewSecurity.allowsNavigation(url: URL(string: "https://example.com"), navigationType: .linkActivated))
+        XCTAssertFalse(HTMLPreviewSecurity.allowsNavigation(url: URL(fileURLWithPath: "/private/secret"), navigationType: .other))
+    }
+
+    func testIncrementalParserFinalizesChunkedCodeWithoutInterpretingInteriorBlocks() {
+        let incremental = IncrementalMessageParser(colorScheme: .light)
+        incremental.appendChunk("```swift\n| not a table |\n")
+        incremental.appendChunk("<think>not reasoning\n```")
+        let result = incremental.finalize()
+
+        XCTAssertEqual(result.count, 1)
+        guard case .code(let code, let language, _) = result[0] else {
+            return XCTFail("Expected a code block")
+        }
+        XCTAssertEqual(language, "swift")
+        XCTAssertEqual(code, "| not a table |\n<think>not reasoning")
     }
 }
 

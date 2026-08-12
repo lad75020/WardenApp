@@ -65,6 +65,7 @@ struct MessageParser {
         var isCodeBlockOpened = false
         var isFormulaBlockOpened = false
         var codeBlockLanguage = ""
+        var codeOpeningLine = ""
         var leadingSpaces = 0
 
         func toggleCodeBlock(line: String) {
@@ -72,10 +73,11 @@ struct MessageParser {
                 appendCodeBlockIfNeeded()
                 isCodeBlockOpened = false
                 codeBlockLanguage = ""
+                codeOpeningLine = ""
                 leadingSpaces = 0
             }
             else {
-                // extract codeBlockLanguage and remove leading spaces
+                codeOpeningLine = line
                 codeBlockLanguage = line.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "```", with: "")
                 isCodeBlockOpened = true
             }
@@ -95,8 +97,10 @@ struct MessageParser {
         }
 
         func appendFormulaLines() {
+            guard !formulaLines.isEmpty else { return }
             let combinedLines = formulaLines.joined(separator: "\n")
             elements.append(.formula(combinedLines))
+            formulaLines = []
         }
 
         func handleTableLine(line: String) {
@@ -118,13 +122,17 @@ struct MessageParser {
         }
 
         func rowDataIsTableDelimiter(rowData: [String]) -> Bool {
-            return rowData.allSatisfy({ $0.allSatisfy({ $0 == "-" || $0 == ":" }) })
+            !rowData.isEmpty && rowData.allSatisfy { cell in
+                !cell.isEmpty && cell.allSatisfy { $0 == "-" || $0 == ":" }
+            }
         }
 
         func parseRowData(line: String) -> [String] {
-            return line.split(separator: "|")
-                .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
-                .filter { !$0.isEmpty }
+            let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            var cells = trimmedLine.split(separator: "|", omittingEmptySubsequences: false)
+            if trimmedLine.hasPrefix("|") { cells.removeFirst() }
+            if trimmedLine.hasSuffix("|") { cells.removeLast() }
+            return cells.map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
         }
 
         func handleFirstRowData(rowData: [String]) {
@@ -152,7 +160,7 @@ struct MessageParser {
         }
 
         func appendTableIfNeeded() {
-            if !currentTableData.isEmpty {
+            if !currentHeader.isEmpty {
                 appendTable()
             }
         }
@@ -164,11 +172,13 @@ struct MessageParser {
             firstTableRowProcessed = false
         }
 
-        func appendCodeBlockIfNeeded() {
+        func appendCodeBlockIfNeeded(unclosed: Bool = false) {
             if !codeLines.isEmpty {
                 let combinedCode = codeLines.joined(separator: "\n")
                 elements.append(.code(code: combinedCode, lang: codeBlockLanguage, indent: leadingSpaces))
                 codeLines = []
+            } else if unclosed, !codeOpeningLine.isEmpty {
+                elements.append(.text(codeOpeningLine))
             }
         }
 
@@ -234,12 +244,51 @@ struct MessageParser {
 
         func finalizeParsing() {
             combineTextLinesIfNeeded()
-            appendCodeBlockIfNeeded()
+            appendCodeBlockIfNeeded(unclosed: isCodeBlockOpened)
             appendTableIfNeeded()
             appendThinkingBlockIfNeeded()
         }
 
         for line in lines {
+            // Once a fenced block has started, every line except its closing fence
+            // is source code. Do this before general block detection so table,
+            // math, attachment, and reasoning-looking lines cannot escape it.
+            if isCodeBlockOpened && line.trimmingCharacters(in: .whitespaces).hasPrefix("```") == false {
+                if leadingSpaces > 0 {
+                    codeLines.append(String(line.dropFirst(min(leadingSpaces, line.count))))
+                } else {
+                    codeLines.append(line)
+                }
+                continue
+            }
+
+            // Display math and reasoning also own their interior lines while
+            // streaming. This prevents delimiter-like text from reordering
+            // elements or being lost before a closing delimiter arrives.
+            if isFormulaBlockOpened {
+                if line.trimmingCharacters(in: .whitespaces).hasPrefix("\\]") {
+                    closeFormulaBlock()
+                    appendFormulaLines()
+                } else {
+                    handleFormulaLine(line: line)
+                }
+                continue
+            }
+
+            if isThinkingBlockOpened {
+                if line.contains("</think>") {
+                    let lastLine = line.replacingOccurrences(of: "</think>", with: "")
+                    if !lastLine.isEmpty {
+                        thinkingLines.append(lastLine)
+                    }
+                    isThinkingBlockOpened = false
+                    appendThinkingBlockIfNeeded()
+                } else {
+                    thinkingLines.append(line)
+                }
+                continue
+            }
+
             let blockType = detectBlockType(line: line)
 
             switch blockType {
@@ -285,7 +334,6 @@ struct MessageParser {
                     combineTextLinesIfNeeded()
                     appendTableIfNeeded()
                     isThinkingBlockOpened = true
-
                     let firstLine = line.replacingOccurrences(of: "<think>", with: "")
                     if !firstLine.isEmpty {
                         thinkingLines.append(firstLine)

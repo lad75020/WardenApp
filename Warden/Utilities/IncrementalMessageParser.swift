@@ -56,6 +56,12 @@ class IncrementalMessageParser {
         if !endsWithNewline && !lines.isEmpty {
             unparsedTail = lines.removeLast()
         } else {
+            // `split(omittingEmptySubsequences: false)` includes a synthetic
+            // trailing empty component for a terminating newline. It is not a
+            // source line; retain only deliberate blank lines (e.g. `\n\n`).
+            if endsWithNewline, lines.last?.isEmpty == true {
+                lines.removeLast()
+            }
             unparsedTail = ""
         }
         
@@ -119,6 +125,25 @@ class IncrementalMessageParser {
     // MARK: - Private Implementation
     
     private func processLine(_ line: String) {
+        // A code fence owns all interior lines, even if they resemble another
+        // supported block. Only a subsequent fence can close it.
+        if case .code = pendingBlock,
+           !line.trimmingCharacters(in: .whitespaces).hasPrefix("```") {
+            handleTextLine(line: line)
+            return
+        }
+
+        if case .formula = pendingBlock,
+           !line.trimmingCharacters(in: .whitespaces).hasPrefix("\\]") {
+            handleTextLine(line: line)
+            return
+        }
+
+        if case .thinking = pendingBlock, !line.contains("</think>") {
+            handleTextLine(line: line)
+            return
+        }
+
         let blockType = detectBlockType(line: line)
         
         switch blockType {
@@ -220,7 +245,7 @@ class IncrementalMessageParser {
         let rowData = parseTableRow(line: line)
         
         // Skip delimiter rows
-        if rowData.allSatisfy({ $0.allSatisfy({ $0 == "-" || $0 == ":" }) }) {
+        if !rowData.isEmpty && rowData.allSatisfy({ !$0.isEmpty && $0.allSatisfy({ $0 == "-" || $0 == ":" }) }) {
             return
         }
         
@@ -427,9 +452,11 @@ class IncrementalMessageParser {
     }
     
     private func parseTableRow(line: String) -> [String] {
-        return line.split(separator: "|")
-            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
+        let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        var cells = trimmedLine.split(separator: "|", omittingEmptySubsequences: false)
+        if trimmedLine.hasPrefix("|") { cells.removeFirst() }
+        if trimmedLine.hasSuffix("|") { cells.removeLast() }
+        return cells.map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
     }
     
     private func extractImageUUID(_ line: String) -> UUID? {

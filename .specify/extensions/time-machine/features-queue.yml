@@ -87,11 +87,11 @@ features:
       - "Warden/UI/Components/MarkdownView.swift"
       - "Warden/UI/Components/StreamingAttributedTextView.swift"
       - "Warden/Utilities/MessageParser.swift"
-    status: pending # pending | in-progress | done | skipped
-    current_phase: null # null | specify | clarify | plan | tasks | implement
-    branch: null
+    status: in-progress # pending | in-progress | done | skipped
+    current_phase: implement # null | specify | clarify | plan | tasks | implement
+    branch: "feature/time-machine-rich-message-rendering"
     pushed: null # null | true | false
-    started_at: null
+    started_at: "2026-08-12T00:10:32Z"
     completed_at: null
 
   - id: "attachments-and-media"
