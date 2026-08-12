@@ -4,6 +4,7 @@ import AppKit
 struct SubmitTextEditor: NSViewRepresentable {
     @Binding var text: String
     @Binding var dynamicHeight: CGFloat
+    @Binding var shouldFocus: Bool
     var onSubmit: () -> Void
     var font: NSFont = .systemFont(ofSize: 14)
     var maxHeight: CGFloat = 160
@@ -48,6 +49,13 @@ struct SubmitTextEditor: NSViewRepresentable {
         
         if textView.font != font {
             textView.font = font
+        }
+
+        if shouldFocus, nsView.window?.firstResponder !== textView {
+            nsView.window?.makeFirstResponder(textView)
+            DispatchQueue.main.async {
+                self.shouldFocus = false
+            }
         }
         
         context.coordinator.updateHeight(for: textView)

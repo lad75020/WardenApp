@@ -78,6 +78,7 @@ struct ChatView: View {
 
     var body: some View {
         let availability = store.availability(for: chat)
+        let activeStream = isStreaming || chatViewModel.isStreaming
         // Check if this is a new chat (no messages)
         let isNewChat = chat.messages.count == 0 && !chat.waitingForResponse && currentError == nil
         
@@ -103,7 +104,7 @@ struct ChatView: View {
                         .accessibilityLabel("Retained chat history; sending is disabled until repaired")
                 }
             } else if isNewChat {
-                if chatViewModel.sortedMessages.isEmpty && !isStreaming {
+                if chatViewModel.sortedMessages.isEmpty && !activeStream {
                     CenteredInputView(
                         newMessage: $newMessage,
                         attachedImages: $attachedImages,
@@ -113,7 +114,7 @@ struct ChatView: View {
                         veoParameters: $veoUserParameters,
                         chat: chat,
                         imageUploadsAllowed: chat.apiService?.imageUploadsAllowed ?? false,
-                        isStreaming: isStreaming,
+                        isStreaming: activeStream,
                         isMultiAgentMode: $isMultiAgentMode,
                         selectedMultiAgentServices: $selectedMultiAgentServices,
                         showServiceSelector: $showServiceSelector,
@@ -167,7 +168,7 @@ struct ChatView: View {
                         selectedMCPAgents: $chatViewModel.selectedMCPAgents,
                         veoParameters: $veoUserParameters,
                         imageUploadsAllowed: chat.apiService?.imageUploadsAllowed ?? false,
-                        isStreaming: isStreaming,
+                        isStreaming: activeStream,
                         isMultiAgentMode: $isMultiAgentMode,
                         selectedMultiAgentServices: $selectedMultiAgentServices,
                         showServiceSelector: $showServiceSelector,
@@ -306,7 +307,7 @@ struct ChatView: View {
                         MessageListView(
                             chat: chat,
                             sortedMessages: chatViewModel.sortedMessages,
-                            isStreaming: isStreaming,
+                            isStreaming: isStreaming || chatViewModel.isStreaming,
                             streamingAssistantText: chatViewModel.streamingAssistantText,
                             currentError: currentError,
                             enableMultiAgentMode: enableMultiAgentMode,
@@ -316,10 +317,7 @@ struct ChatView: View {
                             messageToolCalls: chatViewModel.messageManager?.messageToolCalls ?? [:],
                             userIsScrolling: $userIsScrolling,
                             onRetryMessage: {
-                                // Retry logic: Find the last user message and re-send it
-                                if let lastUserMessage = chatViewModel.sortedMessages.last(where: { $0.own }) {
-                                    sendMessage(retryContent: lastUserMessage.body)
-                                }
+                                retryLastTurn()
                             },
                             onIgnoreError: {
                                 currentError = nil
@@ -363,7 +361,7 @@ struct ChatView: View {
                             }
                         }
                         .onChange(of: chatViewModel.sortedMessages.last?.body) { oldValue, newValue in
-                            if isStreaming && !userIsScrolling {
+                            if (isStreaming || chatViewModel.isStreaming) && !userIsScrolling {
                                 scrollDebounceWorkItem?.cancel()
 
                                 let workItem = DispatchWorkItem {
@@ -423,6 +421,13 @@ struct ChatView: View {
                     }
                     .id("chatContainer")
                 }
+                .onScrollGeometryChange(for: CGFloat.self, of: { geometry in
+                    geometry.contentSize.height - geometry.contentOffset.y - geometry.containerSize.height
+                }) { _, distanceFromBottom in
+                    userIsScrolling = !MessageListScrollBehavior.shouldFollowStreaming(
+                        distanceFromBottom: distanceFromBottom
+                    )
+                }
             }
         }
         .padding(.bottom, 0) // Remove extra padding as we handle it in ScrollView
@@ -433,6 +438,20 @@ struct ChatView: View {
 
 
 extension ChatView {
+    private func retryLastTurn() {
+        let useStreamResponse = chat.apiService?.useStreamResponse ?? false
+        if useStreamResponse {
+            isStreaming = true
+        } else {
+            waitingForResponse = true
+        }
+        chatViewModel.retryLastTurn(
+            contextSize: Int(chat.apiService?.contextSize ?? Int16(AppConstants.chatGptContextSize)),
+            useStreamResponse: useStreamResponse,
+            completion: handleSendResult
+        )
+    }
+
     func sendMessage(ignoreMessageInput: Bool = false, retryContent: String? = nil) {
         guard store.availability(for: chat).isAvailable else {
             currentError = ErrorMessage(

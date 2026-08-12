@@ -203,12 +203,22 @@
 		C4A1B2C3D4E5F607890ABCDE /* VeoHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4A1B2C3D4E5F607890ABCDF /* VeoHandler.swift */; };
 		C4A1B2C3D4E5F607890ABCE0 /* VideoAttachmentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4A1B2C3D4E5F607890ABCE1 /* VideoAttachmentView.swift */; };
 		C4D1E2F42F0652E300B80002 /* SSEStreamParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4D1E2F32F0652E300B80001 /* SSEStreamParserTests.swift */; };
+		D00400000000000000000002 /* ChatStreamingSessionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D00400000000000000000001 /* ChatStreamingSessionTests.swift */; };
+		D00400000000000000000006 /* DeterministicStreamingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D00400000000000000000005 /* DeterministicStreamingService.swift */; };
+		D00400000000000000000008 /* InMemoryChatFixture.swift in Sources */ = {isa = PBXBuildFile; fileRef = D00400000000000000000007 /* InMemoryChatFixture.swift */; };
+		D0040000000000000000000B /* MessageManagerStreamingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0040000000000000000000A /* MessageManagerStreamingTests.swift */; };
+		D0040000000000000000000D /* MessageManagerRetryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0040000000000000000000C /* MessageManagerRetryTests.swift */; };
+		D0040000000000000000000F /* ChatStreamingPerformanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0040000000000000000000E /* ChatStreamingPerformanceTests.swift */; };
+		D00400000000000000000012 /* ChatViewModelStreamingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D00400000000000000000011 /* ChatViewModelStreamingTests.swift */; };
+		D00400000000000000000014 /* ChatViewModelRetryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D00400000000000000000013 /* ChatViewModelRetryTests.swift */; };
+		D00400000000000000000016 /* MessageListScrollBehaviorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D00400000000000000000015 /* MessageListScrollBehaviorTests.swift */; };
 		C4EB88D62ECC421C00AA0829 /* ModernButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4EB88D52ECC421C00AA0829 /* ModernButton.swift */; };
 		C4F8E62C2EB32B730035C83D /* BackgroundDataLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4F8E62B2EB32B730035C83D /* BackgroundDataLoader.swift */; };
 		C4FF23862EED66E300C17D8B /* WardenLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4FF23852EED66E300C17D8B /* WardenLog.swift */; };
 		C4FF23882EED7A4100C17D8B /* StreamingAttributedTextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4FF23872EED7A4100C17D8B /* StreamingAttributedTextView.swift */; };
 		C4FF238A2EED7B3000C17D8B /* AttachmentResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4FF23892EED7B3000C17D8B /* AttachmentResolver.swift */; };
 		C4FF238D2EED7FD300C17D8B /* StreamingTaskController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4FF238B2EED7FD300C17D8B /* StreamingTaskController.swift */; };
+		D00400000000000000000004 /* ChatStreamingSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = D00400000000000000000003 /* ChatStreamingSession.swift */; };
 		C4FF238E2EED7FD300C17D8B /* WardenSignpost.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4FF238C2EED7FD300C17D8B /* WardenSignpost.swift */; };
 		DAD2E19560A64CC290850A1D /* ChatService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09C5F31F2F664B9BBD13C0CC /* ChatService.swift */; };
 		F508922783C94D36A9947657 /* MCPSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E14DF97A8974C028719A178 /* MCPSettingsView.swift */; };
@@ -422,12 +432,22 @@
 		C4A1B2C3D4E5F607890ABCDF /* VeoHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VeoHandler.swift; sourceTree = "<group>"; };
 		C4A1B2C3D4E5F607890ABCE1 /* VideoAttachmentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoAttachmentView.swift; sourceTree = "<group>"; };
 		C4D1E2F32F0652E300B80001 /* SSEStreamParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSEStreamParserTests.swift; sourceTree = "<group>"; };
+		D00400000000000000000001 /* ChatStreamingSessionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatStreamingSessionTests.swift; sourceTree = "<group>"; };
+		D00400000000000000000005 /* DeterministicStreamingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeterministicStreamingService.swift; sourceTree = "<group>"; };
+		D00400000000000000000007 /* InMemoryChatFixture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InMemoryChatFixture.swift; sourceTree = "<group>"; };
+		D0040000000000000000000A /* MessageManagerStreamingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageManagerStreamingTests.swift; sourceTree = "<group>"; };
+		D0040000000000000000000C /* MessageManagerRetryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageManagerRetryTests.swift; sourceTree = "<group>"; };
+		D0040000000000000000000E /* ChatStreamingPerformanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatStreamingPerformanceTests.swift; sourceTree = "<group>"; };
+		D00400000000000000000011 /* ChatViewModelStreamingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatViewModelStreamingTests.swift; sourceTree = "<group>"; };
+		D00400000000000000000013 /* ChatViewModelRetryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatViewModelRetryTests.swift; sourceTree = "<group>"; };
+		D00400000000000000000015 /* MessageListScrollBehaviorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageListScrollBehaviorTests.swift; sourceTree = "<group>"; };
 		C4EB88D52ECC421C00AA0829 /* ModernButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModernButton.swift; sourceTree = "<group>"; };
 		C4F8E62B2EB32B730035C83D /* BackgroundDataLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundDataLoader.swift; sourceTree = "<group>"; };
 		C4FF23852EED66E300C17D8B /* WardenLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WardenLog.swift; sourceTree = "<group>"; };
 		C4FF23872EED7A4100C17D8B /* StreamingAttributedTextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingAttributedTextView.swift; sourceTree = "<group>"; };
 		C4FF23892EED7B3000C17D8B /* AttachmentResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentResolver.swift; sourceTree = "<group>"; };
 		C4FF238B2EED7FD300C17D8B /* StreamingTaskController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingTaskController.swift; sourceTree = "<group>"; };
+		D00400000000000000000003 /* ChatStreamingSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatStreamingSession.swift; sourceTree = "<group>"; };
 		C4FF238C2EED7FD300C17D8B /* WardenSignpost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WardenSignpost.swift; sourceTree = "<group>"; };
 		F10000000000000000000002 /* UnavailableChatRecoveryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnavailableChatRecoveryView.swift; sourceTree = "<group>"; };
 		F10000000000000000000004 /* ChatHistoryRecoveryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatHistoryRecoveryTests.swift; sourceTree = "<group>"; };
@@ -726,6 +746,7 @@
 				C42D99FE2EF900470028D1BB /* IncrementalMessageParser.swift */,
 				09C5F31F2F664B9BBD13C0CC /* ChatService.swift */,
 				C4FF238B2EED7FD300C17D8B /* StreamingTaskController.swift */,
+				D00400000000000000000003 /* ChatStreamingSession.swift */,
 				C4257EE72F0652E300B832C7 /* ProviderID.swift */,
 				C4FF238C2EED7FD300C17D8B /* WardenSignpost.swift */,
 				C4FF23892EED7B3000C17D8B /* AttachmentResolver.swift */,
@@ -811,8 +832,38 @@
 				A1B2C3D4E5F60708090A0B03 /* AppShell */,
 				F10000000000000000000009 /* Persistence */,
 				4ABDBE6729F86E6300661B2D /* Utilities */,
+				D00400000000000000000009 /* TestSupport */,
+				D00400000000000000000010 /* Performance */,
+				D00400000000000000000017 /* UI */,
 			);
 			path = WardenTests;
+			sourceTree = "<group>";
+		};
+		D00400000000000000000009 /* TestSupport */ = {
+			isa = PBXGroup;
+			children = (
+				D00400000000000000000005 /* DeterministicStreamingService.swift */,
+				D00400000000000000000007 /* InMemoryChatFixture.swift */,
+			);
+			path = TestSupport;
+			sourceTree = "<group>";
+		};
+		D00400000000000000000010 /* Performance */ = {
+			isa = PBXGroup;
+			children = (
+				D0040000000000000000000E /* ChatStreamingPerformanceTests.swift */,
+			);
+			path = Performance;
+			sourceTree = "<group>";
+		};
+		D00400000000000000000017 /* UI */ = {
+			isa = PBXGroup;
+			children = (
+				D00400000000000000000011 /* ChatViewModelStreamingTests.swift */,
+				D00400000000000000000013 /* ChatViewModelRetryTests.swift */,
+				D00400000000000000000015 /* MessageListScrollBehaviorTests.swift */,
+			);
+			path = UI;
 			sourceTree = "<group>";
 		};
 		A1B2C3D4E5F60708090A0B03 /* AppShell */ = {
@@ -869,6 +920,9 @@
 				4ABDBE6A29F86E8D00661B2D /* MessageParserTests.swift */,
 				E30000010000000100000002 /* APIServiceConfigurationTests.swift */,
 				C4D1E2F32F0652E300B80001 /* SSEStreamParserTests.swift */,
+				D00400000000000000000001 /* ChatStreamingSessionTests.swift */,
+				D0040000000000000000000A /* MessageManagerStreamingTests.swift */,
+				D0040000000000000000000C /* MessageManagerRetryTests.swift */,
 			);
 			path = Utilities;
 			sourceTree = "<group>";
@@ -1239,6 +1293,7 @@
 				C4632BC22ECDD29000D72DA1 /* SearchModels.swift in Sources */,
 				4A315DB22C8CD8410095ABD1 /* TabAIPersonasView.swift in Sources */,
 				C4FF238D2EED7FD300C17D8B /* StreamingTaskController.swift in Sources */,
+				D00400000000000000000004 /* ChatStreamingSession.swift in Sources */,
 				C4FF238E2EED7FD300C17D8B /* WardenSignpost.swift in Sources */,
 				4A7AFF182B0147A300C34BB4 /* ButtonTestApiTokenAndModel.swift in Sources */,
 				7F97AE1D2E0D75CE0050CAFE /* MarkdownView.swift in Sources */,
@@ -1296,6 +1351,15 @@
 				4ABDBE6B29F86E8D00661B2D /* MessageParserTests.swift in Sources */,
 				E30000010000000100000001 /* APIServiceConfigurationTests.swift in Sources */,
 				C4D1E2F42F0652E300B80002 /* SSEStreamParserTests.swift in Sources */,
+				D00400000000000000000002 /* ChatStreamingSessionTests.swift in Sources */,
+				D00400000000000000000006 /* DeterministicStreamingService.swift in Sources */,
+				D00400000000000000000008 /* InMemoryChatFixture.swift in Sources */,
+				D0040000000000000000000B /* MessageManagerStreamingTests.swift in Sources */,
+				D0040000000000000000000D /* MessageManagerRetryTests.swift in Sources */,
+				D0040000000000000000000F /* ChatStreamingPerformanceTests.swift in Sources */,
+				D00400000000000000000012 /* ChatViewModelStreamingTests.swift in Sources */,
+				D00400000000000000000014 /* ChatViewModelRetryTests.swift in Sources */,
+				D00400000000000000000016 /* MessageListScrollBehaviorTests.swift in Sources */,
 			);
 		};
 		4A399CAC29BC8FF200E98796 /* Sources */ = {

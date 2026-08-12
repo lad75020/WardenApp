@@ -5,9 +5,25 @@ import os
 
 @MainActor
 final class MessageManager: ObservableObject {
+    typealias StreamDispatcher = @MainActor (
+        APIService,
+        [[String: String]],
+        [[String: Any]]?,
+        Float,
+        @escaping @MainActor (String) async -> Void
+    ) async throws -> [ToolCall]?
+
+    struct RetryIntent {
+        let userTurn: MessageEntity
+        let assistantTarget: MessageEntity?
+    }
+
     private var apiService: APIService
     private var viewContext: NSManagedObjectContext
-    private let streamingTaskController = StreamingTaskController()
+    private let streamDispatcher: StreamDispatcher
+    private let fetchStreamTools: Bool
+    private let streamingTaskController = StreamingTaskController.shared
+    private let streamingSessions = ChatStreamingSessionRegistry.shared
     private let tavilyService = TavilySearchService()
     private let streamUpdateInterval = AppConstants.streamedResponseUpdateUIInterval
     
@@ -31,9 +47,24 @@ final class MessageManager: ObservableObject {
     // In-progress assistant response (kept in-memory; persisted on completion)
     @Published var streamingAssistantText: String = ""
 
-    init(apiService: APIService, viewContext: NSManagedObjectContext) {
+    init(
+        apiService: APIService,
+        viewContext: NSManagedObjectContext,
+        fetchStreamTools: Bool = true,
+        streamDispatcher: @escaping StreamDispatcher = { apiService, messages, tools, temperature, onChunk in
+            try await ChatService.shared.sendStream(
+                apiService: apiService,
+                messages: messages,
+                tools: tools,
+                temperature: temperature,
+                onChunk: onChunk
+            )
+        }
+    ) {
         self.apiService = apiService
         self.viewContext = viewContext
+        self.fetchStreamTools = fetchStreamTools
+        self.streamDispatcher = streamDispatcher
     }
 
     func update(apiService: APIService, viewContext: NSManagedObjectContext) {
@@ -45,12 +76,13 @@ final class MessageManager: ObservableObject {
         return tavilyService.isSearchCommand(message)
     }
     
-    func stopStreaming() {
-        Task {
-            await streamingTaskController.cancelAndClear()
+    func stopStreaming(in chat: ChatEntity) {
+        let session = streamingSessions.session(for: chat.id)
+        if let requestID = session.requestID {
+            _ = session.cancel(requestID: requestID)
+            Task { await streamingTaskController.cancel(conversationID: chat.id, requestID: requestID) }
         }
-        
-        streamingAssistantText = ""
+        chat.waitingForResponse = false
         
         // Force save if pending
         if let workItem = saveDebounceWorkItem {
@@ -58,6 +90,12 @@ final class MessageManager: ObservableObject {
             saveDebounceWorkItem?.cancel()
             saveDebounceWorkItem = nil
         }
+    }
+
+    func invalidateStreaming(in chat: ChatEntity) {
+        streamingSessions.invalidate(conversationID: chat.id)
+        Task { await streamingTaskController.invalidate(conversationID: chat.id) }
+        chat.waitingForResponse = false
     }
     
     private func debounceSave() {
@@ -135,7 +173,7 @@ final class MessageManager: ObservableObject {
                 }
                 return
             } catch {
-                WardenLog.app.error("[WebSearch] Search failed: \(error.localizedDescription, privacy: .public)")
+                WardenLog.app.error("[WebSearch] Search failed (category only)")
                 chat.waitingForResponse = false
                 
                 // Update status: failed
@@ -202,7 +240,7 @@ final class MessageManager: ObservableObject {
                 }
                 return
             } catch {
-                WardenLog.app.error("[WebSearch] Search failed (non-stream): \(error.localizedDescription, privacy: .public)")
+                WardenLog.app.error("[WebSearch] Search failed (non-stream, category only)")
                 chat.waitingForResponse = false
                 
                 // Update status: failed
@@ -279,20 +317,7 @@ final class MessageManager: ObservableObject {
             WardenLog.app.debug("[MCP] Found \(tools.count, privacy: .public) tool(s)")
             #endif
             
-            // Convert MCP Tool to OpenAI format
-            let toolDefinitions = tools.compactMap { tool -> [String: Any]? in
-                // Convert MCP Value inputSchema to JSON-compatible dictionary
-                let parameters = convertValueToDict(tool.inputSchema)
-                
-                return [
-                    "type": "function",
-                    "function": [
-                        "name": tool.name,
-                        "description": tool.description ?? "",
-                        "parameters": parameters
-                    ] as [String: Any]
-                ]
-            }
+            let toolDefinitions = self.toolDefinitions(from: tools)
             
             #if DEBUG
             WardenLog.app.debug("[MCP] Sending \(toolDefinitions.count, privacy: .public) tool definition(s) to API")
@@ -340,17 +365,126 @@ final class MessageManager: ObservableObject {
         }
     }
 
+    func retryMessage(
+        userTurn: MessageEntity,
+        assistantTarget: MessageEntity?,
+        in chat: ChatEntity,
+        contextSize: Int,
+        completion: @escaping (Result<Void, Error>) -> Void
+    ) {
+        let intent = RetryIntent(userTurn: userTurn, assistantTarget: assistantTarget)
+        let requestMessages = prepareRetryRequestMessages(intent: intent, chat: chat, contextSize: contextSize)
+        let temperature = (chat.persona?.temperature ?? AppConstants.defaultTemperatureForChat).roundedToOneDecimal()
+        chat.waitingForResponse = true
+
+        Task { @MainActor in
+            let viewModel = ChatViewModel(chat: chat, viewContext: self.viewContext)
+            let selectedAgents = viewModel.selectedMCPAgents
+            let tools = await MCPManager.shared.getTools(for: selectedAgents)
+            let toolDefinitions = self.toolDefinitions(from: tools)
+
+            ChatService.shared.sendMessage(
+                apiService: self.apiService,
+                messages: requestMessages,
+                tools: toolDefinitions.isEmpty ? nil : toolDefinitions,
+                temperature: temperature
+            ) { [weak self] result in
+                DispatchQueue.main.async {
+                    guard let self else {
+                        chat.waitingForResponse = false
+                        completion(.failure(APIError.invalidResponse))
+                        return
+                    }
+
+                switch result {
+                    case .success(let (messageBody, toolCalls)):
+                        if let messageBody,
+                           !messageBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            self.persistStreamedAssistant(messageBody, in: chat, retryTarget: assistantTarget, searchUrls: nil)
+                        }
+
+                        if let toolCalls, !toolCalls.isEmpty {
+                            chat.waitingForResponse = false
+                            Task {
+                                await self.handleToolCalls(
+                                    toolCalls,
+                                    in: chat,
+                                    contextSize: contextSize,
+                                    retryTarget: assistantTarget,
+                                    completion: completion
+                                )
+                            }
+                            return
+                        }
+
+                        guard let messageBody,
+                              !messageBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                            chat.waitingForResponse = false
+                            completion(.failure(APIError.invalidResponse))
+                            return
+                        }
+
+                        chat.waitingForResponse = false
+                        self.debounceSave()
+                        self.generateChatNameIfNeeded(chat: chat)
+                        completion(.success(()))
+
+                    case .failure(let error):
+                        chat.waitingForResponse = false
+                        completion(.failure(error))
+                    }
+                }
+            }
+        }
+    }
+
     @MainActor
     func sendMessageStream(
         _ message: String,
         in chat: ChatEntity,
         contextSize: Int,
         searchUrls: [String]? = nil,
+        retryTarget: MessageEntity? = nil,
         completion: @escaping (Result<Void, Error>) -> Void
     ) {
-        // Hard reset any leftover streaming state before starting a new stream
-        stopStreaming()
-        self.streamingAssistantText = ""
+        let retryIntent = retryTarget.map { RetryIntent(userTurn: resolveRetryUserTurn(message, in: chat), assistantTarget: $0) }
+        sendMessageStream(
+            message,
+            in: chat,
+            contextSize: contextSize,
+            searchUrls: searchUrls,
+            retryIntent: retryIntent,
+            completion: completion
+        )
+    }
+
+    func retryMessageStream(
+        userTurn: MessageEntity,
+        assistantTarget: MessageEntity?,
+        in chat: ChatEntity,
+        contextSize: Int,
+        completion: @escaping (Result<Void, Error>) -> Void
+    ) {
+        sendMessageStream(
+            userTurn.body,
+            in: chat,
+            contextSize: contextSize,
+            searchUrls: nil,
+            retryIntent: RetryIntent(userTurn: userTurn, assistantTarget: assistantTarget),
+            completion: completion
+        )
+    }
+
+    private func sendMessageStream(
+        _ message: String,
+        in chat: ChatEntity,
+        contextSize: Int,
+        searchUrls: [String]?,
+        retryIntent: RetryIntent?,
+        completion: @escaping (Result<Void, Error>) -> Void
+    ) {
+        // A stream is owned by its initiating conversation, never by the visible view.
+        stopStreaming(in: chat)
         
         let forceSinglePrompt = UserDefaults.standard.bool(forKey: "imageGenMode_\(chat.id.uuidString)")
         let isImageGeneration = forceSinglePrompt
@@ -364,7 +498,9 @@ final class MessageManager: ObservableObject {
             WardenLog.app.debug("Image generation mode active (single-prompt). Model=\(self.apiService.model, privacy: .public) Service=\(self.apiService.name, privacy: .public)")
             #endif
         } else {
-            let built = prepareRequestMessages(userMessage: message, chat: chat, contextSize: contextSize)
+            let built = retryIntent == nil
+                ? prepareRequestMessages(userMessage: message, chat: chat, contextSize: contextSize)
+                : prepareRetryRequestMessages(intent: retryIntent!, chat: chat, contextSize: contextSize)
             if isVisionModelName(apiService.model) && containsImageInputs(in: built) {
                 requestMessages = [["role": "user", "content": message]]
                 #if DEBUG
@@ -384,6 +520,9 @@ final class MessageManager: ObservableObject {
         let temperature = (chat.persona?.temperature ?? AppConstants.defaultTemperatureForChat).roundedToOneDecimal()
 
         let streamTaskID = UUID()
+        let session = streamingSessions.session(for: chat.id)
+        session.begin(requestID: streamTaskID)
+        chat.waitingForResponse = true
         let streamTask = Task { @MainActor in
             var chunkCount = 0
             let streamStart = Date()
@@ -393,21 +532,21 @@ final class MessageManager: ObservableObject {
             var chunkBufferCharacterCount = 0
             var deferredResponseParts: [String] = []
             var deferredResponseCharacterCount = 0
+            var attachmentMarkerDetector = AttachmentMarkerDetector()
             let updateInterval = self.streamUpdateInterval
             
             // Ensure per-stream buffers start empty
-            self.streamingAssistantText = ""
             chunkBufferParts.removeAll(keepingCapacity: true)
             chunkBufferCharacterCount = 0
             deferredResponseParts.removeAll(keepingCapacity: true)
             deferredResponseCharacterCount = 0
             
-            self.streamingAssistantText = ""
-            chat.waitingForResponse = true
-            
             defer {
                 Task {
-                    await self.streamingTaskController.clearIfCurrent(taskID: streamTaskID)
+                    await self.streamingTaskController.clearIfCurrent(
+                        conversationID: chat.id,
+                        requestID: streamTaskID
+                    )
                 }
             }
 
@@ -435,7 +574,7 @@ final class MessageManager: ObservableObject {
                 let chunkToApply = drainChunkBuffer()
                 if !chunkToApply.isEmpty {
                     chat.waitingForResponse = true
-                    self.streamingAssistantText.append(contentsOf: chunkToApply)
+                    session.publishPending(requestID: streamTaskID, force: force)
                     lastUpdateTime = now
                 }
             }
@@ -460,29 +599,32 @@ final class MessageManager: ObservableObject {
             }
             
             // Fetch tools
-            let viewModel = ChatViewModel(chat: chat, viewContext: self.viewContext)
-            let selectedAgents = viewModel.selectedMCPAgents
-            
-            #if DEBUG
-            WardenLog.app.debug("[MCP] Fetching tools for \(selectedAgents.count, privacy: .public) selected agent(s) (stream)")
-            #endif
-            let tools = await MCPManager.shared.getTools(for: selectedAgents)
+            let tools: [Tool]
+            if fetchStreamTools {
+                let viewModel = ChatViewModel(chat: chat, viewContext: self.viewContext)
+                let selectedAgents = viewModel.selectedMCPAgents
+                #if DEBUG
+                WardenLog.app.debug("[MCP] Fetching tools for \(selectedAgents.count, privacy: .public) selected agent(s) (stream)")
+                #endif
+                tools = await MCPManager.shared.getTools(for: selectedAgents)
+            } else {
+                tools = []
+            }
             #if DEBUG
             WardenLog.app.debug("[MCP] Found \(tools.count, privacy: .public) tool(s) (stream)")
             #endif
             
-            let toolDefinitions = tools.compactMap { tool -> [String: Any]? in
-                // Convert MCP Value inputSchema to JSON-compatible dictionary
-                let parameters = convertValueToDict(tool.inputSchema)
-                
-                return [
-                    "type": "function",
-                    "function": [
-                        "name": tool.name,
-                        "description": tool.description ?? "",
-                        "parameters": parameters
-                    ] as [String: Any]
-                ]
+            let toolDefinitions = self.toolDefinitions(from: tools)
+
+            // Fetching MCP capabilities can suspend. A Stop, replacement, or deletion while
+            // suspended must prevent any provider dispatch for this request.
+            guard !Task.isCancelled,
+                  session.isCurrent(requestID: streamTaskID),
+                  await self.streamingTaskController.shouldDispatch(
+                    conversationID: chat.id,
+                    requestID: streamTaskID
+                  ) else {
+                return
             }
             
             #if DEBUG
@@ -495,36 +637,35 @@ final class MessageManager: ObservableObject {
             do {
                 chat.waitingForResponse = true
                 
-                let toolCalls = try await ChatService.shared.sendStream(
-                    apiService: self.apiService,
-                    messages: requestMessages,
-                    tools: toolDefinitions.isEmpty ? nil : toolDefinitions,
-                    temperature: temperature
+                let toolCalls = try await self.streamDispatcher(
+                    self.apiService,
+                    requestMessages,
+                    toolDefinitions.isEmpty ? nil : toolDefinitions,
+                    temperature
                 ) { chunk in
-                    Task { @MainActor in
-                        chunkCount += 1
-                        guard !chunk.isEmpty else { return }
-                        let containsDeferredAttachmentTag =
-                            chunk.contains("<image-uuid>") || chunk.contains("<file-uuid>")
-                        if containsDeferredAttachmentTag, !deferImageResponse {
-                            flushChunkBuffer(force: true)
-                            if !self.streamingAssistantText.isEmpty {
-                                deferredResponseParts = [self.streamingAssistantText]
-                                deferredResponseCharacterCount = self.streamingAssistantText.count
-                            }
-                            deferImageResponse = true
-                            chunkBufferParts.removeAll(keepingCapacity: true)
-                            chunkBufferCharacterCount = 0
-                            self.streamingAssistantText = ""
+                    chunkCount += 1
+                    guard !chunk.isEmpty else { return }
+                    guard session.append(chunk, requestID: streamTaskID) else { return }
+                    let containsDeferredAttachmentTag = attachmentMarkerDetector.consume(chunk)
+                    if containsDeferredAttachmentTag, !deferImageResponse {
+                        flushChunkBuffer(force: true)
+                        if let currentText = session.finalText(requestID: streamTaskID), !currentText.isEmpty {
+                            deferredResponseParts = [currentText]
+                            deferredResponseCharacterCount = currentText.count
                         }
-                        if deferImageResponse {
-                            appendDeferredResponse(chunk)
-                            return
-                        }
-                        chunkBufferParts.append(chunk)
-                        chunkBufferCharacterCount += chunk.count
-                        flushChunkBuffer()
+                        deferImageResponse = true
+                        chunkBufferParts.removeAll(keepingCapacity: true)
+                        chunkBufferCharacterCount = 0
+                        // The session snapshot already contains this boundary chunk.
+                        return
                     }
+                    if deferImageResponse {
+                        appendDeferredResponse(chunk)
+                        return
+                    }
+                    chunkBufferParts.append(chunk)
+                    chunkBufferCharacterCount += chunk.count
+                    flushChunkBuffer()
                 }
                 let elapsed = Date().timeIntervalSince(streamStart)
                 #if DEBUG
@@ -534,29 +675,52 @@ final class MessageManager: ObservableObject {
                 #endif
                 flushChunkBuffer(force: true)
 
-                let finalResponse = deferImageResponse ? drainDeferredResponse() : self.streamingAssistantText
-                // Persist only the latest assistant response once
-                await MainActor.run {
-                    if !finalResponse.isEmpty {
-                        self.addMessageToChat(chat: chat, message: finalResponse, searchUrls: searchUrls)
-                        self.addNewMessageToRequestMessages(chat: chat, content: finalResponse, role: RequestMessageRole.assistant.rawValue)
-                    }
+                if Task.isCancelled || session.phase == .cancelling {
+                    throw CancellationError()
                 }
-                
+
+                guard session.claimFinalization(requestID: streamTaskID) else { return }
+                let finalResponse = deferImageResponse ? drainDeferredResponse() : (session.finalText(requestID: streamTaskID) ?? "")
                 // Handle tool calls if any
                 if let toolCalls = toolCalls, !toolCalls.isEmpty {
-                    await MainActor.run {
-                        self.streamingAssistantText = ""
+                    if !finalResponse.isEmpty {
+                        self.persistStreamedAssistant(
+                            finalResponse,
+                            in: chat,
+                            retryTarget: retryIntent?.assistantTarget,
+                            searchUrls: searchUrls
+                        )
                     }
                     try Task.checkCancellation()
-                    await self.handleToolCalls(toolCalls, in: chat, contextSize: contextSize, completion: completion)
+                    await self.handleToolCalls(
+                        toolCalls,
+                        in: chat,
+                        contextSize: contextSize,
+                        retryTarget: retryIntent?.assistantTarget,
+                        streamRequestID: streamTaskID,
+                        completion: completion
+                    )
                     return
                 }
+
+                guard !finalResponse.isEmpty else {
+                    chat.waitingForResponse = false
+                    session.finish(requestID: streamTaskID, errorDescription: "Empty response")
+                    completion(.failure(APIError.invalidResponse))
+                    return
+                }
+                // Persist only the latest assistant response once.
+                self.persistStreamedAssistant(
+                    finalResponse,
+                    in: chat,
+                    retryTarget: retryIntent?.assistantTarget,
+                    searchUrls: searchUrls
+                )
                 
                 await MainActor.run {
                     self.generateChatNameIfNeeded(chat: chat)
                     chat.waitingForResponse = false
-                    self.streamingAssistantText = ""
+                    session.finish(requestID: streamTaskID)
                 }
                 completion(.success(()))
             }
@@ -570,15 +734,16 @@ final class MessageManager: ObservableObject {
                 
                 // Save partial response even when cancelled via exception
                 flushChunkBuffer(force: true)
-                let partialResponse = deferImageResponse ? drainDeferredResponse() : self.streamingAssistantText
+                guard session.claimFinalization(requestID: streamTaskID) else { return }
+                let partialResponse = deferImageResponse ? drainDeferredResponse() : (session.finalText(requestID: streamTaskID) ?? "")
                 // Persist partial response only once on cancellation
                 await MainActor.run {
                     if !partialResponse.isEmpty {
-                        self.addMessageToChat(chat: chat, message: partialResponse, searchUrls: searchUrls)
-                        self.addNewMessageToRequestMessages(
-                            chat: chat,
-                            content: partialResponse,
-                            role: RequestMessageRole.assistant.rawValue
+                        self.persistStreamedAssistant(
+                            partialResponse,
+                            in: chat,
+                            retryTarget: retryIntent?.assistantTarget,
+                            searchUrls: searchUrls
                         )
                         #if DEBUG
                         WardenLog.streaming.debug("Partial response saved after cancellation")
@@ -586,28 +751,40 @@ final class MessageManager: ObservableObject {
                     }
                     
                     chat.waitingForResponse = false
-                    self.streamingAssistantText = ""
+                    session.finish(requestID: streamTaskID)
                 }
                 completion(.failure(CancellationError()))
             }
             catch {
-                WardenLog.streaming.error("Streaming error: \(error.localizedDescription, privacy: .public)")
+                guard session.claimFinalization(requestID: streamTaskID) else { return }
+                WardenLog.streaming.error("Streaming failed; request ended")
                 await MainActor.run {
                     chat.waitingForResponse = false
-                    self.streamingAssistantText = ""
+                    session.finish(requestID: streamTaskID, errorDescription: "Response failed")
                 }
                 completion(.failure(error))
             }
         }
         
         Task {
-            await streamingTaskController.replace(taskID: streamTaskID, task: streamTask)
+            await streamingTaskController.replace(
+                conversationID: chat.id,
+                requestID: streamTaskID,
+                task: streamTask
+            )
         }
     }
     
     // MARK: - Tool Execution
     
-    private func handleToolCalls(_ toolCalls: [ToolCall], in chat: ChatEntity, contextSize: Int, completion: @escaping (Result<Void, Error>) -> Void) async {
+    private func handleToolCalls(
+        _ toolCalls: [ToolCall],
+        in chat: ChatEntity,
+        contextSize: Int,
+        retryTarget: MessageEntity? = nil,
+        streamRequestID: UUID? = nil,
+        completion: @escaping (Result<Void, Error>) -> Void
+    ) async {
         #if DEBUG
         WardenLog.app.debug("Handling \(toolCalls.count, privacy: .public) tool call(s)")
         #endif
@@ -685,9 +862,7 @@ final class MessageManager: ObservableObject {
             } catch {
                 resultString = "{\"error\": \"\(error.localizedDescription)\"}"
                 success = false
-                WardenLog.app.error(
-                    "Tool execution failed (\(functionName, privacy: .public)): \(error.localizedDescription, privacy: .public)"
-                )
+                WardenLog.app.error("Tool execution failed (tool name omitted)")
                 await MainActor.run {
                     self.toolCallStatus = .failed(toolName: functionName, error: error.localizedDescription)
                     if let index = self.activeToolCalls.firstIndex(where: { $0.toolName == functionName }) {
@@ -738,28 +913,55 @@ final class MessageManager: ObservableObject {
             tools: nil, // Don't provide tools again to avoid loops
             temperature: temperature
         ) { [weak self] result in
-            guard let self = self else { return }
-            
             // Ensure all UI updates happen on main thread
             DispatchQueue.main.async {
+                guard let self else {
+                    chat.waitingForResponse = false
+                    completion(.failure(APIError.invalidResponse))
+                    return
+                }
+                if let streamRequestID,
+                   !self.streamingSessions.session(for: chat.id).acceptsContinuation(requestID: streamRequestID) {
+                    chat.waitingForResponse = false
+                    return
+                }
                 switch result {
                 case .success(let (fullMessage, toolCalls)):
-                    if let messageText = fullMessage {
+                    guard let messageText = fullMessage,
+                          !messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                        chat.waitingForResponse = false
+                        completion(.failure(APIError.invalidResponse))
+                        return
+                    }
+                    if let retryTarget {
+                        self.persistStreamedAssistant(messageText, in: chat, retryTarget: retryTarget, searchUrls: nil)
+                    } else {
                         // Store the tool calls with this message for persistence
                         let toolCallsToStore = self.activeToolCalls
                         self.addMessageToChat(chat: chat, message: messageText, searchUrls: nil, toolCalls: toolCallsToStore)
                         self.addNewMessageToRequestMessages(chat: chat, content: messageText, role: RequestMessageRole.assistant.rawValue)
                     }
+                    chat.waitingForResponse = false
                     self.debounceSave()
                     self.generateChatNameIfNeeded(chat: chat)
                     
                     // Clear active tool calls for next message (they're now stored with the message)
                     self.activeToolCalls.removeAll()
+                    if let streamRequestID {
+                        self.streamingSessions.session(for: chat.id).finish(requestID: streamRequestID)
+                    }
                     
                     completion(.success(()))
                     
                 case .failure(let error):
                     // Keep tool calls visible on error for debugging
+                    chat.waitingForResponse = false
+                    if let streamRequestID {
+                        self.streamingSessions.session(for: chat.id).finish(
+                            requestID: streamRequestID,
+                            errorDescription: "Tool continuation failed"
+                        )
+                    }
                     completion(.failure(error))
                 }
             }
@@ -901,6 +1103,66 @@ final class MessageManager: ObservableObject {
 
     private func prepareRequestMessages(userMessage: String, chat: ChatEntity, contextSize: Int) -> [[String: String]] {
         return chat.constructRequestMessages(forUserMessage: userMessage, contextSize: contextSize)
+    }
+
+    private func toolDefinitions(from tools: [Tool]) -> [[String: Any]] {
+        tools.map { tool in
+            [
+                "type": "function",
+                "function": [
+                    "name": tool.name,
+                    "description": tool.description ?? "",
+                    "parameters": convertValueToDict(tool.inputSchema)
+                ] as [String: Any]
+            ]
+        }
+    }
+
+    private func resolveRetryUserTurn(_ message: String, in chat: ChatEntity) -> MessageEntity {
+        chat.messagesArray.last(where: { $0.own && $0.body == message })
+            ?? chat.messagesArray.last(where: \.own)
+            ?? MessageEntity(context: viewContext)
+    }
+
+    private func prepareRetryRequestMessages(intent: RetryIntent, chat: ChatEntity, contextSize: Int) -> [[String: String]] {
+        guard intent.userTurn.chat == chat,
+              let userIndex = chat.messagesArray.firstIndex(where: { $0 === intent.userTurn }) else {
+            return prepareRequestMessages(userMessage: intent.userTurn.body, chat: chat, contextSize: contextSize)
+        }
+        let originalMessages = chat.messages
+        let prefix = Array(chat.messagesArray.prefix(through: userIndex))
+        let boundedPrefix = contextSize > 0 ? Array(prefix.suffix(contextSize)) : []
+        chat.messages = NSOrderedSet(array: boundedPrefix)
+        defer { chat.messages = originalMessages }
+        return chat.constructRequestMessages(forUserMessage: nil, contextSize: contextSize)
+    }
+
+    private func persistStreamedAssistant(
+        _ content: String,
+        in chat: ChatEntity,
+        retryTarget: MessageEntity?,
+        searchUrls: [String]?
+    ) {
+        guard !content.isEmpty else { return }
+        if let retryTarget, retryTarget.managedObjectContext != nil {
+            let finalContent: String
+            if let searchUrls, !searchUrls.isEmpty {
+                finalContent = tavilyService.convertCitationsToLinks(content, urls: searchUrls)
+            } else {
+                finalContent = content
+            }
+            retryTarget.body = finalContent
+            retryTarget.timestamp = Date()
+            chat.requestMessages = chat.messagesArray.map {
+                RequestMessage(role: $0.own ? .user : .assistant, content: $0.body).dictionary
+            }
+            chat.updatedDate = Date()
+            chat.objectWillChange.send()
+            debounceSave()
+        } else {
+            addMessageToChat(chat: chat, message: content, searchUrls: searchUrls)
+            addNewMessageToRequestMessages(chat: chat, content: content, role: RequestMessageRole.assistant.rawValue)
+        }
     }
     
     private func containsImageInputs(in messages: [[String: String]]) -> Bool {

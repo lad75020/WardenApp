@@ -47,6 +47,7 @@ struct MessageInputView: View {
     @State private var showingRephraseError = false
     @State private var rephraseErrorMessage = ""
     @State private var inputPulseAnimation = false
+    @State private var shouldFocusInput = false
     private let maxInputHeight = 160.0
     private let initialInputSize = 16.0
     private let inputPadding = 12.0
@@ -246,6 +247,12 @@ struct MessageInputView: View {
         .onAppear {
             DispatchQueue.main.async {
                 isFocused = .focused
+                shouldFocusInput = true
+            }
+        }
+        .onChange(of: isStreaming) { wasStreaming, isStreamingNow in
+            if wasStreaming && !isStreamingNow {
+                shouldFocusInput = true
             }
         }
         .alert("Rephrase Error", isPresented: $showingRephraseError) {
@@ -365,6 +372,8 @@ struct MessageInputView: View {
                 }
             }
             .buttonStyle(PlainButtonStyle())
+            .accessibilityLabel("Stop generating response")
+            .accessibilityValue("Generating")
             .help("Stop generating")
             .transition(.scale.combined(with: .opacity))
         } else {
@@ -385,7 +394,10 @@ struct MessageInputView: View {
                 }
             }
             .buttonStyle(PlainButtonStyle())
+            .accessibilityLabel("Send message")
+            .accessibilityValue(canSend ? "Ready to send" : "Enter a message to send")
             .disabled(!canSend)
+            .keyboardShortcut(.return, modifiers: [.command])
             .help("Send message")
             .transition(.scale.combined(with: .opacity))
         }
@@ -520,6 +532,7 @@ struct MessageInputView: View {
             SubmitTextEditor(
                 text: $text,
                 dynamicHeight: $dynamicHeight,
+                shouldFocus: $shouldFocusInput,
                 onSubmit: {
                     if canSend {
                         onEnter()

@@ -168,6 +168,10 @@ struct ChatListRow: View {
         alert.alertStyle = .warning
         alert.beginSheetModal(for: NSApp.keyWindow!) { response in
             if response == .alertFirstButtonReturn {
+                // Invalidate immediately, before Core Data can tear down the conversation object.
+                ChatStreamingSessionRegistry.shared.invalidate(conversationID: chat.id)
+                Task { await StreamingTaskController.shared.invalidate(conversationID: chat.id) }
+
                 // Clear selectedChat to prevent accessing deleted item
                 if selectedChat?.id == chat.id {
                     selectedChat = nil

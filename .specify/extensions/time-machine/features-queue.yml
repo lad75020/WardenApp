@@ -1,7 +1,7 @@
 analyzed_at: "2026-08-11T17:29:16Z"
 project_root: "/Volumes/WDBlack4TB/Code/WardenApp"
 total_features: 12
-completed: 3
+completed: 4
 features:
   - id: "app-shell-and-onboarding"
     name: "App Shell and Onboarding"
@@ -69,12 +69,12 @@ features:
       - "Warden/Utilities/SSEStreamParser.swift"
       - "Warden/Utilities/StreamingTaskController.swift"
       - "Warden/Utilities/IncrementalMessageParser.swift"
-    status: pending # pending | in-progress | done | skipped
+    status: done # pending | in-progress | done | skipped
     current_phase: null # null | specify | clarify | plan | tasks | implement
-    branch: null
+    branch: "feature/time-machine-core-chat-and-streaming"
     pushed: null # null | true | false
-    started_at: null
-    completed_at: null
+    started_at: "2026-08-11T22:14:14Z"
+    completed_at: "2026-08-11T23:38:34Z"
 
   - id: "rich-message-rendering"
     name: "Rich Message Rendering"
