@@ -8,11 +8,23 @@ struct CitationBadgeView: View {
     @State private var isHovered = false
     
     var body: some View {
-        Button(action: {
-            if let url = URL(string: url) {
-                NSWorkspace.shared.open(url)
+        Group {
+            if let actionableURL = SearchSourceURL.actionableURL(from: url) {
+                Button(action: { NSWorkspace.shared.open(actionableURL) }) {
+                    badge
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Citation \(number), \(tooltipText)")
+                .cursor(.pointingHand)
+            } else {
+                Text("[\(number)]")
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .accessibilityLabel("Citation \(number), unsupported source URL")
             }
-        }) {
+        }
+    }
+
+    private var badge: some View {
             Text("\(number)")
                 .font(.system(size: 10, weight: .bold, design: .rounded))
                 .foregroundColor(isHovered ? .white : .accentColor)
@@ -25,15 +37,12 @@ struct CitationBadgeView: View {
                     Circle()
                         .stroke(Color.accentColor.opacity(isHovered ? 0 : 0.3), lineWidth: 1)
                 )
-        }
-        .buttonStyle(.plain)
         .onHover { hovering in
             withAnimation(.easeInOut(duration: 0.15)) {
                 isHovered = hovering
             }
         }
         .help(tooltipText)
-        .cursor(.pointingHand)
     }
     
     private var tooltipText: String {
@@ -62,11 +71,22 @@ struct InlineCitationView: View {
     @State private var isHovered = false
     
     var body: some View {
-        Button(action: {
-            if let url = URL(string: url) {
-                NSWorkspace.shared.open(url)
+        Group {
+            if let actionableURL = SearchSourceURL.actionableURL(from: url) {
+                Button(action: { NSWorkspace.shared.open(actionableURL) }) {
+                    badge
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Citation \(number)")
+                .cursor(.pointingHand)
+            } else {
+                Text("[\(number)]")
+                    .accessibilityLabel("Citation \(number), unsupported source URL")
             }
-        }) {
+        }
+    }
+
+    private var badge: some View {
             Text("\(number)")
                 .font(.system(size: 9, weight: .bold, design: .rounded))
                 .foregroundColor(textColor)
@@ -79,14 +99,11 @@ struct InlineCitationView: View {
                     Circle()
                         .stroke(borderColor, lineWidth: 1)
                 )
-        }
-        .buttonStyle(.plain)
         .onHover { hovering in
             withAnimation(.easeInOut(duration: 0.15)) {
                 isHovered = hovering
             }
         }
-        .cursor(.pointingHand)
     }
     
     private var textColor: Color {

@@ -66,6 +66,8 @@ struct SearchProgressView: View {
         )
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Web Search: \(statusTitle)")
     }
     
     private var isSearchCompleted: Bool {
@@ -77,8 +79,8 @@ struct SearchProgressView: View {
     
     private var statusTitle: String {
         switch status {
-        case .searching(let query):
-            return "Searching: \(query)"
+        case .searching:
+            return "Searching the web"
         case .fetchingResults:
             return "Fetching results..."
         case .processingResults:
@@ -100,8 +102,8 @@ struct SearchProgressView: View {
             return "Formatting results"
         case .completed:
             return nil
-        case .failed(let error):
-            return error.localizedDescription
+        case .failed:
+            return "Search did not complete"
         }
     }
 }

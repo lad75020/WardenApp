@@ -177,6 +177,7 @@ struct ChatListRow: View {
                     selectedChat = nil
                 }
                 
+                UserDefaults.standard.removeObject(forKey: TavilyConfig.disclosureAcknowledgedKey(for: chat.id))
                 viewContext.delete(chat)
                 DispatchQueue.main.async {
                     do {

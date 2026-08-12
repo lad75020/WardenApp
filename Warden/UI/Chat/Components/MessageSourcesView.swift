@@ -51,6 +51,8 @@ struct MessageSourcesView: View {
                     }
                     .buttonStyle(.plain)
                     .help("Show all sources")
+                    .accessibilityLabel("Show all sources")
+                    .accessibilityValue("Collapsed")
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 8)
@@ -67,11 +69,6 @@ struct MessageSourcesView: View {
                             .font(.system(size: 12, weight: .semibold))
                             .foregroundColor(.primary)
                         
-                        Text("for \"\(metadata.query)\"")
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary)
-                            .lineLimit(1)
-                        
                         Spacer()
                         
                         Button(action: {
@@ -84,6 +81,8 @@ struct MessageSourcesView: View {
                                 .foregroundColor(.secondary)
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel("Hide sources")
+                        .accessibilityValue("Expanded")
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 10)
@@ -124,11 +123,23 @@ struct SourcePillView: View {
     let isHovered: Bool
     
     var body: some View {
-        Button(action: {
-            if let url = URL(string: source.url) {
-                NSWorkspace.shared.open(url)
+        Group {
+            if let actionableURL = SearchSourceURL.actionableURL(from: source.url) {
+                Button(action: { NSWorkspace.shared.open(actionableURL) }) {
+                    pill
+                }
+                .buttonStyle(.plain)
+                .cursor(.pointingHand)
+                .accessibilityLabel("Source \(index): \(source.title)")
+                .help(source.title)
+            } else {
+                pill
+                    .accessibilityLabel("Source \(index): \(source.title), unsupported URL")
             }
-        }) {
+        }
+    }
+
+    private var pill: some View {
             HStack(spacing: 4) {
                 Text("\(index)")
                     .font(.system(size: 9, weight: .bold, design: .rounded))
@@ -154,10 +165,6 @@ struct SourcePillView: View {
                             .stroke(isHovered ? Color.accentColor.opacity(0.3) : Color.clear, lineWidth: 1)
                     )
             )
-        }
-        .buttonStyle(.plain)
-        .cursor(.pointingHand)
-        .help(source.title)
     }
     
     private var truncatedDomain: String {
@@ -244,13 +251,16 @@ struct ExpandedSourceRowView: View {
                     .buttonStyle(.plain)
                     .help("Copy URL")
                     
-                    Button(action: openURL) {
-                        Image(systemName: "arrow.up.right.square")
-                            .font(.system(size: 10))
-                            .foregroundColor(.secondary)
+                    if SearchSourceURL.actionableURL(from: source.url) != nil {
+                        Button(action: openURL) {
+                            Image(systemName: "arrow.up.right.square")
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Open in browser")
+                        .accessibilityLabel("Open source \(index): \(source.title)")
                     }
-                    .buttonStyle(.plain)
-                    .help("Open in browser")
                 }
                 .transition(.opacity)
             }
@@ -263,10 +273,7 @@ struct ExpandedSourceRowView: View {
                 isHovered = hovering
             }
         }
-        .onTapGesture {
-            openURL()
-        }
-        .cursor(.pointingHand)
+        .accessibilityLabel("Source \(index): \(source.title)")
     }
     
     private var domainFromURL: String {
@@ -278,7 +285,7 @@ struct ExpandedSourceRowView: View {
     }
     
     private var relevanceLevel: Int {
-        Int((source.score * 5).rounded())
+        min(5, max(0, Int((source.score * 5).rounded())))
     }
     
     private func copyURL() {
@@ -298,7 +305,7 @@ struct ExpandedSourceRowView: View {
     }
     
     private func openURL() {
-        if let url = URL(string: source.url) {
+        if let url = SearchSourceURL.actionableURL(from: source.url) {
             NSWorkspace.shared.open(url)
         }
     }

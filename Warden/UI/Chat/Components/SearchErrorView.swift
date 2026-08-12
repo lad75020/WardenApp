@@ -5,6 +5,7 @@ struct SearchErrorView: View {
     let onRetry: () -> Void
     let onDismiss: () -> Void
     let onGoToSettings: (() -> Void)?
+    let onDisableSearch: (() -> Void)?
     
     var body: some View {
         HStack(spacing: 12) {
@@ -42,6 +43,7 @@ struct SearchErrorView: View {
                         )
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Retry web search")
                     
                     // Show settings button for API key errors
                     if isApiKeyError, let goToSettings = onGoToSettings {
@@ -61,6 +63,12 @@ struct SearchErrorView: View {
                             )
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel("Open Web Search preferences")
+                    }
+                    if let onDisableSearch {
+                        Button("Disable Search", action: onDisableSearch)
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Disable web search and return the prompt to the composer")
                     }
                 }
                 .padding(.top, 4)
@@ -88,13 +96,15 @@ struct SearchErrorView: View {
         )
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Web Search Failed. \(errorMessage)")
     }
     
     private var errorMessage: String {
         if let tavilyError = error as? TavilyError {
             return tavilyError.localizedDescription
         }
-        return error.localizedDescription
+        return "Web search could not complete. Try again or check your connection."
     }
     
     private var isApiKeyError: Bool {
@@ -119,21 +129,24 @@ struct SearchErrorView_Previews: PreviewProvider {
                 error: TavilyError.noApiKey,
                 onRetry: {},
                 onDismiss: {},
-                onGoToSettings: {}
+                onGoToSettings: {},
+                onDisableSearch: {}
             )
             
             SearchErrorView(
                 error: TavilyError.rateLimited,
                 onRetry: {},
                 onDismiss: {},
-                onGoToSettings: nil
+                onGoToSettings: nil,
+                onDisableSearch: {}
             )
             
             SearchErrorView(
                 error: NSError(domain: "TestError", code: -1, userInfo: [NSLocalizedDescriptionKey: "Network connection failed"]),
                 onRetry: {},
                 onDismiss: {},
-                onGoToSettings: nil
+                onGoToSettings: nil,
+                onDisableSearch: {}
             )
         }
         .padding()

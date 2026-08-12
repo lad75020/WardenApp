@@ -79,6 +79,8 @@ struct ChatBubbleView: View, Equatable {
                         .frame(maxWidth: 500) // Limit width to match bubble
                     Spacer(minLength: 40)
                 }
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel("Web sources for this response")
             }
             
             toolbarRow

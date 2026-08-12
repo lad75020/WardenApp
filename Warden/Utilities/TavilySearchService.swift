@@ -22,13 +22,14 @@ extension TavilyError: LocalizedError {
         case .invalidRequest:
             return "Invalid search request. Please try again."
         case .networkError(let error):
-            return "Network error: \(error.localizedDescription)"
+            _ = error
+            return "Unable to reach web search. Check your connection and try again."
         case .invalidResponse:
             return "Invalid response from Tavily API."
-        case .decodingFailed(let message):
-            return "Failed to decode response: \(message)"
-        case .serverError(let message):
-            return "Tavily server error: \(message)"
+        case .decodingFailed:
+            return "Web search returned an unreadable response. Please try again."
+        case .serverError:
+            return "Web search is temporarily unavailable. Please try again later."
         case .unauthorized:
             return "Invalid Tavily API key. Please check your API key in Preferences."
         case .rateLimited:
@@ -42,10 +43,12 @@ extension TavilyError: LocalizedError {
 class TavilySearchService {
     private let baseURL = "https://api.tavily.com"
     private let session: URLSession
+    private let apiKeyProvider: () -> String?
     private static let citationRegex = try? NSRegularExpression(pattern: #"\[(\d+)\]"#, options: [])
     
-    init(session: URLSession = .shared) {
+    init(session: URLSession = .shared, apiKeyProvider: @escaping () -> String? = { TavilyKeyManager.shared.getApiKey() }) {
         self.session = session
+        self.apiKeyProvider = apiKeyProvider
     }
     
     // MARK: - Main Search Function
@@ -108,8 +111,9 @@ class TavilySearchService {
         // Update status: completed
         await onStatusUpdate(.completed(sources: sources))
         
-        // Extract URLs for citation linking
-        let urls = response.results.map { $0.url }
+        // Keep the raw ordered slots. Citation [n] always addresses source n, and
+        // invalid URLs must not shift a later valid source into the wrong slot.
+        let urls = sources.map(\.url)
         let context = formatResultsForContext(response)
         
         return (context, urls, sources)
@@ -236,15 +240,13 @@ class TavilySearchService {
                 // Ensure this [n] is "standalone-ish":
                 // - Preceded by start, whitespace, punctuation, or '('
                 // - Followed by end, whitespace, punctuation, or ')'
-                let start = fullRange.location
-                let end = fullRange.location + fullRange.length
-
-                // Use Swift String indices for safe boundary detection over extended grapheme clusters.
+                // NSRegularExpression reports UTF-16 ranges. Convert them through
+                // Range(_:in:) so emoji and multi-byte text cannot misalign indexes.
+                guard let citationRange = Range(fullRange, in: result) else { continue }
                 let stringStartIndex = result.startIndex
                 let stringEndIndex = result.endIndex
-
-                let startIndex = result.index(stringStartIndex, offsetBy: start)
-                let endIndex = result.index(stringStartIndex, offsetBy: end)
+                let startIndex = citationRange.lowerBound
+                let endIndex = citationRange.upperBound
 
                 let prevChar: Character? = (startIndex > stringStartIndex)
                     ? result[result.index(before: startIndex)]
@@ -267,8 +269,8 @@ class TavilySearchService {
                     continue
                 }
                 
-                let url = urls[urlIndex]
-                let replacement = "[\(number)](\(url))"
+                guard let url = SearchSourceURL.actionableURL(from: urls[urlIndex]) else { continue }
+                let replacement = "[\(number)](\(url.absoluteString))"
                 mutableResult = mutableResult.replacingCharacters(in: fullRange, with: replacement) as NSString
                 #if DEBUG
                 WardenLog.app.debug("[Citations] Replaced citation [\(number, privacy: .public)]")
@@ -288,7 +290,7 @@ class TavilySearchService {
     // MARK: - Private Helper Methods
     
     private func getApiKey() -> String? {
-        return TavilyKeyManager.shared.getApiKey()
+        apiKeyProvider()
     }
     
     private func prepareRequest(_ searchRequest: TavilySearchRequest) throws -> URLRequest {
@@ -331,15 +333,9 @@ class TavilySearchService {
         case 429:
             return .failure(.rateLimited)
         case 400...499:
-            if let errorResponse = String(data: data, encoding: .utf8) {
-                return .failure(.serverError("Client Error: \(errorResponse)"))
-            }
-            return .failure(.serverError("Client Error: HTTP \(httpResponse.statusCode)"))
+            return .failure(.serverError("client"))
         case 500...599:
-            if let errorResponse = String(data: data, encoding: .utf8) {
-                return .failure(.serverError("Server Error: \(errorResponse)"))
-            }
-            return .failure(.serverError("Server Error: HTTP \(httpResponse.statusCode)"))
+            return .failure(.serverError("server"))
         default:
             return .failure(.serverError("Unknown error: HTTP \(httpResponse.statusCode)"))
         }

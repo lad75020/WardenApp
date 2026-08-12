@@ -201,14 +201,17 @@ struct SearchResultRow: View {
                             }
                             .buttonStyle(.plain)
                             .help("Copy URL")
-                            
-                            Button(action: openURL) {
-                                Image(systemName: "arrow.up.right.square")
-                                    .font(.system(size: 10))
-                                    .foregroundColor(.secondary)
+
+                            if SearchSourceURL.actionableURL(from: source.url) != nil {
+                                Button(action: openURL) {
+                                    Image(systemName: "arrow.up.right.square")
+                                        .font(.system(size: 10))
+                                        .foregroundColor(.secondary)
+                                }
+                                .buttonStyle(.plain)
+                                .help("Open in browser")
+                                .accessibilityLabel("Open source \(index): \(source.title)")
                             }
-                            .buttonStyle(.plain)
-                            .help("Open in browser")
                         }
                         .transition(.opacity)
                     }
@@ -227,9 +230,11 @@ struct SearchResultRow: View {
             }
         }
         .onTapGesture {
-            openURL()
+            if SearchSourceURL.actionableURL(from: source.url) != nil {
+                openURL()
+            }
         }
-        .cursor(.pointingHand)
+        .cursor(SearchSourceURL.actionableURL(from: source.url) != nil ? .pointingHand : .arrow)
     }
     
     private var domainFromURL: String {
@@ -261,9 +266,8 @@ struct SearchResultRow: View {
     }
     
     private func openURL() {
-        if let url = URL(string: source.url) {
-            NSWorkspace.shared.open(url)
-        }
+        guard let url = SearchSourceURL.actionableURL(from: source.url) else { return }
+        NSWorkspace.shared.open(url)
     }
 }
 

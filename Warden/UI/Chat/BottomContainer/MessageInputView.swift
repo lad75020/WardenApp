@@ -56,6 +56,21 @@ struct MessageInputView: View {
     private let lineColorOnBlur = AppConstants.borderSubtle
     private let lineColorOnFocus = Color.accentColor.opacity(0.4)
     @AppStorage("chatFontSize") private var chatFontSize: Double = 14.0
+    @State private var showingSearchDisclosure = false
+
+    private var disclosureKey: String? {
+        chat.map { TavilyConfig.disclosureAcknowledgedKey(for: $0.id) }
+    }
+
+    private var hasAcknowledgedSearchDisclosure: Bool {
+        guard let disclosureKey else { return false }
+        return UserDefaults.standard.bool(forKey: disclosureKey)
+    }
+
+    private func acknowledgeSearchDisclosure() {
+        guard let disclosureKey else { return }
+        UserDefaults.standard.set(true, forKey: disclosureKey)
+    }
 
     private var effectiveFontSize: Double {
         chatFontSize
@@ -106,14 +121,22 @@ struct MessageInputView: View {
                         
                         // Web Search
                         Button(action: {
-                            webSearchEnabled.toggle()
+                            if webSearchEnabled {
+                                webSearchEnabled = false
+                            } else if hasAcknowledgedSearchDisclosure {
+                                webSearchEnabled = true
+                            } else {
+                                showingSearchDisclosure = true
+                            }
                         }) {
                             Image(systemName: "globe")
                                 .font(.system(size: 14, weight: .medium))
                                 .foregroundColor(webSearchEnabled ? .accentColor : .secondary)
                         }
                         .buttonStyle(PlainButtonStyle())
-                        .help("Web Search")
+                        .help(webSearchEnabled ? "Web Search enabled for the next message" : "Enable Web Search for the next message")
+                        .accessibilityLabel(webSearchEnabled ? "Web Search enabled for the next message" : "Enable Web Search for the next message")
+                        .accessibilityHint("Only the current message query is sent to Tavily.")
 
                         // Image Generation (single-prompt) toggle
                         if let chat = chat {
@@ -245,6 +268,22 @@ struct MessageInputView: View {
                 RoundedRectangle(cornerRadius: cornerRadius)
                     .stroke(Color.primary.opacity(0.1), lineWidth: 1)
             )
+        }
+        .alert("Enable Web Search?", isPresented: $showingSearchDisclosure) {
+            Button("Continue") {
+                acknowledgeSearchDisclosure()
+                webSearchEnabled = true
+            }
+            Button("Web Search Preferences") {
+                NotificationCenter.default.post(
+                    name: NSNotification.Name("OpenPreferences"),
+                    object: nil,
+                    userInfo: ["tab": "webSearch"]
+                )
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("Web Search sends the current message query to Tavily. Your other chat history is not sent.")
         }
         .onDrop(of: [.image, .fileURL], isTargeted: $isHoveringDropZone) { providers in
             return handleDrop(providers: providers)

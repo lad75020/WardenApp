@@ -35,5 +35,5 @@ Changes crossing module boundaries must name the owning module in the implementa
 
 <!-- SPECKIT START -->
 ## Active Spec Kit Plan
-- `specs/007-personas-model-selection/plan.md`
+- `specs/008-web-search-citations/plan.md`
 <!-- SPECKIT END -->

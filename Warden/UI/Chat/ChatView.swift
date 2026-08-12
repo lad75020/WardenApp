@@ -43,6 +43,9 @@ struct ChatView: View {
     // Web search functionality
     @State private var webSearchEnabled = false
     @State private var isSearchingWeb = false
+    @State private var pendingSearchPrompt: String?
+    @State private var pendingSearchUserMessage: MessageEntity?
+    @State private var failedSearchPrompt: String?
     
     @State private var showAgentSelector = false
     
@@ -148,15 +151,6 @@ struct ChatView: View {
                 VStack(spacing: 0) {
                     mainChatContent
                     
-                    // Show search results preview above input when available
-                    if let sources = chatViewModel.messageManager?.lastSearchSources,
-                       let query = chatViewModel.messageManager?.lastSearchQuery,
-                       !sources.isEmpty {
-                        SearchResultsPreviewView(sources: sources, query: query)
-                            .padding(.horizontal, 20)
-                            .padding(.vertical, 8)
-                    }
-
                     // Chat input container
                     ChatBottomContainerView(
                         chat: chat,
@@ -213,11 +207,7 @@ struct ChatView: View {
                         if case .failed(let error) = chatViewModel.messageManager?.searchStatus {
                             SearchErrorView(
                                 error: error,
-                                onRetry: {
-                                    // Clear error and retry
-                                    chatViewModel.messageManager?.searchStatus = nil
-                                    sendMessage()
-                                },
+                                onRetry: { retryPendingSearch() },
                                 onDismiss: {
                                     chatViewModel.messageManager?.searchStatus = nil
                                 },
@@ -229,7 +219,8 @@ struct ChatView: View {
                                         userInfo: ["tab": "webSearch"]
                                     )
                                     chatViewModel.messageManager?.searchStatus = nil
-                                }
+                                },
+                                onDisableSearch: { restorePendingPromptWithoutSending() }
                             )
                             .transition(.move(edge: .bottom).combined(with: .opacity))
                         }
@@ -246,6 +237,9 @@ struct ChatView: View {
                 // Auto-dismiss completed search status
                 .onChange(of: chatViewModel.messageManager?.searchStatus) { oldValue, newValue in
                     if case .completed = newValue {
+                        // Search has crossed into the provider request. Its user
+                        // message must no longer be a pending deletion target.
+                        clearPendingSearchState()
                         // Auto-dismiss after 2 seconds
                         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
                             if case .completed = chatViewModel.messageManager?.searchStatus {
@@ -453,6 +447,8 @@ extension ChatView {
     }
 
     func sendMessage(ignoreMessageInput: Bool = false, retryContent: String? = nil) {
+        // A new send must never inherit a terminal request's deletion target.
+        clearPendingSearchState()
         guard store.availability(for: chat).isAvailable else {
             currentError = ErrorMessage(
                 apiError: .noApiService("This chat is unavailable. Repair its service before sending."),
@@ -478,6 +474,7 @@ extension ChatView {
 
         resetError()
 
+        let rawComposerPrompt = newMessage
         let messageBody: String
         let isFirstMessage = chat.messages.count == 0
 
@@ -506,7 +503,11 @@ extension ChatView {
             messageBody = preparedMessageBody
 
             guard !messageBody.isEmpty else { return }
-            saveNewMessageInStore(with: messageBody)
+            let userMessage = saveNewMessageInStore(with: messageBody)
+            if webSearchEnabled {
+                pendingSearchUserMessage = userMessage
+                pendingSearchPrompt = rawComposerPrompt
+            }
             
             if isFirstMessage {
                 withAnimation {
@@ -516,6 +517,9 @@ extension ChatView {
         }
         
         guard !messageBody.isEmpty else { return }
+        if webSearchEnabled, pendingSearchPrompt == nil {
+            pendingSearchPrompt = rawComposerPrompt
+        }
 
         // For Veo models only: send extra video parameters to the handler without polluting the UI/history.
         // We do this by appending a hidden tag to the API payload only.
@@ -550,7 +554,8 @@ extension ChatView {
                 await chatViewModel.sendMessageStreamWithSearch(
                     apiMessageBody,
                     contextSize: Int(chat.apiService?.contextSize ?? Int16(AppConstants.chatGptContextSize)),
-                    useWebSearch: webSearchEnabled
+                    useWebSearch: webSearchEnabled,
+                    rawSearchQuery: webSearchEnabled ? pendingSearchPrompt : nil
                 ) { result in
                     handleSendResult(result)
                 }
@@ -566,7 +571,8 @@ extension ChatView {
                 await chatViewModel.sendMessageWithSearch(
                     apiMessageBody,
                     contextSize: Int(chat.apiService?.contextSize ?? Int16(AppConstants.chatGptContextSize)),
-                    useWebSearch: webSearchEnabled
+                    useWebSearch: webSearchEnabled,
+                    rawSearchQuery: webSearchEnabled ? pendingSearchPrompt : nil
                 ) { result in
                     handleSendResult(result)
                 }
@@ -596,6 +602,7 @@ extension ChatView {
             self.isSearchingWeb = false
             switch result {
             case .success:
+                self.clearPendingSearchState()
                 if self.chat.apiService?.useStreamResponse ?? false {
                     // Stream handles its own updates, just finish
                     self.handleResponseFinished()
@@ -605,8 +612,14 @@ extension ChatView {
                     self.handleResponseFinished()
                 }
             case .failure(let error):
-                WardenLog.app.error("Error sending message: \(error.localizedDescription, privacy: .public)")
-                self.currentError = ErrorMessage(apiError: self.convertToAPIError(error), timestamp: Date())
+                if error is TavilyError {
+                    self.failedSearchPrompt = self.pendingSearchPrompt
+                    self.removePendingSearchUserMessage()
+                } else {
+                    WardenLog.app.error("Error sending message (category only)")
+                    self.currentError = ErrorMessage(apiError: self.convertToAPIError(error), timestamp: Date())
+                }
+                self.clearPendingSearchState()
                 self.handleResponseFinished()
             }
         }
@@ -645,7 +658,8 @@ extension ChatView {
         return messageBody
     }
 
-    private func saveNewMessageInStore(with messageBody: String) {
+    @discardableResult
+    private func saveNewMessageInStore(with messageBody: String) -> MessageEntity {
         let newMessageEntity = MessageEntity(context: viewContext)
         newMessageEntity.id = Int64(chat.messages.count + 1)
         newMessageEntity.body = messageBody
@@ -656,6 +670,38 @@ extension ChatView {
         chat.updatedDate = Date()
         chat.addToMessages(newMessageEntity)
         chat.objectWillChange.send()
+        return newMessageEntity
+    }
+
+    private func retryPendingSearch() {
+        guard let prompt = failedSearchPrompt else { return }
+        chatViewModel.messageManager?.searchStatus = nil
+        newMessage = prompt
+        failedSearchPrompt = nil
+        webSearchEnabled = true
+        sendMessage()
+    }
+
+    private func restorePendingPromptWithoutSending() {
+        guard let prompt = failedSearchPrompt else { return }
+        chatViewModel.messageManager?.searchStatus = nil
+        webSearchEnabled = false
+        newMessage = prompt
+        failedSearchPrompt = nil
+        clearPendingSearchState()
+    }
+
+    private func removePendingSearchUserMessage() {
+        defer { pendingSearchUserMessage = nil }
+        guard let message = pendingSearchUserMessage, message.managedObjectContext != nil else { return }
+        chat.removeFromMessages(message)
+        viewContext.delete(message)
+        chat.objectWillChange.send()
+    }
+
+    private func clearPendingSearchState() {
+        pendingSearchUserMessage = nil
+        pendingSearchPrompt = nil
     }
 
     private func selectAndAddImages() {
@@ -742,6 +788,12 @@ extension ChatView {
     }
     
     private func stopStreaming() {
+        if isSearchingWeb {
+            removePendingSearchUserMessage()
+            clearPendingSearchState()
+            chatViewModel.messageManager?.searchStatus = nil
+            isSearchingWeb = false
+        }
         // Stop regular chat streaming
         chatViewModel.stopStreaming()
         

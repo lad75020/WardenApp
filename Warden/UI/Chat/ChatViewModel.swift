@@ -32,13 +32,6 @@ final class ChatViewModel: ObservableObject {
             
             if _messageManager == nil {
                 _messageManager = createMessageManager()
-                // Restore cached search results if available
-                if let cachedSources = cachedSearchSources {
-                    _messageManager?.lastSearchSources = cachedSources
-                }
-                if let cachedQuery = cachedSearchQuery {
-                    _messageManager?.lastSearchQuery = cachedQuery
-                }
                 if _messageManager == nil { messageManagerCancellables.removeAll() }
             }
             return _messageManager
@@ -51,10 +44,6 @@ final class ChatViewModel: ObservableObject {
     // Track if we've already failed to create a message manager to prevent loops
     private var messageManagerCreationFailed = false
     
-    // Cache search results at ChatViewModel level to persist across message manager recreation
-    private var cachedSearchSources: [SearchSource]?
-    private var cachedSearchQuery: String?
-
     private var cancellables = Set<AnyCancellable>()
     private var messageManagerCancellables = Set<AnyCancellable>()
 
@@ -64,8 +53,6 @@ final class ChatViewModel: ObservableObject {
         self.viewContext = viewContext
         self.streamingSession = ChatStreamingSessionRegistry.shared.session(for: chat.id)
         
-        // Subscribe to search results changes to cache them
-        setupSearchResultsCaching()
         setupStreamingSessionBindings()
         
         // Load selected MCP agents
@@ -91,21 +78,6 @@ final class ChatViewModel: ObservableObject {
         if let encoded = try? JSONEncoder().encode(selectedMCPAgents) {
             UserDefaults.standard.set(encoded, forKey: key)
         }
-    }
-    
-    private func setupSearchResultsCaching() {
-        // Observe changes to search results and cache them
-        messageManager?.objectWillChange
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
-                if let sources = self?.messageManager?.lastSearchSources {
-                    self?.cachedSearchSources = sources
-                }
-                if let query = self?.messageManager?.lastSearchQuery {
-                    self?.cachedSearchQuery = query
-                }
-            }
-            .store(in: &cancellables)
     }
     
     private func setupStreamingSessionBindings() {
@@ -218,13 +190,13 @@ final class ChatViewModel: ObservableObject {
     }
     
     @MainActor
-    func sendMessageStreamWithSearch(_ message: String, contextSize: Int, useWebSearch: Bool = false, completion: @escaping (Result<Void, Error>) -> Void) async {
+    func sendMessageStreamWithSearch(_ message: String, contextSize: Int, useWebSearch: Bool = false, rawSearchQuery: String? = nil, completion: @escaping (Result<Void, Error>) -> Void) async {
         guard let messageManager = self.messageManager else {
             completion(.failure(APIError.noApiService("No valid API service configuration")))
             return
         }
         
-        await messageManager.sendMessageStreamWithSearch(message, in: chat, contextSize: contextSize, useWebSearch: useWebSearch) { [weak self] result in
+        await messageManager.sendMessageStreamWithSearch(message, in: chat, contextSize: contextSize, useWebSearch: useWebSearch, rawSearchQuery: rawSearchQuery) { [weak self] result in
             Task { @MainActor in
                 switch result {
                 case .success:
@@ -239,7 +211,7 @@ final class ChatViewModel: ObservableObject {
     }
     
     @MainActor
-    func sendMessageWithSearch(_ message: String, contextSize: Int, useWebSearch: Bool = false, completion: @escaping (Result<Void, Error>) -> Void) async {
+    func sendMessageWithSearch(_ message: String, contextSize: Int, useWebSearch: Bool = false, rawSearchQuery: String? = nil, completion: @escaping (Result<Void, Error>) -> Void) async {
         guard let messageManager = self.messageManager else {
             completion(.failure(APIError.noApiService("No valid API service configuration")))
             return
@@ -250,6 +222,7 @@ final class ChatViewModel: ObservableObject {
             in: chat,
             contextSize: contextSize,
             useWebSearch: useWebSearch,
+            rawSearchQuery: rawSearchQuery,
             completion: { result in
                 Task { @MainActor in
                     completion(result)
@@ -345,6 +318,12 @@ final class ChatViewModel: ObservableObject {
     }
     
     func stopStreaming() {
+        // Search begins before the streaming session has a request ID; let its owner
+        // invalidate any in-flight search generation before cancelling a stream.
+        if let messageManager = _messageManager {
+            messageManager.stopStreaming(in: chat)
+            return
+        }
         if let requestID = streamingSession.requestID {
             _ = streamingSession.cancel(requestID: requestID)
             Task { await StreamingTaskController.shared.cancel(conversationID: chat.id, requestID: requestID) }
@@ -366,6 +345,7 @@ final class ChatViewModel: ObservableObject {
     /// Function to safely delete this chat if it's invalid
     func deleteInvalidChat() {
         invalidateStreamingBeforeDeletion()
+        UserDefaults.standard.removeObject(forKey: TavilyConfig.disclosureAcknowledgedKey(for: chat.id))
         viewContext.delete(chat)
         do {
             try viewContext.save()

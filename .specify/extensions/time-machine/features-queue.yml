@@ -1,7 +1,7 @@
 analyzed_at: "2026-08-11T17:29:16Z"
 project_root: "/Volumes/WDBlack4TB/Code/WardenApp"
 total_features: 12
-completed: 4
+completed: 5
 features:
   - id: "app-shell-and-onboarding"
     name: "App Shell and Onboarding"
@@ -148,12 +148,12 @@ features:
       - "Warden/UI/Chat/Components/SearchErrorView.swift"
       - "Warden/UI/Chat/Components/MessageSourcesView.swift"
       - "Warden/UI/Chat/Components/CitationBadgeView.swift"
-    status: pending # pending | in-progress | done | skipped
+    status: done # pending | in-progress | done | skipped
     current_phase: null # null | specify | clarify | plan | tasks | implement
-    branch: null
+    branch: "feature/time-machine-web-search-and-citations"
     pushed: null # null | true | false
-    started_at: null
-    completed_at: null
+    started_at: "2026-08-12T02:51:58Z"
+    completed_at: "2026-08-12T04:04:46Z"
 
   - id: "chat-organization-and-sharing"
     name: "Chat Organization and Sharing"

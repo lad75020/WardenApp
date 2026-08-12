@@ -852,8 +852,12 @@ struct TavilyConfig {
     static let searchDepthKey = "tavilySearchDepth"
     static let maxResultsKey = "tavilyMaxResults"
     static let includeAnswerKey = "tavilyIncludeAnswer"
+    /// Acknowledgement is intentionally scoped to one local conversation. ChatEntity
+    /// has no compatible persisted field for this UX-only value, so this key is
+    /// removed when the conversation is deleted and never contains prompt content.
+    static func disclosureAcknowledgedKey(for chatID: UUID) -> String {
+        "tavilySearchDisclosureAcknowledged.\(chatID.uuidString)"
+    }
 }
 
 // Maintain backward compatibility
-
-

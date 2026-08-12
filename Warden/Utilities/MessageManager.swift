@@ -5,6 +5,14 @@ import os
 
 @MainActor
 final class MessageManager: ObservableObject {
+    typealias MessageDispatcher = @MainActor (
+        APIService,
+        [[String: String]],
+        [[String: Any]]?,
+        Float,
+        @escaping (Result<(String?, [ToolCall]?), Error>) -> Void
+    ) -> Void
+
     typealias StreamDispatcher = @MainActor (
         APIService,
         [[String: String]],
@@ -20,11 +28,12 @@ final class MessageManager: ObservableObject {
 
     private var apiService: APIService
     private var viewContext: NSManagedObjectContext
+    private let messageDispatcher: MessageDispatcher
     private let streamDispatcher: StreamDispatcher
     private let fetchStreamTools: Bool
     private let streamingTaskController = StreamingTaskController.shared
     private let streamingSessions = ChatStreamingSessionRegistry.shared
-    private let tavilyService = TavilySearchService()
+    private let tavilyService: TavilySearchService
     private let streamUpdateInterval = AppConstants.streamedResponseUpdateUIInterval
     
     // Debounce saving to Core Data
@@ -32,10 +41,10 @@ final class MessageManager: ObservableObject {
     
     // Published property for search status updates
     @Published var searchStatus: SearchStatus?
-    
-    // Published property for completed search results
-    @Published var lastSearchSources: [SearchSource]?
-    @Published var lastSearchQuery: String?
+
+    /// Search precedes the provider-owned stream, so it needs its own request identity.
+    /// Stop invalidates this identity to reject late Tavily progress, results, and errors.
+    private var activeSearchRequestIDs: [UUID: UUID] = [:]
     
     // Published property for tool call status
     @Published var toolCallStatus: WardenToolCallStatus?
@@ -51,6 +60,17 @@ final class MessageManager: ObservableObject {
         apiService: APIService,
         viewContext: NSManagedObjectContext,
         fetchStreamTools: Bool = true,
+        tavilyService: TavilySearchService = TavilySearchService(),
+        messageDispatcher: @escaping MessageDispatcher = { apiService, messages, tools, temperature, completion in
+            ChatService.shared.sendMessage(
+                apiService: apiService,
+                messages: messages,
+                tools: tools,
+                temperature: temperature
+            ) { result in
+                completion(result.mapError { $0 as Error })
+            }
+        },
         streamDispatcher: @escaping StreamDispatcher = { apiService, messages, tools, temperature, onChunk in
             try await ChatService.shared.sendStream(
                 apiService: apiService,
@@ -64,6 +84,8 @@ final class MessageManager: ObservableObject {
         self.apiService = apiService
         self.viewContext = viewContext
         self.fetchStreamTools = fetchStreamTools
+        self.tavilyService = tavilyService
+        self.messageDispatcher = messageDispatcher
         self.streamDispatcher = streamDispatcher
     }
 
@@ -77,6 +99,7 @@ final class MessageManager: ObservableObject {
     }
     
     func stopStreaming(in chat: ChatEntity) {
+        cancelSearchRequest(in: chat)
         let session = streamingSessions.session(for: chat.id)
         if let requestID = session.requestID {
             _ = session.cancel(requestID: requestID)
@@ -93,6 +116,7 @@ final class MessageManager: ObservableObject {
     }
 
     func invalidateStreaming(in chat: ChatEntity) {
+        cancelSearchRequest(in: chat)
         streamingSessions.invalidate(conversationID: chat.id)
         Task { await streamingTaskController.invalidate(conversationID: chat.id) }
         chat.waitingForResponse = false
@@ -109,19 +133,33 @@ final class MessageManager: ObservableObject {
     
     // MARK: - Tavily Search Support
     
-    func executeSearch(_ query: String) async throws -> (formattedResults: String, urls: [String]) {
-        let (context, urls, sources) = try await tavilyService.performSearch(query: query) { status in
-            DispatchQueue.main.async { [weak self] in
-                self?.searchStatus = status
-                if case .completed(let sources) = status {
-                    self?.lastSearchSources = sources
-                    self?.lastSearchQuery = query
-                } else if case .failed = status {
-                    // no-op; performSearch throws
-                }
-            }
+    func executeSearch(_ query: String, in chat: ChatEntity, requestID: UUID) async throws -> WebSearchAttempt {
+        let (context, urls, sources) = try await tavilyService.performSearch(query: query) { [weak self] status in
+            guard let self, self.isCurrentSearchRequest(requestID, in: chat) else { return }
+            self.searchStatus = status
         }
-        return (context, urls)
+        _ = urls
+        return WebSearchAttempt(query: query, formattedContext: context, sources: sources)
+    }
+
+    private func beginSearchRequest(in chat: ChatEntity) -> UUID {
+        let requestID = UUID()
+        activeSearchRequestIDs[chat.id] = requestID
+        return requestID
+    }
+
+    private func isCurrentSearchRequest(_ requestID: UUID, in chat: ChatEntity) -> Bool {
+        activeSearchRequestIDs[chat.id] == requestID
+    }
+
+    private func finishSearchRequest(_ requestID: UUID, in chat: ChatEntity) {
+        guard isCurrentSearchRequest(requestID, in: chat) else { return }
+        activeSearchRequestIDs.removeValue(forKey: chat.id)
+    }
+
+    private func cancelSearchRequest(in chat: ChatEntity) {
+        activeSearchRequestIDs.removeValue(forKey: chat.id)
+        searchStatus = nil
     }
     
     @MainActor
@@ -130,6 +168,7 @@ final class MessageManager: ObservableObject {
         in chat: ChatEntity,
         contextSize: Int,
         useWebSearch: Bool = false,
+        rawSearchQuery: String? = nil,
         completion: @escaping (Result<Void, Error>) -> Void
     ) async {
         #if DEBUG
@@ -143,28 +182,31 @@ final class MessageManager: ObservableObject {
         let shouldSearch = useWebSearch || searchCheck.isSearch
         
         if shouldSearch {
+            let searchRequestID = beginSearchRequest(in: chat)
             let query: String
             if searchCheck.isSearch, let commandQuery = searchCheck.query {
                 query = commandQuery
             } else {
-                query = message
+                query = rawSearchQuery ?? message
             }
             
             chat.waitingForResponse = true
             
             do {
-                let (searchResults, urls) = try await executeSearch(query)
+                let attempt = try await executeSearch(query, in: chat, requestID: searchRequestID)
+                guard isCurrentSearchRequest(searchRequestID, in: chat), !Task.isCancelled else { return }
+                finishSearchRequest(searchRequestID, in: chat)
                 
                 finalMessage = """
                 User asked: \(query)
                 
-                \(searchResults)
+                \(attempt.formattedContext)
                 
                 Based on the search results above, please provide a comprehensive answer to the user's question. Include relevant citations using the source numbers [1], [2], etc.
                 """
                 
                 // Pass URLs through to sendMessageStream
-                sendMessageStream(finalMessage, in: chat, contextSize: contextSize, searchUrls: urls) { [weak self] result in
+                sendMessageStream(finalMessage, in: chat, contextSize: contextSize, searchAttempt: attempt) { [weak self] result in
                     // Auto-rename chat if needed after successful search response
                     if case .success = result {
                         self?.generateChatNameIfNeeded(chat: chat)
@@ -173,6 +215,12 @@ final class MessageManager: ObservableObject {
                 }
                 return
             } catch {
+                guard isCurrentSearchRequest(searchRequestID, in: chat), !Task.isCancelled else { return }
+                finishSearchRequest(searchRequestID, in: chat)
+                guard !(error is CancellationError) else {
+                    chat.waitingForResponse = false
+                    return
+                }
                 WardenLog.app.error("[WebSearch] Search failed (category only)")
                 chat.waitingForResponse = false
                 
@@ -197,6 +245,7 @@ final class MessageManager: ObservableObject {
         in chat: ChatEntity,
         contextSize: Int,
         useWebSearch: Bool = false,
+        rawSearchQuery: String? = nil,
         completion: @escaping (Result<Void, Error>) -> Void
     ) async {
         #if DEBUG
@@ -210,28 +259,31 @@ final class MessageManager: ObservableObject {
         let shouldSearch = useWebSearch || searchCheck.isSearch
         
         if shouldSearch {
+            let searchRequestID = beginSearchRequest(in: chat)
             let query: String
             if searchCheck.isSearch, let commandQuery = searchCheck.query {
                 query = commandQuery
             } else {
-                query = message
+                query = rawSearchQuery ?? message
             }
             
             chat.waitingForResponse = true
             
             do {
-                let (searchResults, urls) = try await executeSearch(query)
+                let attempt = try await executeSearch(query, in: chat, requestID: searchRequestID)
+                guard isCurrentSearchRequest(searchRequestID, in: chat), !Task.isCancelled else { return }
+                finishSearchRequest(searchRequestID, in: chat)
                 
                 finalMessage = """
                 User asked: \(query)
                 
-                \(searchResults)
+                \(attempt.formattedContext)
                 
                 Based on the search results above, please provide a comprehensive answer to the user's question. Include relevant citations using the source numbers [1], [2], etc.
                 """
                 
                 // Pass URLs through to sendMessage
-                sendMessage(finalMessage, in: chat, contextSize: contextSize, searchUrls: urls) { [weak self] result in
+                sendMessage(finalMessage, in: chat, contextSize: contextSize, searchAttempt: attempt) { [weak self] result in
                     // Auto-rename chat if needed after successful search response
                     if case .success = result {
                         self?.generateChatNameIfNeeded(chat: chat)
@@ -240,6 +292,12 @@ final class MessageManager: ObservableObject {
                 }
                 return
             } catch {
+                guard isCurrentSearchRequest(searchRequestID, in: chat), !Task.isCancelled else { return }
+                finishSearchRequest(searchRequestID, in: chat)
+                guard !(error is CancellationError) else {
+                    chat.waitingForResponse = false
+                    return
+                }
                 WardenLog.app.error("[WebSearch] Search failed (non-stream, category only)")
                 chat.waitingForResponse = false
                 
@@ -277,6 +335,7 @@ final class MessageManager: ObservableObject {
         in chat: ChatEntity,
         contextSize: Int,
         searchUrls: [String]? = nil,
+        searchAttempt: WebSearchAttempt? = nil,
         completion: @escaping (Result<Void, Error>) -> Void
     ) {
         let forceSinglePrompt = UserDefaults.standard.bool(forKey: "imageGenMode_\(chat.id.uuidString)")
@@ -326,11 +385,11 @@ final class MessageManager: ObservableObject {
             }
             #endif
             
-            ChatService.shared.sendMessage(
-                apiService: self.apiService,
-                messages: requestMessages,
-                tools: toolDefinitions.isEmpty ? nil : toolDefinitions,
-                temperature: temperature
+            self.messageDispatcher(
+                self.apiService,
+                requestMessages,
+                toolDefinitions.isEmpty ? nil : toolDefinitions,
+                temperature
             ) { [weak self] result in
                 guard let self = self else { return }
                 
@@ -340,7 +399,7 @@ final class MessageManager: ObservableObject {
                         chat.waitingForResponse = false
                         
                         if let messageBody = messageBody {
-                            self.addMessageToChat(chat: chat, message: messageBody, searchUrls: searchUrls)
+                            self.addMessageToChat(chat: chat, message: messageBody, searchUrls: searchAttempt?.actionableURLs ?? searchUrls, searchMetadata: searchAttempt?.metadata)
                             self.addNewMessageToRequestMessages(chat: chat, content: messageBody, role: RequestMessageRole.assistant.rawValue)
                         }
                         
@@ -444,6 +503,7 @@ final class MessageManager: ObservableObject {
         in chat: ChatEntity,
         contextSize: Int,
         searchUrls: [String]? = nil,
+        searchAttempt: WebSearchAttempt? = nil,
         retryTarget: MessageEntity? = nil,
         completion: @escaping (Result<Void, Error>) -> Void
     ) {
@@ -452,7 +512,8 @@ final class MessageManager: ObservableObject {
             message,
             in: chat,
             contextSize: contextSize,
-            searchUrls: searchUrls,
+            searchUrls: searchAttempt?.actionableURLs ?? searchUrls,
+            searchMetadata: searchAttempt?.metadata,
             retryIntent: retryIntent,
             completion: completion
         )
@@ -480,6 +541,7 @@ final class MessageManager: ObservableObject {
         in chat: ChatEntity,
         contextSize: Int,
         searchUrls: [String]?,
+        searchMetadata: MessageSearchMetadata? = nil,
         retryIntent: RetryIntent?,
         completion: @escaping (Result<Void, Error>) -> Void
     ) {
@@ -513,7 +575,7 @@ final class MessageManager: ObservableObject {
         
         // For image generation models, avoid streaming entirely and use non-streaming send
         if isImageGeneration {
-            sendMessage(message, in: chat, contextSize: contextSize, searchUrls: searchUrls, completion: completion)
+            sendMessage(message, in: chat, contextSize: contextSize, searchUrls: searchUrls, searchAttempt: nil, completion: completion)
             return
         }
         
@@ -624,6 +686,9 @@ final class MessageManager: ObservableObject {
                     conversationID: chat.id,
                     requestID: streamTaskID
                   ) else {
+                chat.waitingForResponse = false
+                session.finish(requestID: streamTaskID)
+                completion(.failure(CancellationError()))
                 return
             }
             
@@ -688,7 +753,8 @@ final class MessageManager: ObservableObject {
                             finalResponse,
                             in: chat,
                             retryTarget: retryIntent?.assistantTarget,
-                            searchUrls: searchUrls
+                            searchUrls: searchUrls,
+                            searchMetadata: searchMetadata
                         )
                     }
                     try Task.checkCancellation()
@@ -714,7 +780,8 @@ final class MessageManager: ObservableObject {
                     finalResponse,
                     in: chat,
                     retryTarget: retryIntent?.assistantTarget,
-                    searchUrls: searchUrls
+                    searchUrls: searchUrls,
+                    searchMetadata: searchMetadata
                 )
                 
                 await MainActor.run {
@@ -743,7 +810,8 @@ final class MessageManager: ObservableObject {
                             partialResponse,
                             in: chat,
                             retryTarget: retryIntent?.assistantTarget,
-                            searchUrls: searchUrls
+                            searchUrls: searchUrls,
+                            searchMetadata: searchMetadata
                         )
                         #if DEBUG
                         WardenLog.streaming.debug("Partial response saved after cancellation")
@@ -1141,7 +1209,8 @@ final class MessageManager: ObservableObject {
         _ content: String,
         in chat: ChatEntity,
         retryTarget: MessageEntity?,
-        searchUrls: [String]?
+        searchUrls: [String]?,
+        searchMetadata: MessageSearchMetadata? = nil
     ) {
         guard !content.isEmpty else { return }
         if let retryTarget, retryTarget.managedObjectContext != nil {
@@ -1160,7 +1229,7 @@ final class MessageManager: ObservableObject {
             chat.objectWillChange.send()
             debounceSave()
         } else {
-            addMessageToChat(chat: chat, message: content, searchUrls: searchUrls)
+            addMessageToChat(chat: chat, message: content, searchUrls: searchUrls, searchMetadata: searchMetadata)
             addNewMessageToRequestMessages(chat: chat, content: content, role: RequestMessageRole.assistant.rawValue)
         }
     }
@@ -1221,7 +1290,7 @@ final class MessageManager: ObservableObject {
         }
     }
 
-    private func addMessageToChat(chat: ChatEntity, message: String, searchUrls: [String]? = nil, toolCalls: [WardenToolCallStatus]? = nil, isStreaming: Bool = false) {
+    private func addMessageToChat(chat: ChatEntity, message: String, searchUrls: [String]? = nil, searchMetadata: MessageSearchMetadata? = nil, toolCalls: [WardenToolCallStatus]? = nil, isStreaming: Bool = false) {
         assert(Thread.isMainThread, "addMessageToChat must be called on main thread")
         #if DEBUG
         WardenLog.app.debug("AI response received: \(message.count, privacy: .public) char(s)")
@@ -1267,15 +1336,10 @@ final class MessageManager: ObservableObject {
         }
         
         // Store search metadata if we have search results
-        if let sources = lastSearchSources, let query = lastSearchQuery, !sources.isEmpty {
-            newMessage.searchMetadata = MessageSearchMetadata(
-                query: query,
-                sources: sources,
-                searchTime: Date(),
-                resultCount: sources.count
-            )
+        if let searchMetadata {
+            newMessage.searchMetadata = searchMetadata
             #if DEBUG
-            WardenLog.app.debug("Saved search metadata: \(sources.count, privacy: .public) source(s)")
+            WardenLog.app.debug("Saved search metadata: \(searchMetadata.resultCount, privacy: .public) source(s)")
             #endif
         }
         

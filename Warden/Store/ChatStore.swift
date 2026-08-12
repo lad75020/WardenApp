@@ -224,6 +224,7 @@ final class ChatStore: ObservableObject {
             throw ChatRecoveryError.chatIsAlreadyAvailable
         }
 
+        UserDefaults.standard.removeObject(forKey: TavilyConfig.disclosureAcknowledgedKey(for: chat.id))
         viewContext.delete(chat)
         do {
             try viewContext.save()
@@ -372,6 +373,9 @@ final class ChatStore: ObservableObject {
                 let entities: [T] = try self.viewContext.fetch(fetchRequest)
                 for entity in entities {
                     onDelete?(entity)
+                    if let chat = entity as? ChatEntity {
+                        UserDefaults.standard.removeObject(forKey: TavilyConfig.disclosureAcknowledgedKey(for: chat.id))
+                    }
                     self.viewContext.delete(entity)
                 }
                 self.saveContext()

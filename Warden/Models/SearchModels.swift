@@ -129,6 +129,39 @@ enum SearchStatus: Equatable {
     }
 }
 
+/// External search results are untrusted. Keep the opening policy in one value
+/// type so UI controls and markdown conversion cannot drift apart.
+enum SearchSourceURL {
+    static func actionableURL(from rawValue: String) -> URL? {
+        guard let url = URL(string: rawValue),
+              url.scheme?.lowercased() == "https",
+              let host = url.host,
+              !host.isEmpty,
+              url.absoluteURL == url else {
+            return nil
+        }
+        return url
+    }
+}
+
+/// Search data is scoped to exactly one provider request. It is never a
+/// preference or global cache, and is persisted only with its assistant turn.
+struct WebSearchAttempt {
+    let query: String
+    let formattedContext: String
+    let sources: [SearchSource]
+
+    var actionableURLs: [String] {
+        // Preserve source indexes: an unsupported source stays in its original
+        // slot and therefore cannot make a later source claim its citation.
+        sources.map(\.url)
+    }
+
+    var metadata: MessageSearchMetadata {
+        MessageSearchMetadata(query: query, sources: sources, searchTime: Date(), resultCount: sources.count)
+    }
+}
+
 // MARK: - Search Source
 
 public struct SearchSource: Identifiable, Codable, Equatable {

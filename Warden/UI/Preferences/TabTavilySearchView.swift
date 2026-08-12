@@ -30,12 +30,13 @@ struct TabTavilySearchView: View {
                         
                         VStack(alignment: .leading, spacing: 12) {
                             VStack(alignment: .leading, spacing: 6) {
-                                Text("Tavily API Key")
+                                    Text("Tavily API Key")
                                     .font(.system(size: 12, weight: .medium))
                                     .foregroundStyle(.secondary)
                                 
                                 SecureField("Enter your API key", text: $apiKey)
                                     .textFieldStyle(.roundedBorder)
+                                    .accessibilityLabel("Tavily API key")
                             }
                             
                             HStack(spacing: 12) {
@@ -106,9 +107,10 @@ struct TabTavilySearchView: View {
                                 title: "Include AI Answer",
                                 subtitle: "Add Tavily's summarized answer to results"
                             ) {
-                                Toggle("", isOn: $includeAnswer)
-                                    .toggleStyle(.switch)
-                                    .labelsHidden()
+                            Toggle("", isOn: $includeAnswer)
+                                .toggleStyle(.switch)
+                                .labelsHidden()
+                                .accessibilityLabel("Include summarized Tavily answer")
                             }
                         }
                     }
@@ -129,7 +131,7 @@ struct TabTavilySearchView: View {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text("Enable Web Search")
                                         .font(.system(size: 13, weight: .medium))
-                                    Text("Click the globe icon in the message input area to toggle web search on/off.")
+                                    Text("Click the globe icon for the next request. The first enablement explains that only the current query is shared with Tavily.")
                                         .font(.system(size: 12))
                                         .foregroundStyle(.secondary)
                                         .fixedSize(horizontal: false, vertical: true)
@@ -145,7 +147,7 @@ struct TabTavilySearchView: View {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text("Search Results")
                                         .font(.system(size: 13, weight: .medium))
-                                    Text("When enabled, your messages will include relevant web search results for context.")
+                                    Text("When enabled, the current query is searched before it is sent to your selected AI provider. Search failures keep the prompt unsent.")
                                         .font(.system(size: 12))
                                         .foregroundStyle(.secondary)
                                         .fixedSize(horizontal: false, vertical: true)
@@ -240,7 +242,7 @@ struct TabTavilySearchView: View {
                 }
             } catch {
                 await MainActor.run {
-                    testResultMessage = "Connection failed: \(error.localizedDescription)"
+                    testResultMessage = "Connection failed. Check your connection and try again."
                     showingTestResult = true
                     isTesting = false
                 }

@@ -490,6 +490,7 @@ struct ProjectSummaryView: View {
         
         alert.beginSheetModal(for: NSApp.keyWindow!) { response in
             if response == .alertFirstButtonReturn {
+                UserDefaults.standard.removeObject(forKey: TavilyConfig.disclosureAcknowledgedKey(for: chat.id))
                 viewContext.delete(chat)
                 do {
                     try viewContext.save()
