@@ -29,8 +29,8 @@
 **Purpose**: Lock down lossless identity, availability, persistence, and chat-update semantics before UI actions call them.
 
 - [X] T005 Add deterministic identity and availability tests in `WardenTests/Utilities/MessageParserTests.swift` for provider/model collisions, separators in model IDs, and configured-service/visibility absence.
-- [ ] T006 [P] Add failing in-memory Core Data tests in `WardenTests/PersonasModelSelection/ChatModelSelectionCoordinatorTests.swift` for atomic service/model updates, failed save behavior, and a chat-scoped `RecreateMessageManager` notification.
-- [ ] T007 [P] Add failing local-preference recovery tests in `WardenTests/PersonasModelSelection/FavoriteModelsManagerTests.swift` for malformed favorite values and provider/model favorite persistence without secrets.
+- [x] T006 [P] Add failing in-memory Core Data tests in `WardenTests/PersonasModelSelection/ChatModelSelectionCoordinatorTests.swift` for atomic service/model updates, failed save behavior, and a chat-scoped `RecreateMessageManager` notification.
+- [x] T007 [P] Add failing local-preference recovery tests in `WardenTests/PersonasModelSelection/FavoriteModelsManagerTests.swift` for malformed favorite values and provider/model favorite persistence without secrets.
 - [X] T008 Add a lossless provider/model identity and availability policy in `Warden/Utilities/FavoriteModelsManager.swift` without delimiter-splitting opaque model IDs.
 - [X] T009 Implement a validated atomic chat provider/model mutation coordinator in `Warden/Utilities/FavoriteModelsManager.swift`; it saves before notifying and retains the current pair on invalid service/model or save failure.
 - [X] T010 Adapt local favorite persistence/recovery to use the canonical identity in `Warden/Utilities/FavoriteModelsManager.swift` without storing credentials, endpoints, prompts, or conversation content.
@@ -101,7 +101,7 @@
 
 - [X] T028 [US3] Update provider/model identity, configured-pair filtering, and shared mutation use in `Warden/UI/Components/FavoriteQuickAccessBar.swift` so matching model IDs across providers cannot collide.
 - [X] T029 [US3] Verify existing `Warden/UI/Components/ModelInfoTooltip.swift` already displays optional capability/context/pricing information without a render-time fetch or sensitive configuration.
-- [ ] T030 [US3] Run favorite/metadata focused tests and the favorite/metadata manual steps in `specs/007-personas-model-selection/quickstart.md`, recording results in `specs/007-personas-model-selection/implementation-log.md`.
+- [x] T030 [US3] Run favorite/metadata focused tests and the favorite/metadata manual steps in `specs/007-personas-model-selection/quickstart.md`, recording results in `specs/007-personas-model-selection/implementation-log.md`.
 
 **Checkpoint**: Favorites and inspection enhance selection without bypassing configured availability or privacy constraints.
 
@@ -114,7 +114,7 @@
 - [X] T033 Run the feature-focused XCTest added in `WardenTests/Utilities/MessageParserTests.swift`, then record exact commands/outcomes in `specs/007-personas-model-selection/implementation-log.md`.
 - [X] T034 Run the macOS arm64 build for `Warden.xcodeproj` scheme `Warden`, inspect its `.xcresult`, and record the real result in `specs/007-personas-model-selection/implementation-log.md`.
 - [X] T035 Run the complete macOS test suite for `Warden.xcodeproj` scheme `Warden`, inspect its `.xcresult`, and record the real result in `specs/007-personas-model-selection/implementation-log.md`.
-- [ ] T036 Execute the full regression/manual privacy workflow in `specs/007-personas-model-selection/quickstart.md` and record actual observations in `specs/007-personas-model-selection/implementation-log.md`.
+- [x] T036 Execute the full regression/manual privacy workflow in `specs/007-personas-model-selection/quickstart.md` and record actual observations in `specs/007-personas-model-selection/implementation-log.md`.
 - [X] T037 Verify the feature diff and `AGENTS.md` contain no API keys, tokens, prompts, private chat content, build products, DerivedData, or unintended project-file changes; retain `AGENTS.md` active-plan reference in `AGENTS.md`.
 
 ## Dependencies and Execution Order
