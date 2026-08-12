@@ -189,7 +189,7 @@ features:
     status: done # pending | in-progress | done | skipped
     current_phase: null # null | specify | clarify | plan | tasks | implement
     branch: "main" # feature branch was identical to main (a7d0d50) and has been removed; work landed on main
-    pushed: false # null | true | false
+    pushed: true # null | true | false
     started_at: "2026-08-12T06:12:29Z"
     completed_at: "2026-08-12T09:45:00Z"
 
