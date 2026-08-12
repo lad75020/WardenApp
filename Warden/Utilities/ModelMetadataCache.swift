@@ -35,6 +35,15 @@ final class ModelMetadataCache: ObservableObject {
         return cachedMetadata[provider] ?? [:]
     }
     
+    static func shouldReplaceCachedMetadata(
+        provider: String,
+        existing: [String: ModelMetadata]?,
+        refreshed: [String: ModelMetadata]
+    ) -> Bool {
+        let localProvider = ["ollama", "lmstudio", "mlx", "huggingface", "coreml llm"].contains(provider.lowercased())
+        return !refreshed.isEmpty || !localProvider || existing == nil
+    }
+
     /// Fetch metadata for a provider if stale or missing
     func fetchMetadataIfNeeded(provider: String, apiKey: String) async {
         // Check if we're already fetching
@@ -59,7 +68,15 @@ final class ModelMetadataCache: ObservableObject {
             let fetcher = ModelMetadataFetcherFactory.createFetcher(for: provider)
             let newMetadata = try await fetcher.fetchAllMetadata(apiKey: apiKey)
             
-            cachedMetadata[provider] = newMetadata
+            // Local runtimes often return no models while starting; preserve a
+            // usable cached selection instead of replacing it with an empty result.
+            if Self.shouldReplaceCachedMetadata(
+                provider: provider,
+                existing: cachedMetadata[provider],
+                refreshed: newMetadata
+            ) {
+                cachedMetadata[provider] = newMetadata
+            }
             
             // Ensure OpenAI image model metadata exists with image-generation capability
             let normalized = provider.lowercased()

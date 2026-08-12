@@ -10,17 +10,17 @@ class HuggingFaceService: NSObject, APIService {
     var baseURL: URL = URL(string: "local://huggingface")!
     var session: URLSession = .shared
     var model: String
-    
+
     // Swift-transformers model instance
     private var modelInstance: LanguageModelProtocol?
     private var isModelLoading = false
     private var modelLoadError: Error?
-    
+
     init(model: String) {
         self.model = model
         super.init()
     }
-    
+
     func sendMessage(
         _ requestMessages: [[String: String]],
         tools: [[String: Any]]?,
@@ -36,75 +36,81 @@ class HuggingFaceService: NSObject, APIService {
             }
         }
     }
-    
+
     func sendMessageStream(
         _ requestMessages: [[String: String]],
         tools: [[String: Any]]?,
         temperature: Float
     ) async throws -> AsyncThrowingStream<(String?, [ToolCall]?), Error> {
         return AsyncThrowingStream { continuation in
-            Task {
+            let task = Task {
                 do {
                     // Load the model if not already loaded
                     try await ensureModelLoaded()
-                    
+
                     guard let modelInstance = modelInstance else {
                         continuation.finish(throwing: APIError.serverError("Model failed to load"))
                         return
                     }
-                    
+
                     // Convert messages to prompt format
                     let prompt = convertToTransformerInput(requestMessages)
-                    
+
                     // Create generation config with streaming enabled
                     let config = createGenerationConfig(temperature: temperature)
-                    
+
                     #if DEBUG
                     WardenLog.app.debug("Starting HuggingFace streaming inference with prompt length: \(prompt.count)")
                     #endif
-                    
+
                     var accumulatedResponse = ""
-                    
+
                     if let realModel = modelInstance as? LanguageModel {
-                        // Real LanguageModel implementation with proper streaming
+                        // The transformer callback contains the cumulative response. Emit only
+                        // its newly appended suffix so UI consumers never duplicate text.
                         try await withMLTensorComputePolicy(.cpuOnly) {
                             try await realModel.generate(config: config, prompt: prompt) { inProgressGeneration in
+                                guard !Task.isCancelled else { return }
                                 let responseText = formatResponse(inProgressGeneration)
-                                
-                                // Only yield new content that hasn't been sent yet
-                                if responseText.count > accumulatedResponse.count {
-                                    let newContent = String(responseText.dropFirst(accumulatedResponse.count))
-                                    if !newContent.isEmpty {
-                                        continuation.yield((newContent, nil))
-                                        accumulatedResponse = responseText
-                                    }
-                                }
+                                let delta = Self.streamingDelta(previous: accumulatedResponse, current: responseText)
+                                guard !delta.isEmpty else { return }
+                                accumulatedResponse = responseText
+                                continuation.yield((delta, nil))
                             }
                         }
                     } else {
-                        // Mock implementation for testing - simulate streaming
+                        // Test doubles may provide per-token output rather than a cumulative response.
                         try await modelInstance.generateStreaming(config: config, prompt: prompt) { token in
+                            guard !Task.isCancelled, !token.isEmpty else { return }
                             continuation.yield((token, nil))
                         }
                     }
-                    
+
                     continuation.finish()
-                    
+
                 } catch {
                     continuation.finish(throwing: error)
                 }
             }
+            continuation.onTermination = { _ in
+                task.cancel()
+            }
         }
     }
-    
+
+    static func streamingDelta(previous: String, current: String) -> String {
+        guard current.hasPrefix(previous) else { return current }
+        return String(current.dropFirst(previous.count))
+    }
+
     func fetchModels() async throws -> [AIModel] {
         let modelsPath = "/Volumes/WDBlack4TB/HFModels/"
         let fileManager = FileManager.default
-        
+
         // Start with models from AppConstants
         let presetModels = getPresetModels()
         var allModels = Set(presetModels.map { $0.id })
-        
+
         // Check if the directory exists and add folder models
         var isDirectory: ObjCBool = false
         if fileManager.fileExists(atPath: modelsPath, isDirectory: &isDirectory),
@@ -116,16 +122,16 @@ class HuggingFaceService: NSObject, APIService {
                     let fullPath = (modelsPath as NSString).appendingPathComponent(item)
                     return fileManager.fileExists(atPath: fullPath, isDirectory: &isDir) && isDir.boolValue
                 }
-                
+
                 #if DEBUG
                 WardenLog.app.debug("Found \(modelDirectories.count) model directories at \(modelsPath)")
                 #endif
-                
+
                 // Add folder models to our set (removes duplicates automatically)
                 for modelName in modelDirectories {
                     allModels.insert(modelName)
                 }
-                
+
             } catch {
                 #if DEBUG
                 WardenLog.app.error("Error reading HuggingFace models directory: \(error.localizedDescription)")
@@ -133,21 +139,21 @@ class HuggingFaceService: NSObject, APIService {
                 // Continue with preset models if there's an error reading the directory
             }
         }
-        
+
         #if DEBUG
         WardenLog.app.debug("Total HuggingFace models available: \(allModels.count) (Preset: \(presetModels.count), Folder: \(allModels.count - presetModels.count))")
         #endif
-        
+
         // Sort alphabetically and create AIModel objects
         return allModels.sorted().map { AIModel(id: $0) }
     }
-    
+
     private func getPresetModels() -> [AIModel] {
         // Return preset models from AppConstants
         let presetModels = AppConstants.defaultApiConfigurations["huggingface"]?.models ?? []
         return presetModels.map { AIModel(id: $0) }
     }
-    
+
     func prepareRequest(
         requestMessages: [[String: String]],
         tools: [[String: Any]]?,
@@ -160,39 +166,59 @@ class HuggingFaceService: NSObject, APIService {
         request.httpMethod = "POST"
         return request
     }
-    
+
     func parseJSONResponse(data: Data) -> (String?, String?, [ToolCall]?)? {
         // This method is not used for local HuggingFace inference
         // Return nil to indicate no parsing was done
         return nil
     }
-    
+
     func parseDeltaJSONResponse(data: Data?) -> (Bool, Error?, String?, String?, [ToolCall]?) {
         // This method is not used for local inference
         return (false, nil, nil, nil, nil)
     }
-    
+
     func handleAPIResponse(_ response: URLResponse?, data: Data?, error: Error?) -> Result<Data?, APIError> {
         if let error = error {
             return .failure(.requestFailed(error))
         }
-        
+
         // For local inference, we don't have HTTP responses
         // Return success with the data (if any)
         return .success(data)
     }
-    
+
     func isNotSSEComment(_ string: String) -> Bool {
         return !string.starts(with: ":")
     }
-    
+
     // MARK: - Swift-transformers Integration
-    
+
+    static func modelDirectoryURL(for model: String) throws -> URL {
+        let rootURL = URL(fileURLWithPath: "/Volumes/WDBlack4TB/HFModels", isDirectory: true).standardizedFileURL
+        let candidateURL = rootURL.appendingPathComponent(model, isDirectory: true).standardizedFileURL
+        guard candidateURL.path.hasPrefix(rootURL.path + "/") else {
+            throw APIError.serverError("The configured local model directory is invalid.")
+        }
+        return candidateURL
+    }
+
+    static func validateModelDirectory(at directoryURL: URL) throws {
+        var isDirectory: ObjCBool = false
+        let isAccessibleDirectory = FileManager.default.fileExists(
+            atPath: directoryURL.path,
+            isDirectory: &isDirectory
+        ) && isDirectory.boolValue && FileManager.default.isReadableFile(atPath: directoryURL.path)
+        guard isAccessibleDirectory else {
+            throw APIError.serverError("The configured local model directory is unavailable.")
+        }
+    }
+
     private func ensureModelLoaded() async throws {
         if let modelInstance = modelInstance {
             return
         }
-        
+
         if isModelLoading {
             // Wait for current load to complete
             while isModelLoading {
@@ -203,29 +229,25 @@ class HuggingFaceService: NSObject, APIService {
             }
             return
         }
-        
+
         isModelLoading = true
         modelLoadError = nil
-        
+        defer { isModelLoading = false }
+
         do {
             #if DEBUG
-            WardenLog.app.debug("Loading HuggingFace model: \(self.model)")
+            WardenLog.app.debug("Loading configured HuggingFace local model")
             #endif
-            
-            // Build the full path to the model
-            let modelFolderURL = URL(fileURLWithPath: "/Volumes/WDBlack4TB/HFModels/\(self.model)")
-            
-            // Check if the model directory exists
-            guard FileManager.default.fileExists(atPath: modelFolderURL.path) else {
-                throw APIError.serverError("Model directory not found: \(modelFolderURL.path)")
-            }
-            
+
+            let modelFolderURL = try Self.modelDirectoryURL(for: self.model)
+            try Self.validateModelDirectory(at: modelFolderURL)
+
             // Locate compiled model (prefer Model.mlpackage, then Model.mlmodelc)
             let fm = FileManager.default
             var compiledURL: URL?
             let preferredPackage = modelFolderURL.appendingPathComponent("Model.mlpackage")
             let preferredCompiled = modelFolderURL.appendingPathComponent("Model.mlmodelc")
-            
+
             if fm.fileExists(atPath: preferredPackage.path) {
                 compiledURL = preferredPackage
             } else if fm.fileExists(atPath: preferredCompiled.path) {
@@ -233,28 +255,28 @@ class HuggingFaceService: NSObject, APIService {
             } else if let found = try? fm.contentsOfDirectory(at: modelFolderURL, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]).first(where: { $0.pathExtension == "mlpackage" || $0.pathExtension == "mlmodelc" }) {
                 compiledURL = found
             }
-            
+
             guard let compiledURL else {
-                throw APIError.serverError("Compiled model (Model.mlpackage or Model.mlmodelc) not found in: \(modelFolderURL.path)")
+                throw APIError.serverError("A compiled local model asset (*.mlpackage or *.mlmodelc) is required.")
             }
-            
+
             #if DEBUG
-            WardenLog.app.debug("Found compiled model: \(compiledURL)")
+            WardenLog.app.debug("Found compiled HuggingFace local model asset")
             #endif
-            
+
             #if DEBUG
             WardenLog.app.debug("Preflighting compiled model: \(compiledURL.lastPathComponent)")
             #endif
             try preflightValidateCompiledModel(at: compiledURL)
-            
+
             // Resolve tokenizer folder and json file
             // Prefer tokenizer/tokenizer.json, then tokenizer.json in model folder, else any .json at root of modelFolderURL
             var tokenizerFolder: URL?
-            
+
             let tokenizerDir = modelFolderURL.appendingPathComponent("tokenizer")
             let tokenizerJsonInTokenizerDir = tokenizerDir.appendingPathComponent("tokenizer.json")
             let tokenizerJsonInModelFolder = modelFolderURL.appendingPathComponent("tokenizer.json")
-            
+
             if fm.fileExists(atPath: tokenizerJsonInTokenizerDir.path) {
                 tokenizerFolder = tokenizerDir
             } else if fm.fileExists(atPath: tokenizerJsonInModelFolder.path) {
@@ -265,56 +287,50 @@ class HuggingFaceService: NSObject, APIService {
                     tokenizerFolder = modelFolderURL
                 }
             }
-            
+
             guard let tokenizerFolder else {
-                throw APIError.serverError("Required tokenizer configuration (.json) missing in: \(modelFolderURL.path)")
+                throw APIError.serverError("A tokenizer JSON configuration is required in the configured local model directory.")
             }
-            
-            let tokenizer = try await AutoTokenizer.from(modelFolder: tokenizerFolder)
+
+            _ = try await AutoTokenizer.from(modelFolder: tokenizerFolder)
             #if DEBUG
-            WardenLog.app.debug("Using tokenizer folder: \(tokenizerFolder.path)")
+            WardenLog.app.debug("Loaded HuggingFace local tokenizer configuration")
             #endif
-            
+
             self.modelInstance = try LanguageModel.loadCompiled(
                 url: compiledURL,
                 computeUnits: .cpuAndGPU // Default to CPU and GPU
             )
-            
+
             #if DEBUG
-            WardenLog.app.debug("Successfully loaded HuggingFace model: \(self.model)")
+            WardenLog.app.debug("Successfully loaded configured HuggingFace local model")
             #endif
-            
+
         } catch {
-            // Fallback to mock implementation if loading fails
             modelLoadError = error
             #if DEBUG
-            WardenLog.app.error("Failed to load HuggingFace model \(self.model): \(error.localizedDescription)")
-            WardenLog.app.debug("Falling back to mock implementation")
+            WardenLog.app.error("Failed to load configured HuggingFace local model")
             #endif
-            
-            // Create a mock instance for now
-            self.modelInstance = MockLanguageModel()
+            throw error
         }
-        
-        isModelLoading = false
     }
-    
+
     // Preflight validation to avoid runtime crashes when model metadata is incompatible
     private func preflightValidateCompiledModel(at url: URL) throws {
         let config = MLModelConfiguration()
         config.computeUnits = .cpuOnly
-        
+
         // Load the model to inspect its description
         let coremlModel: MLModel
         do {
             coremlModel = try MLModel(contentsOf: url, configuration: config)
         } catch {
             #if DEBUG
-            WardenLog.app.error("Preflight: Failed to load Core ML model at \(url): \(error.localizedDescription)")
+            WardenLog.app.error("Preflight failed to load a configured Core ML model")
             #endif
-            throw APIError.serverError("Preflight failed: cannot load Core ML model (\(error.localizedDescription))")
+            throw APIError.serverError("Preflight failed: the configured Core ML model could not be loaded.")
         }
-        
+
         let inputs = coremlModel.modelDescription.inputDescriptionsByName
         if inputs.isEmpty {
             #if DEBUG
@@ -322,7 +338,7 @@ class HuggingFaceService: NSObject, APIService {
             #endif
             throw APIError.serverError("Preflight failed: model exposes no inputs; not a compatible language model.")
         }
-        
+
         // We expect at least one integer multi-array input (e.g., token IDs)
         var hasIntegerMultiArray = false
         var inputSummaries: [String] = []
@@ -350,19 +366,19 @@ class HuggingFaceService: NSObject, APIService {
                 }
             }
         }
-        
+
         if !hasIntegerMultiArray {
             #if DEBUG
             WardenLog.app.error("Preflight: No integer multi-array input found. Inputs=\(inputSummaries.joined(separator: "; "))")
             #endif
             throw APIError.serverError("Preflight failed: expected an integer multi-array input (e.g., token IDs). Inputs: \(inputSummaries.joined(separator: "; "))")
         }
-        
+
         #if DEBUG
         WardenLog.app.debug("Preflight: Model inputs OK. Inputs=\(inputSummaries.joined(separator: "; "))")
         #endif
     }
-    
+
     private func describeFeature(_ name: String, _ fd: MLFeatureDescription) -> String {
         var parts: [String] = []
         parts.append("name=\(name)")
@@ -377,14 +393,14 @@ class HuggingFaceService: NSObject, APIService {
         }
         return parts.joined(separator: ", ")
     }
-    
+
     private func convertToTransformerInput(_ requestMessages: [[String: String]]) -> String {
         // Convert chat messages to a format suitable for the language model
         var prompt = ""
-        
+
         for message in requestMessages {
             guard let role = message["role"], let content = message["content"] else { continue }
-                
+
             switch role {
             case "system":
                 prompt += "System: \(content)\n\n"
@@ -396,13 +412,13 @@ class HuggingFaceService: NSObject, APIService {
                 break
             }
         }
-        
+
         // Add prompt for the assistant's response
         prompt += "Assistant:"
-        
+
         return prompt
     }
-    
+
     private func createGenerationConfig(temperature: Float) -> GenerationConfig {
         return GenerationConfig(
             maxLength: 20,
@@ -418,29 +434,29 @@ class HuggingFaceService: NSObject, APIService {
             repetitionPenalty: 1.1
         )
     }
-    
+
     // Implementation of non-streaming sendMessage
     private func sendMessage(_ requestMessages: [[String: String]], tools: [[String: Any]]? = nil, temperature: Float) async throws -> (String?, [ToolCall]?) {
         // Load the model if not already loaded
         try await ensureModelLoaded()
-        
+
         guard let modelInstance = modelInstance else {
             throw APIError.serverError("Model failed to load")
         }
-        
+
         // Convert messages to prompt format
         let prompt = convertToTransformerInput(requestMessages)
-        
+
         // Create generation config
         let config = createGenerationConfig(temperature: temperature)
-        
+
         #if DEBUG
         WardenLog.app.debug("Running HuggingFace inference with prompt length: \(prompt.count)")
         WardenLog.app.debug("Generation config: temperature=\(temperature), maxTokens=\(config.maxNewTokens)")
         #endif
-        
+
         var generatedText = ""
-        
+
         // Use actual swift-transformers generation
         if let realModel = modelInstance as? LanguageModel {
             // Real LanguageModel implementation
@@ -450,16 +466,16 @@ class HuggingFaceService: NSObject, APIService {
                     generatedText = response
                 }
             }
-            
+
             #if DEBUG
             WardenLog.app.debug("Generated response length: \(generatedText.count)")
             #endif
-            
+
         } else {
             // Generic implementation (for MockLanguageModel)
             generatedText = try await modelInstance.generate(config: config, prompt: prompt)
         }
-        
+
         return (generatedText.trimmingCharacters(in: .whitespacesAndNewlines), nil)
     }
 }
@@ -478,7 +494,7 @@ extension LanguageModel: LanguageModelProtocol {
         }
         return result
     }
-    
+
     func generateStreaming(config: GenerationConfig, prompt: String, onToken: @escaping (String) -> Void) async throws {
         try await self.generate(config: config, prompt: prompt) { inProgressGeneration in
             let response = formatResponse(inProgressGeneration)
@@ -491,7 +507,7 @@ class MockLanguageModel: LanguageModelProtocol {
     func generate(config: GenerationConfig, prompt: String) async throws -> String {
         // Simulate inference delay
         try await Task.sleep(nanoseconds: 500_000_000) // 500ms delay
-        
+
         // Return simulated response based on prompt
         let responses = [
             "I understand your question. Based on the conversation context, here's my response...",
@@ -500,20 +516,20 @@ class MockLanguageModel: LanguageModelProtocol {
             "Based on our discussion, I believe the best approach would be...",
             "I've considered your input and here are my thoughts..."
         ]
-        
+
         return responses.randomElement() ?? "This is a response from the HuggingFace model."
     }
-    
+
     func generateStreaming(config: GenerationConfig, prompt: String, onToken: @escaping (String) -> Void) async throws {
         let mockResponse = try await generate(config: config, prompt: prompt)
         let sentences = mockResponse.components(separatedBy: ". ")
-        
+
         for (index, sentence) in sentences.enumerated() {
             var sentenceText = sentence
             if index < sentences.count - 1 {
                 sentenceText += ". "
             }
-            
+
             // Simulate gradual output
             let words = sentenceText.components(separatedBy: " ")
             for word in words {
@@ -547,7 +563,7 @@ class HuggingFaceAPIServiceConfiguration: APIServiceConfiguration {
     var apiUrl: URL
     var apiKey: String
     var model: String
-    
+
     init(service: APIServiceEntity) {
         self.name = service.name ?? "HuggingFace"
         self.model = service.model ?? AppConstants.defaultApiConfigurations["huggingface"]?.defaultModel ?? "mistral-7b"
@@ -559,11 +575,11 @@ class HuggingFaceAPIServiceConfiguration: APIServiceConfiguration {
 extension APIServiceManager {
     static func createAPIConfiguration(for service: APIServiceEntity) -> APIServiceConfiguration? {
         guard let type = service.type else { return nil }
-            
+
         if type.lowercased() == "huggingface" {
             return HuggingFaceAPIServiceConfiguration(service: service)
         }
-        
+
         // Fall back to existing implementation - use the standard APIConfiguration
         return StandardAPIConfiguration(service: service)
     }
@@ -575,12 +591,12 @@ struct StandardAPIConfiguration: APIServiceConfiguration {
     var apiUrl: URL
     var apiKey: String
     var model: String
-    
+
     init(service: APIServiceEntity) {
         self.name = service.name ?? "APIService"
         self.model = service.model ?? ""
         self.apiUrl = service.url ?? URL(string: "https://api.example.com")!
-        self.apiKey = "" 
+        self.apiKey = ""
     }
 }
 
@@ -588,26 +604,26 @@ extension HuggingFaceService {
     static func monitorModelDirectoryChanges() {
         let modelsPath = "/Volumes/WDBlack4TB/HFModels/"
         let fileManager = FileManager.default
-        
+
         // Check if we can monitor this directory
         guard fileManager.fileExists(atPath: modelsPath) else { return }
-        
+
         // Create a file descriptor for the directory
         let fd = open(modelsPath, O_EVTONLY)
         guard fd >= 0 else { return }
-        
+
         DispatchQueue.global(qos: .background).async {
             let dispatchSource = DispatchSource.makeFileSystemObjectSource(
                 fileDescriptor: fd,
                 eventMask: .write,
                 queue: DispatchQueue.global(qos: .background)
             )
-            
+
             dispatchSource.setEventHandler {
 #if DEBUG
                 WardenLog.app.debug("HuggingFace models directory changed")
 #endif
-                
+
                 // Notify that models should be refreshed
                 DispatchQueue.main.async {
                     NotificationCenter.default.post(
@@ -616,11 +632,11 @@ extension HuggingFaceService {
                     )
                 }
             }
-            
+
             dispatchSource.setCancelHandler {
                 close(fd)
             }
-            
+
             dispatchSource.resume()
         }
     }

@@ -35,5 +35,5 @@ Changes crossing module boundaries must name the owning module in the implementa
 
 <!-- SPECKIT START -->
 ## Active Spec Kit Plan
-- `specs/009-chat-organization-sharing/plan.md`
+- `specs/010-local-ai-generation/plan.md`
 <!-- SPECKIT END -->

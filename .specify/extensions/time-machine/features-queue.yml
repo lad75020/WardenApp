@@ -186,11 +186,11 @@ features:
       - "Warden/Utilities/HuggingFaceService.swift"
       - "Warden/Utilities/ModelMetadataFetcher.swift"
       - "MLXZImageSwiftCLI/"
-    status: pending # pending | in-progress | done | skipped
-    current_phase: null # null | specify | clarify | plan | tasks | implement
-    branch: null
+    status: in-progress # pending | in-progress | done | skipped
+    current_phase: implement # null | specify | clarify | plan | tasks | implement
+    branch: "feature/time-machine-local-ai-and-generation"
     pushed: null # null | true | false
-    started_at: null
+    started_at: "2026-08-12T06:12:29Z"
     completed_at: null
 
   - id: "mcp-tool-integration"

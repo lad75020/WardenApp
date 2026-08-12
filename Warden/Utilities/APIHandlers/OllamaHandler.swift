@@ -20,11 +20,12 @@ class OllamaHandler: BaseAPIHandler {
     private var accumulatedBase64Data = ""
     
     override func fetchModels() async throws -> [AIModel] {
+        try LocalEndpointPolicy.validate(baseURL)
         let tagsURL = baseURL.deletingLastPathComponent().appendingPathComponent("tags")
-        
+
         var request = URLRequest(url: tagsURL)
         request.httpMethod = "GET"
-        ollamaLog.debug("Fetching Ollama models from: \(tagsURL.absoluteString, privacy: .public)")
+        ollamaLog.debug("Fetching Ollama model list")
         
         do {
             let (data, response) = try await session.data(for: request)
@@ -124,6 +125,7 @@ class OllamaHandler: BaseAPIHandler {
         temperature: Float,
         stream: Bool
     ) throws -> URLRequest {
+        try LocalEndpointPolicy.validate(baseURL)
         // Determine if this is image generation
         let isImageGeneration = detectImageGeneration(in: requestMessages)
         
@@ -142,19 +144,9 @@ class OllamaHandler: BaseAPIHandler {
         request.timeoutInterval = 1800
         request.setValue(effectiveStream ? "application/x-ndjson" : "application/json", forHTTPHeaderField: "Accept")
         
-        ollamaLog.debug("Preparing Ollama request. model=\(model, privacy: .public) stream=\(effectiveStream, privacy: .public) temperature=\(temperature, privacy: .public)")
+        ollamaLog.debug("Preparing Ollama request. stream=\(effectiveStream, privacy: .public)")
         ollamaLog.debug("Incoming messages count: \(requestMessages.count, privacy: .public)")
         ollamaLog.debug("Is image generation: \(isImageGeneration, privacy: .public)")
-        ollamaLog.debug("Using endpoint: \(effectiveURL.absoluteString, privacy: .public)")
-        
-        // Log the incoming messages for debugging
-        for (index, msg) in requestMessages.enumerated() {
-            if let role = msg["role"], let content = msg["content"] {
-                let isSystem = role == "system"
-                let preview = String(content.prefix(100))
-                ollamaLog.debug("Input[\(index)]: role=\(role, privacy: .public) isSystem=\(isSystem, privacy: .public) content=\(preview, privacy: .public)")
-            }
-        }
         
         var jsonDict: [String: Any] = [
             "model": model,
@@ -249,16 +241,6 @@ class OllamaHandler: BaseAPIHandler {
             
             ollamaLog.debug("Using /api/chat endpoint with \(filteredMessages.count) message(s) (from \(requestMessages.count) input)")
             
-            // Log message breakdown for debugging
-            for (index, msg) in filteredMessages.enumerated() {
-                if let role = msg["role"] as? String,
-                   let content = msg["content"] as? String {
-                    let isSystem = role == "system"
-                    let preview = String(content.prefix(100))
-                    ollamaLog.debug("Filtered[\(index)]: role=\(role, privacy: .public) isSystem=\(isSystem, privacy: .public) content=\(preview, privacy: .public)")
-                }
-            }
-            
         } else {
             // Use /api/generate endpoint with "prompt" field
             if isImageGeneration {
@@ -329,7 +311,6 @@ class OllamaHandler: BaseAPIHandler {
                 }
 
                 ollamaLog.debug("Image generation with /api/generate. Prompt length: \(prompt.count, privacy: .public)")
-                ollamaLog.debug("Image prompt preview (first 200 chars): \(String(prompt.prefix(200)), privacy: .public)")
                 ollamaLog.debug("Attached images count: \(imagesB64.count, privacy: .public)")
             } else {
                 // For /api/generate with non-image content (legacy support), just send the last user message
@@ -345,7 +326,6 @@ class OllamaHandler: BaseAPIHandler {
                 
                 jsonDict["prompt"] = prompt
                 ollamaLog.debug("Using /api/generate with prompt. Length: \(prompt.count, privacy: .public)")
-                ollamaLog.debug("Prompt preview (first 200 chars): \(String(prompt.prefix(200)), privacy: .public)")
             }
         }
         
@@ -355,15 +335,12 @@ class OllamaHandler: BaseAPIHandler {
             let requestSize = request.httpBody?.count ?? 0
             ollamaLog.debug("Request body size: \(requestSize) bytes")
             
-            if let httpBody = request.httpBody, let jsonString = String(data: httpBody, encoding: .utf8) {
-                ollamaLog.debug("ACTUAL JSON PAYLOAD SENT TO OLLAMA: \(jsonString, privacy: .public)")
-            }
         } catch {
             ollamaLog.error("Failed to serialize JSON body: \(error.localizedDescription, privacy: .public)")
             throw APIError.decodingFailed(error.localizedDescription)
         }
         
-        ollamaLog.debug("Prepared request for URL: \(request.url?.absoluteString ?? "nil", privacy: .public) Accept=\(request.value(forHTTPHeaderField: "Accept") ?? "", privacy: .public) timeout=\(request.timeoutInterval, privacy: .public))")
+        ollamaLog.debug("Prepared Ollama request")
 
         return request
     }
@@ -379,8 +356,6 @@ class OllamaHandler: BaseAPIHandler {
         
         // Find the last non-empty line that has JSON
         if let lastJSONLine = lines.reversed().first(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) {
-            ollamaLog.debug("Processing last JSON line (first 100 chars): \(String(lastJSONLine.prefix(100)), privacy: .public)")
-            
             if let lastData = lastJSONLine.data(using: .utf8) {
                 do {
                     let json = try JSONSerialization.jsonObject(with: lastData, options: [])
@@ -468,7 +443,7 @@ class OllamaHandler: BaseAPIHandler {
         
         ollamaLog.error("Could not extract image or text from response")
         #if DEBUG
-        WardenLog.app.debug("Ollama full response: \(responseString.prefix(500), privacy: .public)")
+        WardenLog.app.debug("Ollama response could not be decoded (\(data.count, privacy: .public) bytes)")
         #endif
     }
     
@@ -480,16 +455,13 @@ class OllamaHandler: BaseAPIHandler {
             return (true, APIError.decodingFailed("No data received in SSE event"), nil, nil, nil)
         }
         let dataString = String(data: data, encoding: .utf8)
-        ollamaLog.debug("parseDeltaJSONResponse called with \(data.count, privacy: .public) bytes: \(dataString?.prefix(100) ?? "nil", privacy: .public)")
+        ollamaLog.debug("Parsing Ollama stream delta (\(data.count, privacy: .public) bytes)")
 
         do {
             guard let dataString = dataString else {
                 ollamaLog.error("Could not decode response as UTF-8")
                 return (false, APIError.decodingFailed("Could not decode response"), nil, nil, nil)
             }
-            
-            // Debug: Log the raw data string to see what we're getting
-            ollamaLog.debug("Raw delta data string: \(dataString.prefix(200), privacy: .public)")
             
             // Handle Ollama's newline-delimited JSON without "data:" prefix
             // Ollama sends raw JSON objects separated by newlines directly  
@@ -658,7 +630,7 @@ class OllamaHandler: BaseAPIHandler {
         
         #if DEBUG
         let log = WardenLog.streaming
-        log.debug("Starting stream: \(request.url?.absoluteString ?? "nil", privacy: .public)")
+        log.debug("Starting local Ollama stream")
         #endif
         
         return AsyncThrowingStream { continuation in
@@ -670,17 +642,6 @@ class OllamaHandler: BaseAPIHandler {
                     log.debug("Got stream from URL session")
                     log.debug("Response status: \((response as? HTTPURLResponse)?.statusCode ?? -1, privacy: .public)")
                     
-                    if let httpResponse = response as? HTTPURLResponse {
-                        for (key, value) in httpResponse.allHeaderFields {
-                            let valueString: String
-                            if let stringArray = value as? [String] {
-                                valueString = stringArray.joined(separator: ";")
-                            } else {
-                                valueString = "\(value)"
-                            }
-                            log.debug("Header: \(key, privacy: .public) = \(valueString, privacy: .public)")
-                        }
-                    }
                     #endif
                     
                     // Use NDJSON format for Ollama streaming
@@ -702,7 +663,7 @@ class OllamaHandler: BaseAPIHandler {
                         
                         if let messageData = messageData {
                             #if DEBUG
-                            log.debug("Yielding chunk: \(String(messageData.prefix(50)), privacy: .public)...")
+                            log.debug("Yielding Ollama chunk: \(messageData.count, privacy: .public) character(s)")
                             #endif
                             continuation.yield((messageData, toolCalls))
                         }

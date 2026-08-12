@@ -29,6 +29,7 @@ class LMStudioHandler: ChatGPTHandler {
         temperature: Float, 
         stream: Bool
     ) throws -> URLRequest {
+        try LocalEndpointPolicy.validate(baseURL)
         var request = URLRequest(url: baseURL)
         request.httpMethod = "POST"
         
@@ -114,6 +115,7 @@ class LMStudioHandler: ChatGPTHandler {
 
     /// Override fetchModels to handle LM Studio's models endpoint
     override func fetchModels() async throws -> [AIModel] {
+        try LocalEndpointPolicy.validate(baseURL)
         // LM Studio uses the same /v1/models endpoint as OpenAI
         let modelsURL = baseURL.deletingLastPathComponent().appendingPathComponent("models")
 

@@ -66,10 +66,14 @@ final class CoreMLTextGenerationService: NSObject, APIService {
             let task = Task(priority: .userInitiated) {
                 do {
                     if let real = modelInstance as? LanguageModel {
-                        // Best-effort "streaming": emit the full formatted response repeatedly.
+                        var deliveredResponse = ""
                         try await real.generate(config: config, prompt: prompt) { partial in
+                            guard !Task.isCancelled else { return }
                             let response = coremlFormatResponse(partial)
-                            continuation.yield((response, nil))
+                            let delta = Self.streamingDelta(previous: deliveredResponse, current: response)
+                            guard !delta.isEmpty else { return }
+                            deliveredResponse = response
+                            continuation.yield((delta, nil))
                         }
                     } else {
                         let full = try await modelInstance.generate(config: config, prompt: prompt)
@@ -102,7 +106,21 @@ final class CoreMLTextGenerationService: NSObject, APIService {
         (true, nil, nil, nil, nil)
     }
 
+    static func streamingDelta(previous: String, current: String) -> String {
+        guard current.hasPrefix(previous) else { return current }
+        return String(current.dropFirst(previous.count))
+    }
+
     // MARK: - Loading
+
+    static func validateModelDirectory(at modelFolderURL: URL) throws {
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: modelFolderURL.path, isDirectory: &isDirectory),
+              isDirectory.boolValue,
+              FileManager.default.isReadableFile(atPath: modelFolderURL.path) else {
+            throw APIError.serverError("Configured Core ML model directory is unavailable or unreadable.")
+        }
+    }
 
     private func ensureModelLoaded() async throws {
         if modelInstance != nil { return }
@@ -117,12 +135,11 @@ final class CoreMLTextGenerationService: NSObject, APIService {
 
         isModelLoading = true
         modelLoadError = nil
+        defer { isModelLoading = false }
 
         do {
-            let modelFolderURL = URL(fileURLWithPath: model)
-            guard FileManager.default.fileExists(atPath: modelFolderURL.path) else {
-                throw APIError.serverError("Model directory not found: \(modelFolderURL.path)")
-            }
+            let modelFolderURL = URL(fileURLWithPath: model).standardizedFileURL
+            try Self.validateModelDirectory(at: modelFolderURL)
 
             let fm = FileManager.default
 
@@ -140,7 +157,7 @@ final class CoreMLTextGenerationService: NSObject, APIService {
             }
 
             guard let compiledURL else {
-                throw APIError.serverError("Compiled model (*.mlpackage or *.mlmodelc) not found in: \(modelFolderURL.path)")
+                throw APIError.serverError("A compiled Core ML model asset (*.mlpackage or *.mlmodelc) is required.")
             }
 
             // Resolve tokenizer folder
@@ -161,7 +178,7 @@ final class CoreMLTextGenerationService: NSObject, APIService {
             }
 
             guard let tokenizerFolder else {
-                throw APIError.serverError("Required tokenizer configuration (.json) missing in: \(modelFolderURL.path)")
+                throw APIError.serverError("A tokenizer JSON configuration is required in the configured Core ML model directory.")
             }
 
             _ = try await AutoTokenizer.from(modelFolder: tokenizerFolder)
@@ -170,13 +187,10 @@ final class CoreMLTextGenerationService: NSObject, APIService {
                 url: compiledURL,
                 computeUnits: .cpuAndGPU
             )
-
         } catch {
             modelLoadError = error
             throw error
         }
-
-        isModelLoading = false
     }
 
     // MARK: - Prompt + config

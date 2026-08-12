@@ -34,12 +34,14 @@ class ModelMetadataFetcherFactory {
             return GenericMetadataFetcher(provider: "perplexity")
         case .deepseek:
             return GenericMetadataFetcher(provider: "deepseek")
-        case .ollama, .lmstudio:
-            return LocalModelMetadataFetcher()
+        case .ollama:
+            return LocalModelMetadataFetcher(provider: "ollama")
+        case .lmstudio:
+            return LocalModelMetadataFetcher(provider: "lmstudio")
         case .huggingface:
             return HuggingFaceMetadataFetcher()
         case .mlx:
-            return GenericMetadataFetcher(provider: "mlx")
+            return LocalModelMetadataFetcher(provider: "mlx")
         case nil:
             return GenericMetadataFetcher(provider: provider)
         }
@@ -260,13 +262,19 @@ class OpenRouterMetadataFetcher: ModelMetadataFetcher {
 // MARK: - Local Model Fetcher (Ollama, LMStudio)
 
 class LocalModelMetadataFetcher: ModelMetadataFetcher {
+    private let provider: String
+
+    init(provider: String = "local") {
+        self.provider = provider
+    }
+
     func fetchAllMetadata(apiKey: String) async throws -> [String: ModelMetadata] {
         // Local models are self-hosted and free
         return [:]
     }
     
     func fetchMetadata(for modelId: String, apiKey: String) async throws -> ModelMetadata {
-        return ModelMetadata.freeSelfHosted(modelId: modelId, provider: "local", context: nil)
+        return ModelMetadata.freeSelfHosted(modelId: modelId, provider: provider, context: nil)
     }
 }
 
