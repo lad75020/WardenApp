@@ -62,7 +62,12 @@ struct MessageInputView: View {
     }
     
     private var canSend: Bool {
-        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isStreaming
+        let hasMessageContent = !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !attachedImages.isEmpty
+            || !attachedFiles.isEmpty
+        let attachmentsAreReady = attachedImages.allSatisfy(\.isReadyForSend)
+            && attachedFiles.allSatisfy(\.isReadyForSend)
+        return hasMessageContent && attachmentsAreReady && !isStreaming
     }
     
     private var canRephrase: Bool {
@@ -395,7 +400,7 @@ struct MessageInputView: View {
             }
             .buttonStyle(PlainButtonStyle())
             .accessibilityLabel("Send message")
-            .accessibilityValue(canSend ? "Ready to send" : "Enter a message to send")
+            .accessibilityValue(canSend ? "Ready to send" : "Finish preparing or remove attachments before sending")
             .disabled(!canSend)
             .keyboardShortcut(.return, modifiers: [.command])
             .help("Send message")
@@ -572,15 +577,6 @@ struct ImagePreviewView: View {
                             .stroke(Color.gray.opacity(0.5), lineWidth: 1)
                     )
 
-                Button(action: {
-                    onRemove(0)
-                }) {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundColor(.white)
-                        .background(Circle().fill(Color.black.opacity(0.6)))
-                        .padding(4)
-                }
-                .buttonStyle(PlainButtonStyle())
             }
             else if let error = attachment.error {
                 VStack {
@@ -594,6 +590,17 @@ struct ImagePreviewView: View {
                 .cornerRadius(8)
                 .help(error.localizedDescription)
             }
+
+            Button(action: {
+                onRemove(0)
+            }) {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundColor(.white)
+                    .background(Circle().fill(Color.black.opacity(0.6)))
+                    .padding(4)
+            }
+            .buttonStyle(PlainButtonStyle())
+            .accessibilityLabel("Remove image attachment")
         }
     }
 }

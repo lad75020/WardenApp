@@ -106,12 +106,12 @@ features:
       - "Warden/UI/Chat/ZoomableImageView.swift"
       - "Warden/UI/Chat/BubbleView/VideoAttachmentView.swift"
       - "Warden/Utilities/APIHandlers/VeoHandler.swift"
-    status: pending # pending | in-progress | done | skipped
+    status: done # pending | in-progress | done | skipped
     current_phase: null # null | specify | clarify | plan | tasks | implement
-    branch: null
-    pushed: null # null | true | false
-    started_at: null
-    completed_at: null
+    branch: "feature/time-machine-attachments-and-media"
+    pushed: true # null | true | false
+    started_at: "2026-08-12T01:00:00Z"
+    completed_at: "2026-08-12T01:30:00Z"
 
   - id: "personas-and-model-selection"
     name: "Personas and Model Selection"

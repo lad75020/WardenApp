@@ -2,6 +2,9 @@
 
 import XCTest
 import WebKit
+import AppKit
+import CoreData
+import UniformTypeIdentifiers
 @testable import Warden
 
 class MessageParserTests: XCTestCase {
@@ -395,6 +398,224 @@ class MessageParserTests: XCTestCase {
         }
         XCTAssertEqual(language, "swift")
         XCTAssertEqual(code, "| not a table |\n<think>not reasoning")
+    }
+
+    func testParsesVideoMarkerAndKeepsMalformedMarkerAsText() {
+        let valid = "<video-url>file:///tmp/generated-video.mp4</video-url>"
+        let validElements = parser.parseMessageFromString(input: valid)
+        XCTAssertEqual(validElements.count, 1)
+        guard case .videoURL(let url) = validElements[0] else {
+            return XCTFail("Expected a video URL element")
+        }
+        XCTAssertEqual(url, "file:///tmp/generated-video.mp4")
+
+        let malformed = "<video-url>file:///tmp/generated-video.mp4"
+        let malformedElements = parser.parseMessageFromString(input: malformed)
+        XCTAssertEqual(malformedElements.count, 1)
+        guard case .text(let text) = malformedElements[0] else {
+            return XCTFail("Expected malformed marker to remain readable text")
+        }
+        XCTAssertEqual(text, malformed)
+    }
+
+    func testIncrementalParserRecognizesVideoMarkerAcrossStreamingBoundary() {
+        let incremental = IncrementalMessageParser(colorScheme: .light)
+        incremental.appendChunk("Before\n<video-")
+        incremental.appendChunk("url>file:///tmp/generated-video.mp4</video-url>")
+
+        let result = incremental.finalize()
+        XCTAssertEqual(result.count, 2)
+        guard case .text(let text) = result[0] else {
+            return XCTFail("Expected leading text")
+        }
+        XCTAssertEqual(text, "Before")
+        guard case .videoURL(let url) = result[1] else {
+            return XCTFail("Expected streamed video URL")
+        }
+        XCTAssertEqual(url, "file:///tmp/generated-video.mp4")
+    }
+
+    func testVideoAttachmentSupportRejectsRemoteMissingAndExistingDestinations() throws {
+        XCTAssertFalse(VideoAttachmentSupport.isUsableLocalVideo(URL(string: "https://example.com/video.mp4")!))
+        XCTAssertFalse(VideoAttachmentSupport.isUsableLocalVideo(URL(fileURLWithPath: "/tmp/warden-missing-video.mp4")))
+
+        let source = FileManager.default.temporaryDirectory.appendingPathComponent("warden-video-\(UUID().uuidString).mp4")
+        let destination = FileManager.default.temporaryDirectory.appendingPathComponent("warden-video-copy-\(UUID().uuidString).mp4")
+        try Data([0x00]).write(to: source)
+        defer {
+            try? FileManager.default.removeItem(at: source)
+            try? FileManager.default.removeItem(at: destination)
+        }
+
+        XCTAssertTrue(VideoAttachmentSupport.isUsableLocalVideo(source))
+        XCTAssertTrue(VideoAttachmentSupport.shouldDisplayPlayer(playerExists: true, videoURL: source))
+        XCTAssertNil(VideoAttachmentSupport.exportError(source: source, destination: destination))
+        XCTAssertNotNil(VideoAttachmentSupport.exportError(source: source, destination: source))
+
+        try Data([0x01]).write(to: destination)
+        XCTAssertNotNil(VideoAttachmentSupport.exportError(source: source, destination: destination))
+
+        try FileManager.default.removeItem(at: source)
+        XCTAssertFalse(VideoAttachmentSupport.shouldDisplayPlayer(playerExists: true, videoURL: source))
+    }
+
+    @MainActor
+    func testAttachmentReadinessRequiresSuccessfulPreparation() {
+        let image = ImageAttachment(image: NSImage(size: NSSize(width: 1, height: 1)))
+        XCTAssertTrue(image.isReadyForSend)
+        image.error = NSError(domain: "AttachmentTests", code: 1)
+        XCTAssertFalse(image.isReadyForSend)
+
+        let file = FileAttachment(
+            id: UUID(),
+            fileName: "notes.txt",
+            fileSize: 1,
+            fileTypeExtension: "txt",
+            textContent: "x",
+            imageData: nil,
+            thumbnailData: nil
+        )
+        XCTAssertTrue(file.isReadyForSend)
+        file.isLoading = true
+        XCTAssertFalse(file.isReadyForSend)
+    }
+
+    @MainActor
+    func testPersistedFileExportReconstructsStoredImageAndTextRepresentations() throws {
+        let image = try XCTUnwrap(makeFixtureImage())
+        let imageData = try XCTUnwrap(ImageExportFormat.png.data(for: image))
+        let imageFile = FileAttachment(
+            id: UUID(),
+            fileName: "diagram.jpg",
+            fileSize: Int64(imageData.count),
+            fileTypeExtension: "jpg",
+            textContent: "not used for images",
+            imageData: imageData,
+            thumbnailData: nil
+        )
+        let imageExport = try XCTUnwrap(imageFile.exportRepresentation)
+        XCTAssertEqual(imageExport.data, imageData)
+        XCTAssertEqual(imageExport.suggestedFileName, "diagram.png")
+        XCTAssertEqual(imageExport.contentType, .png)
+
+        let textFile = FileAttachment(
+            id: UUID(),
+            fileName: "",
+            fileSize: 5,
+            fileTypeExtension: "json",
+            textContent: "{\"ok\":true}",
+            imageData: nil,
+            thumbnailData: nil
+        )
+        let textExport = try XCTUnwrap(textFile.exportRepresentation)
+        XCTAssertEqual(String(data: textExport.data, encoding: .utf8), "{\"ok\":true}")
+        XCTAssertEqual(textExport.suggestedFileName, "attachment.json")
+
+        let unknownTextFile = FileAttachment(
+            id: UUID(),
+            fileName: "README.custom",
+            fileSize: 5,
+            fileTypeExtension: "custom",
+            textContent: "plain text",
+            imageData: nil,
+            thumbnailData: nil
+        )
+        XCTAssertEqual(unknownTextFile.exportRepresentation?.suggestedFileName, "README.txt")
+
+        let binaryPlaceholder = FileAttachment(
+            id: UUID(),
+            fileName: "archive.bin",
+            fileSize: 5,
+            fileTypeExtension: "bin",
+            textContent: "[Binary file: archive.bin]",
+            imageData: nil,
+            thumbnailData: nil
+        )
+        XCTAssertNil(binaryPlaceholder.exportRepresentation)
+
+        let pdfExtract = FileAttachment(
+            id: UUID(),
+            fileName: "report.pdf",
+            fileSize: 1,
+            fileTypeExtension: "pdf",
+            textContent: "Extracted text",
+            imageData: nil,
+            thumbnailData: nil
+        )
+        XCTAssertEqual(pdfExtract.exportRepresentation?.suggestedFileName, "report.txt")
+    }
+
+    @MainActor
+    func testPersistedCorruptImageIsUnavailableAndCannotExportAsGenericFile() {
+        let corruptImage = FileAttachment(
+            id: UUID(),
+            fileName: "broken.png",
+            fileSize: 2,
+            fileTypeExtension: "png",
+            textContent: "not a fallback",
+            imageData: Data([0x00, 0x01]),
+            thumbnailData: nil
+        )
+
+        XCTAssertTrue(corruptImage.hasUnavailablePersistedImage)
+        XCTAssertNil(corruptImage.exportRepresentation)
+        XCTAssertFalse(corruptImage.isReadyForSend)
+    }
+
+    @MainActor
+    func testImageExportFormatFollowsDestinationExtension() throws {
+        let image = try XCTUnwrap(makeFixtureImage())
+        let pngData = try XCTUnwrap(ImageExportFormat.forDestination(URL(fileURLWithPath: "/tmp/image.png")).data(for: image))
+        let jpegData = try XCTUnwrap(ImageExportFormat.forDestination(URL(fileURLWithPath: "/tmp/image.jpeg")).data(for: image))
+
+        XCTAssertEqual(Array(pngData.prefix(8)), [137, 80, 78, 71, 13, 10, 26, 10])
+        XCTAssertEqual(Array(jpegData.prefix(3)), [255, 216, 255])
+        XCTAssertEqual(ImageExportFormat.forDestination(URL(fileURLWithPath: "/tmp/image.jpg")), .jpeg)
+        XCTAssertEqual(ImageExportFormat.forDestination(URL(fileURLWithPath: "/tmp/image.png")), .png)
+    }
+
+    @MainActor
+    func testAttachmentResolverLoadsPersistedImageAndFileAndTreatsUnknownIDsAsUnavailable() async throws {
+        let persistence = PersistenceController(inMemory: true)
+        let context = persistence.container.viewContext
+        let imageID = UUID()
+        let fileID = UUID()
+
+        let imageAttachment = ImageAttachment(image: try XCTUnwrap(makeFixtureImage()), id: imageID)
+        XCTAssertTrue(imageAttachment.saveToEntity(context: context))
+
+        let fileAttachment = FileAttachment(
+            id: fileID,
+            fileName: "notes.txt",
+            fileSize: 5,
+            fileTypeExtension: "txt",
+            textContent: "hello",
+            imageData: nil,
+            thumbnailData: nil
+        )
+        XCTAssertTrue(fileAttachment.saveToEntity(context: context))
+
+        let resolver = AttachmentResolver(dataLoader: BackgroundDataLoader(persistenceController: persistence))
+        let resolvedImage = await resolver.image(for: imageID)
+        XCTAssertNotNil(resolvedImage)
+
+        let resolvedFile = await resolver.fileAttachment(for: fileID)
+        XCTAssertEqual(resolvedFile?.fileName, "notes.txt")
+        XCTAssertEqual(resolvedFile?.textContent, "hello")
+        let missingImage = await resolver.image(for: UUID())
+        let missingFile = await resolver.fileAttachment(for: UUID())
+        XCTAssertNil(missingImage)
+        XCTAssertNil(missingFile)
+    }
+
+    @MainActor
+    private func makeFixtureImage() -> NSImage? {
+        let image = NSImage(size: NSSize(width: 2, height: 2))
+        image.lockFocus()
+        NSColor.systemBlue.setFill()
+        NSBezierPath(rect: NSRect(x: 0, y: 0, width: 2, height: 2)).fill()
+        image.unlockFocus()
+        return image
     }
 }
 

@@ -13,6 +13,11 @@ final class ImageAttachment: Identifiable, ObservableObject {
     @Published var thumbnail: NSImage?
     @Published var isLoading: Bool = false
     @Published var error: Error?
+
+    /// A marker may only be serialized after the image bytes have decoded successfully.
+    var isReadyForSend: Bool {
+        !isLoading && error == nil && image != nil
+    }
     
     private static let imageCache: NSCache<NSString, NSImage> = {
         let cache = NSCache<NSString, NSImage>()
@@ -179,9 +184,10 @@ final class ImageAttachment: Identifiable, ObservableObject {
         }
     }
 
-    func saveToEntity(image: NSImage? = nil, context: NSManagedObjectContext? = nil) {
-        guard let imageToSave = image ?? self.image else { return }
-        guard let contextToUse = context ?? managedObjectContext else { return }
+    @discardableResult
+    func saveToEntity(image: NSImage? = nil, context: NSManagedObjectContext? = nil) -> Bool {
+        guard let imageToSave = image ?? self.image else { return false }
+        guard let contextToUse = context ?? managedObjectContext else { return false }
 
         if context != nil {
             self.managedObjectContext = context
@@ -199,7 +205,8 @@ final class ImageAttachment: Identifiable, ObservableObject {
         let imageData = Self.convertImageToData(imageToSave, format: originalFileType)
         let thumbnailData = thumbnail.flatMap { Self.convertImageToData($0, format: .jpeg, compression: 0.7) }
 
-        contextToUse.perform { [weak self] in
+        var didSave = false
+        contextToUse.performAndWait { [weak self] in
             let entity: ImageEntity
             if let imageEntityID, let existing = try? contextToUse.existingObject(with: imageEntityID) as? ImageEntity {
                 entity = existing
@@ -220,10 +227,12 @@ final class ImageAttachment: Identifiable, ObservableObject {
 
             do {
                 try contextToUse.save()
+                didSave = true
             } catch {
                 WardenLog.coreData.error("Error saving image to Core Data: \(error.localizedDescription, privacy: .public)")
             }
         }
+        return didSave
     }
 
     private func createThumbnail(from image: NSImage) {
