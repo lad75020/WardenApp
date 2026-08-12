@@ -111,6 +111,8 @@ struct ChatShareMenu: View {
             }
         }
         .help("Share this conversation")
+        .accessibilityLabel("Share conversation")
+        .accessibilityHint("Choose a format to share, copy, or export this conversation.")
     }
 }
 
@@ -195,6 +197,8 @@ struct ShareButton: View {
             )
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(title)
+        .accessibilityHint(subtitle)
     }
 }
 

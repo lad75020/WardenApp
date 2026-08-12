@@ -121,6 +121,8 @@ struct BranchPopover: View {
             }
             .buttonStyle(.plain)
             .help("Close")
+            .accessibilityLabel("Close branch creation")
+            .accessibilityHint("Dismisses branch creation without changing the source conversation.")
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
@@ -137,6 +139,8 @@ struct BranchPopover: View {
             TextField("Search models...", text: $viewModel.searchText)
                 .textFieldStyle(.plain)
                 .font(.system(size: 12))
+                .accessibilityLabel("Search models")
+                .accessibilityHint("Filters configured models for the new branch.")
             
             if !viewModel.searchText.isEmpty {
                 Button(action: { viewModel.searchText = "" }) {
@@ -145,6 +149,7 @@ struct BranchPopover: View {
                         .foregroundStyle(.tertiary)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Clear model search")
             }
         }
         .padding(.horizontal, 10)
@@ -289,6 +294,8 @@ struct BranchPopover: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("Create branch with \(formattedModel.displayName)")
+        .accessibilityHint("Creates a separate conversation from the selected message.")
         .onHover { hovering in
             withAnimation(.easeInOut(duration: 0.1)) {
                 hoveredItem = hovering ? item.id : nil
@@ -314,6 +321,9 @@ struct BranchPopover: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Creating branch")
+        .accessibilityHint(origin == .user ? "Generating the first response." : "Preparing the continuation.")
     }
     
     private func errorView(_ error: String) -> some View {
@@ -340,6 +350,8 @@ struct BranchPopover: View {
                     .padding(.vertical, 6)
             }
             .buttonStyle(.bordered)
+            .accessibilityLabel("Try branch creation again")
+            .accessibilityHint("Returns to model selection. The source conversation is unchanged.")
         }
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)

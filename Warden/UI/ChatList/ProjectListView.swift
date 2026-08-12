@@ -107,6 +107,7 @@ struct ProjectListView: View {
                         .font(.system(size: 10, weight: .medium))
                         .rotationEffect(.degrees(showingArchivedProjects ? 90 : 0))
                         .animation(.easeInOut(duration: 0.2), value: showingArchivedProjects)
+                        .accessibilityHidden(true)
                     
                     Text("Archived Projects")
                         .font(.subheadline)
@@ -124,6 +125,9 @@ struct ProjectListView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(PlainButtonStyle())
+            .accessibilityLabel("Archived Projects")
+            .accessibilityValue(showingArchivedProjects ? "Expanded" : "Collapsed")
+            .accessibilityHint("Shows or hides archived projects without changing them")
             
             // Archived projects list
             if showingArchivedProjects {
@@ -288,6 +292,9 @@ struct ProjectRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
+        .accessibilityLabel(project.name ?? "Untitled Project")
+        .accessibilityValue(isArchived ? "Archived" : "Active")
+        .accessibilityHint(isSelected ? "Deselects this project" : "Selects this project")
         .contextMenu {
             projectContextMenu
         }

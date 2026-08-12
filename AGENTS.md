@@ -35,5 +35,5 @@ Changes crossing module boundaries must name the owning module in the implementa
 
 <!-- SPECKIT START -->
 ## Active Spec Kit Plan
-- `specs/008-web-search-citations/plan.md`
+- `specs/009-chat-organization-sharing/plan.md`
 <!-- SPECKIT END -->

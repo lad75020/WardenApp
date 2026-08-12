@@ -4,7 +4,10 @@ import XCTest
 
 @MainActor
 final class ChatHistoryRecoveryTests: XCTestCase {
-    private static let testPersistenceController = PersistenceController(inMemory: true)
+    /// Keep each isolated in-memory container alive until the test process exits.
+    /// Core Data may still drain context notifications after XCTest tears down a case.
+    private static var retainedPersistenceControllers: [PersistenceController] = []
+
     private var persistenceController: PersistenceController!
     private var store: ChatStore!
     private var context: NSManagedObjectContext!
@@ -12,7 +15,8 @@ final class ChatHistoryRecoveryTests: XCTestCase {
     override func setUp() {
         super.setUp()
         ValueTransformer.setValueTransformer(RequestMessagesTransformer(), forName: RequestMessagesTransformer.name)
-        persistenceController = Self.testPersistenceController
+        persistenceController = PersistenceController(inMemory: true)
+        Self.retainedPersistenceControllers.append(persistenceController)
         context = persistenceController.container.viewContext
         clearFixtureEntities()
         store = ChatStore(persistenceController: persistenceController)
@@ -213,6 +217,44 @@ final class ChatHistoryRecoveryTests: XCTestCase {
         XCTAssertEqual(chat.messagesArray.count, 1)
     }
 
+    func testLocalChatSearchPredicatesMatchMetadataAndMessagesCaseAndDiacriticInsensitively() throws {
+        let titleChat = makeChat()
+        titleChat.name = "Résumé planning"
+        titleChat.systemMessage = ""
+
+        let systemChat = makeChat()
+        systemChat.name = "System"
+        systemChat.systemMessage = "Use local café instructions"
+
+        let personaChat = makeChat()
+        personaChat.name = "Persona"
+        let persona = PersonaEntity(context: context)
+        persona.id = UUID()
+        persona.name = "Élodie"
+        personaChat.persona = persona
+
+        let messageChat = makeChat()
+        messageChat.name = "Message"
+        messageChat.addToMessages(makeMessage(id: 400, timestamp: 1, body: "A private SÃO PAULO note"))
+
+        let unmatchedChat = makeChat()
+        unmatchedChat.name = "Unmatched"
+        try context.save()
+
+        let matchingIDs = try LocalChatSearch.matchingIDs(for: "resume", in: context)
+        XCTAssertEqual(matchingIDs, Set([titleChat.id]))
+
+        let systemIDs = try LocalChatSearch.matchingIDs(for: "CAFE", in: context)
+        XCTAssertEqual(systemIDs, Set([systemChat.id]))
+
+        let personaIDs = try LocalChatSearch.matchingIDs(for: "elodie", in: context)
+        XCTAssertEqual(personaIDs, Set([personaChat.id]))
+
+        let messageIDs = try LocalChatSearch.matchingIDs(for: "sao paulo", in: context)
+        XCTAssertEqual(messageIDs, Set([messageChat.id]))
+        XCTAssertFalse(messageIDs.contains(unmatchedChat.id))
+    }
+
     func testRecoverySourcesContainNoRecoveryLogging() throws {
         let sourceRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
@@ -299,5 +341,211 @@ final class ChatHistoryRecoveryTests: XCTestCase {
             }
         }
         try? context.save()
+    }
+}
+
+@MainActor
+final class ChatSharingServiceTests: XCTestCase {
+    private var fixture: InMemoryChatFixture!
+    private var chat: ChatEntity!
+    private let service = ChatSharingService.shared
+
+    override func setUp() {
+        super.setUp()
+        ValueTransformer.setValueTransformer(RequestMessagesTransformer(), forName: RequestMessagesTransformer.name)
+        fixture = InMemoryChatFixture()
+        chat = fixture.chat
+        chat.id = UUID(uuidString: "00000000-0000-0000-0000-000000000009")!
+        chat.name = "Quarterly / Planning: Notes"
+        chat.createdDate = Date(timeIntervalSince1970: 10)
+        chat.updatedDate = Date(timeIntervalSince1970: 20)
+        chat.gptModel = "fixture-model"
+        chat.systemMessage = "Follow the local instructions."
+        chat.requestMessages = [["role": "user", "content": "Authorization: Bearer should-not-export"]]
+
+        let later = fixture.addMessage("Second message", own: false)
+        later.id = 2
+        later.name = "assistant"
+        later.timestamp = Date(timeIntervalSince1970: 30)
+        later.toolCallsJson = "{\"authorization\":\"secret\"}"
+        let earlier = fixture.addMessage("First message", own: true)
+        earlier.id = 1
+        earlier.name = "user"
+        earlier.timestamp = Date(timeIntervalSince1970: 25)
+    }
+
+    func testAllFormatsIncludeFullOrderedConversationWithoutDiagnosticFields() throws {
+        for format in ChatExportFormat.allCases {
+            let content = service.exportRepresentation(for: chat, format: format).content
+            XCTAssertTrue(content.contains("Quarterly"))
+            XCTAssertTrue(content.contains("Follow the local instructions."))
+            XCTAssertLessThan(try XCTUnwrap(content.range(of: "First message")?.lowerBound), try XCTUnwrap(content.range(of: "Second message")?.lowerBound))
+            XCTAssertFalse(content.contains("should-not-export"))
+            XCTAssertFalse(content.contains("Authorization: Bearer ***"))
+            XCTAssertFalse(content.contains("\"authorization\":\"secret\""))
+        }
+
+        let jsonData = try XCTUnwrap(service.exportRepresentation(for: chat, format: .json).content.data(using: .utf8))
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: jsonData) as? [String: Any])
+        let messages = try XCTUnwrap(object["messages"] as? [[String: Any]])
+        XCTAssertEqual(messages.map { $0["body"] as? String }, ["First message", "Second message"])
+        XCTAssertNotNil(object["metadata"])
+        XCTAssertEqual(object["systemMessage"] as? String, "Follow the local instructions.")
+    }
+
+    func testSuggestedFilenameAndTemporaryFilesAreSafeAndUnique() throws {
+        let representation = service.exportRepresentation(for: chat, format: .markdown)
+        XCTAssertEqual(representation.suggestedFilename, "Quarterly - Planning- Notes.md")
+        XCTAssertFalse(representation.suggestedFilename.contains("/"))
+
+        let first = try service.createTemporaryFile(for: representation, format: .markdown)
+        let second = try service.createTemporaryFile(for: representation, format: .markdown)
+        defer {
+            try? FileManager.default.removeItem(at: first)
+            try? FileManager.default.removeItem(at: second)
+        }
+        XCTAssertNotEqual(first, second)
+        XCTAssertEqual(try String(contentsOf: first), representation.content)
+    }
+
+    func testEmptyConversationWithMissingOptionalRelationshipsExportsSafely() throws {
+        chat.systemMessage = ""
+        XCTAssertNil(chat.persona)
+        XCTAssertNil(chat.project)
+        XCTAssertNil(chat.apiService)
+
+        for format in ChatExportFormat.allCases {
+            let content = service.exportRepresentation(for: chat, format: format).content
+            XCTAssertTrue(content.contains("Quarterly"))
+            XCTAssertFalse(content.contains("Follow the local instructions."))
+        }
+    }
+
+    func testTemporaryWriteFailureLeavesConversationUnchanged() throws {
+        let representation = service.exportRepresentation(for: chat, format: .plainText)
+        let originalName = chat.name
+        let originalBodies = chat.messagesArray.map(\.body)
+        let blocker = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try Data().write(to: blocker)
+        defer { try? FileManager.default.removeItem(at: blocker) }
+
+        XCTAssertThrowsError(try service.createTemporaryFile(for: representation, format: .plainText, in: blocker))
+        XCTAssertEqual(chat.name, originalName)
+        XCTAssertEqual(chat.messagesArray.map(\.body), originalBodies)
+    }
+
+    func testCancellingSharePickerDeletesTemporaryFileOnce() throws {
+        let representation = service.exportRepresentation(for: chat, format: .markdown)
+        let temporaryURL = try service.createTemporaryFile(for: representation, format: .markdown)
+        var completionCount = 0
+        let delegate = TemporaryShareDelegate(fileURL: temporaryURL) {
+            completionCount += 1
+        }
+        let picker = NSSharingServicePicker(items: [temporaryURL])
+
+        delegate.sharingServicePicker(picker, didChoose: nil)
+        delegate.sharingServicePicker(picker, didChoose: nil)
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: temporaryURL.path))
+        XCTAssertEqual(completionCount, 1)
+    }
+}
+
+@MainActor
+final class ChatBranchingManagerTests: XCTestCase {
+    private var fixture: InMemoryChatFixture!
+    private var context: NSManagedObjectContext!
+
+    override func setUp() {
+        super.setUp()
+        ValueTransformer.setValueTransformer(RequestMessagesTransformer(), forName: RequestMessagesTransformer.name)
+        fixture = InMemoryChatFixture()
+        context = fixture.persistence.container.viewContext
+    }
+
+    func testBranchingErrorsDoNotExposeUnderlyingErrorDetails() {
+        let sensitiveError = NSError(
+            domain: "test",
+            code: 1,
+            userInfo: [NSLocalizedDescriptionKey: "Authorization: Bearer secret-token"]
+        )
+
+        XCTAssertEqual(
+            BranchingError.saveFailed(sensitiveError).localizedDescription,
+            "Warden could not save the branch. Please try again."
+        )
+        XCTAssertEqual(
+            BranchingError.messageGenerationFailed(sensitiveError).localizedDescription,
+            "Warden could not generate a response for the branch. Please try again."
+        )
+    }
+
+    func testBranchCopiesOnlySelectedHistoryAndPreservesSourceSettings() async throws {
+        let source = fixture.chat
+        source.name = "Source"
+        source.temperature = 0.7
+        source.top_p = 0.9
+        source.behavior = "Creative"
+        source.systemMessage = "Keep context"
+        source.gptModel = "source-model"
+        source.requestMessages = [["role": "user", "content": "First"], ["role": "assistant", "content": "Second"]]
+
+        let project = ProjectEntity(context: context)
+        project.id = UUID()
+        project.name = "Project"
+        project.createdAt = Date(timeIntervalSince1970: 1)
+        project.updatedAt = Date(timeIntervalSince1970: 1)
+        source.project = project
+        let persona = PersonaEntity(context: context)
+        persona.id = UUID()
+        persona.name = "Persona"
+        source.persona = persona
+        let targetService = APIServiceEntity(context: context)
+        targetService.id = UUID()
+        targetService.name = "Target"
+        targetService.type = "Ollama"
+        targetService.url = URL(string: "http://127.0.0.1:11434")
+        targetService.model = "target-model"
+        targetService.addedDate = Date(timeIntervalSince1970: 1)
+
+        let first = fixture.addMessage("First", own: true)
+        first.id = 10
+        first.timestamp = Date(timeIntervalSince1970: 10)
+        let boundary = fixture.addMessage("Second", own: false)
+        boundary.id = 20
+        boundary.timestamp = Date(timeIntervalSince1970: 20)
+        let later = fixture.addMessage("Third", own: true)
+        later.id = 30
+        later.timestamp = Date(timeIntervalSince1970: 30)
+        try context.save()
+
+        let sourceBodies = source.messagesArray.map(\.body)
+        let manager = ChatBranchingManager(viewContext: context, openChat: { _ in })
+        let branch = try await manager.createBranch(
+            from: source,
+            at: boundary,
+            origin: .assistant,
+            targetService: targetService,
+            targetModel: "target-model",
+            autoGenerate: false
+        )
+
+        XCTAssertNotEqual(branch.objectID, source.objectID)
+        XCTAssertTrue(branch.parentChat === source)
+        XCTAssertEqual(branch.branchSourceMessageID, boundary.id)
+        XCTAssertEqual(branch.branchSourceRole, BranchOrigin.assistant.rawValue)
+        XCTAssertEqual(branch.messagesArray.map(\.body), ["First", "Second"])
+        XCTAssertEqual(branch.messagesArray.map(\.id), [1, 2])
+        XCTAssertEqual(branch.temperature, source.temperature)
+        XCTAssertEqual(branch.top_p, source.top_p)
+        XCTAssertEqual(branch.behavior, source.behavior)
+        XCTAssertEqual(branch.systemMessage, source.systemMessage)
+        XCTAssertTrue(branch.project === project)
+        XCTAssertTrue(branch.persona === persona)
+        XCTAssertTrue(branch.apiService === targetService)
+        XCTAssertEqual(branch.requestMessages.map { $0["content"] }, ["First", "Second"])
+        XCTAssertEqual(source.messagesArray.map(\.body), sourceBodies)
+        XCTAssertEqual(source.messagesArray.count, 3)
+        XCTAssertEqual(later.body, "Third")
     }
 }

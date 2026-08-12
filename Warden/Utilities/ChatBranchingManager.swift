@@ -21,10 +21,10 @@ enum BranchingError: LocalizedError {
             return "The branch message is no longer available"
         case .apiConfigurationFailed:
             return "Failed to configure the selected AI service"
-        case .saveFailed(let error):
-            return "Failed to save branched chat: \(error.localizedDescription)"
-        case .messageGenerationFailed(let error):
-            return "Failed to generate response: \(error.localizedDescription)"
+        case .saveFailed:
+            return "Warden could not save the branch. Please try again."
+        case .messageGenerationFailed:
+            return "Warden could not generate a response for the branch. Please try again."
         }
     }
 }
@@ -34,9 +34,14 @@ enum BranchingError: LocalizedError {
 @MainActor
 final class ChatBranchingManager {
     private let viewContext: NSManagedObjectContext
+    private let openChat: (ChatEntity) -> Void
     
-    init(viewContext: NSManagedObjectContext) {
+    init(
+        viewContext: NSManagedObjectContext,
+        openChat: @escaping (ChatEntity) -> Void = ChatBranchingManager.postOpenChatNotification
+    ) {
         self.viewContext = viewContext
+        self.openChat = openChat
     }
     
     /// Create a branch from a source chat at a specific message
@@ -89,7 +94,7 @@ final class ChatBranchingManager {
         }
         
         // Notify to open the new chat
-        postOpenChatNotification(for: newChat)
+        openChat(newChat)
         
         // Auto-generate response for user branches
         if origin == .user && autoGenerate {
@@ -197,7 +202,7 @@ final class ChatBranchingManager {
         chat.requestMessages = requestMessages
     }
     
-    private func postOpenChatNotification(for chat: ChatEntity) {
+    private static func postOpenChatNotification(for chat: ChatEntity) {
         NotificationCenter.default.post(
             name: Notification.Name("OpenChatByID"),
             object: nil,

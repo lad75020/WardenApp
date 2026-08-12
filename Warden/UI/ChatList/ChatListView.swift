@@ -17,6 +17,7 @@ struct ChatListView: View {
     
     // Search performance optimization
     @State private var debouncedSearchText = ""
+    @State private var searchDebounceTask: Task<Void, Never>?
     @State private var searchTask: Task<Void, Never>?
     @State private var searchResults: Set<UUID> = []
     @State private var isSearching = false
@@ -105,75 +106,57 @@ struct ChatListView: View {
     
     // MARK: - Background Search
     
-    private func performSearch(_ query: String) {
-        // Cancel any existing search
+    private func scheduleSearch(for query: String) {
+        searchDebounceTask?.cancel()
         searchTask?.cancel()
-        
+
         guard !query.isEmpty else {
-            debouncedSearchText = ""
-            searchResults.removeAll()
-            isSearching = false
+            clearSearch()
             return
         }
-        
+
+        // Invalidate the previous query immediately so its results cannot be
+        // acted on while the new query is waiting for its debounce/fetch cycle.
+        debouncedSearchText = query
+        searchResults.removeAll()
         isSearching = true
-        
+        searchDebounceTask = Task {
+            try? await Task.sleep(for: .milliseconds(300))
+            guard !Task.isCancelled else { return }
+            performSearch(query)
+        }
+    }
+
+    private func clearSearch() {
+        searchDebounceTask?.cancel()
+        searchTask?.cancel()
+        debouncedSearchText = ""
+        searchResults.removeAll()
+        isSearching = false
+    }
+
+    private func performSearch(_ query: String) {
+        searchTask?.cancel()
+
         searchTask = Task.detached(priority: .userInitiated) {
             var matchingChatIDs: Set<UUID> = []
-            
-            // Perform search in background context
             let backgroundContext = PersistenceController.shared.container.newBackgroundContext()
-            
+
             await backgroundContext.perform {
-                // Use NSPredicate for database-level filtering (much faster than in-memory iteration)
-                // This leverages SQLite indices for faster search
-                let fetchRequest = NSFetchRequest<ChatEntity>(entityName: "ChatEntity")
-                
-                // Build compound predicate for name, system message, and persona name
-                // Case-insensitive, diacritic-insensitive search with CONTAINS[cd]
-                let namePredicate = NSPredicate(format: "name CONTAINS[cd] %@", query)
-                let systemMessagePredicate = NSPredicate(format: "systemMessage CONTAINS[cd] %@", query)
-                let personaNamePredicate = NSPredicate(format: "persona.name CONTAINS[cd] %@", query)
-                
-                // Combine predicates with OR for initial fast filtering
-                fetchRequest.predicate = NSCompoundPredicate(orPredicateWithSubpredicates: [
-                    namePredicate,
-                    systemMessagePredicate,
-                    personaNamePredicate
-                ])
-                
+                guard !Task.isCancelled else { return }
+
                 do {
-                    // First pass: get chats matching name/system/persona (database-level, fast)
-                    let matchedByMetadata = try backgroundContext.fetch(fetchRequest)
-                    for chat in matchedByMetadata {
-                        if Task.isCancelled { return }
-                        matchingChatIDs.insert(chat.id)
-                    }
-                    
-                    // Second pass: search in message bodies for chats not yet matched
-                    // This requires relationship traversal so we do it separately
-                    // Only fetch chats that weren't already matched to avoid redundant work
-                    let messageSearchRequest = NSFetchRequest<ChatEntity>(entityName: "ChatEntity")
-                    messageSearchRequest.predicate = NSPredicate(format: "ANY messages.body CONTAINS[cd] %@", query)
-                    
-                    let matchedByMessages = try backgroundContext.fetch(messageSearchRequest)
-                    for chat in matchedByMessages {
-                        if Task.isCancelled { return }
-                        matchingChatIDs.insert(chat.id)
-                    }
-                    
+                    matchingChatIDs = try LocalChatSearch.matchingIDs(for: query, in: backgroundContext)
                 } catch {
-                    WardenLog.app.error("Search error: \(error.localizedDescription, privacy: .public)")
+                    WardenLog.app.error("Search failed without returning results")
                 }
             }
-            
-            // Update UI on main thread
+
             await MainActor.run {
-                if !Task.isCancelled {
-                    self.searchResults = matchingChatIDs
-                    self.debouncedSearchText = query
-                    self.isSearching = false
-                }
+                guard !Task.isCancelled, self.searchText == query else { return }
+                self.searchResults = matchingChatIDs
+                self.debouncedSearchText = query
+                self.isSearching = false
             }
         }
     }
@@ -260,47 +243,35 @@ struct ChatListView: View {
             } else {
                 Image(systemName: "magnifyingglass")
                     .foregroundColor(.gray)
+                    .accessibilityHidden(true)
             }
 
             TextField("Search chats...", text: $searchText)
                 .textFieldStyle(PlainTextFieldStyle())
                 .font(.system(.body))
                 .focused($isSearchFocused)
+                .accessibilityLabel("Search chats")
+                .accessibilityHint("Searches local chat titles, instructions, personas, and messages")
                 .onExitCommand {
                     searchText = ""
+                    clearSearch()
                     isSearchFocused = false
                 }
-                .onChange(of: searchText) { oldValue, newValue in
-                    // Debounce search by 300ms
-                    searchTask?.cancel()
-                    
-                    if newValue.isEmpty {
-                        debouncedSearchText = ""
-                        searchResults.removeAll()
-                        isSearching = false
-                    } else {
-                        isSearching = true
-                        searchTask = Task {
-                            try? await Task.sleep(nanoseconds: 300_000_000) // 300ms
-                            if !Task.isCancelled {
-                                await performSearch(newValue)
-                            }
-                        }
-                    }
+                .onChange(of: searchText) { _, newValue in
+                    scheduleSearch(for: newValue)
                 }
 
             if !searchText.isEmpty {
                 Button(action: {
                     searchText = ""
-                    debouncedSearchText = ""
-                    searchResults.removeAll()
-                    isSearching = false
-                    searchTask?.cancel()
+                    clearSearch()
                 }) {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundColor(.gray)
                 }
                 .buttonStyle(PlainButtonStyle())
+                .accessibilityLabel("Clear chat search")
+                .accessibilityHint("Clears the current search results")
             }
         }
         .padding(8)
@@ -527,6 +498,7 @@ struct ChatListView: View {
                             .font(.system(size: 10, weight: .medium))
                             .rotationEffect(.degrees(showingArchivedProjects ? 90 : 0))
                             .animation(.easeInOut(duration: 0.2), value: showingArchivedProjects)
+                            .accessibilityHidden(true)
                         
                         Text("Archived Projects")
                             .font(.subheadline)
@@ -544,9 +516,11 @@ struct ChatListView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(PlainButtonStyle())
+                .accessibilityLabel("Archived Projects")
+                .accessibilityValue(showingArchivedProjects ? "Expanded" : "Collapsed")
+                .accessibilityHint("Shows or hides archived projects without changing them")
             }
-            
-            // Archived projects list
+
             if showingArchivedProjects {
                 ForEach(getArchivedProjects(), id: \.id) { project in
                     ProjectRowInList(

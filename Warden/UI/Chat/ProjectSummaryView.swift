@@ -190,8 +190,8 @@ struct ProjectSummaryView: View {
     private var bottomCompactSection: some View {
         HStack(spacing: 16) {
             statCard(title: "Total Chats", value: "\(project.chats?.count ?? 0)", icon: "bubble.left.and.bubble.right.fill", color: .blue)
-            statCard(title: "Messages", value: "\(messageCount)", icon: "text.bubble.fill", color: .purple)
-            statCard(title: "Days Active", value: "\(activeDays)", icon: "calendar.badge.clock", color: .orange)
+            statCard(title: "Messages", value: isLoadingStats ? "—" : "\(messageCount)", icon: "text.bubble.fill", color: .purple)
+            statCard(title: "Days Active", value: isLoadingStats ? "—" : "\(activeDays)", icon: "calendar.badge.clock", color: .orange)
         }
     }
     
@@ -235,8 +235,10 @@ struct ProjectSummaryView: View {
                 .font(.title2)
                 .fontWeight(.bold)
             
-            if recentChats.isEmpty && !isLoadingStats {
-                // Show nothing here if empty, empty state is likely handled elsewhere or acceptable
+            if isLoadingStats {
+                ProgressView("Loading project summary")
+                    .accessibilityLabel("Loading project summary")
+            } else if recentChats.isEmpty {
                 Text("No recent activity")
                     .foregroundStyle(.secondary)
                     .italic()
@@ -264,7 +266,10 @@ struct ProjectSummaryView: View {
                 .font(.title2)
                 .fontWeight(.bold)
             
-             if allChats.isEmpty && !isLoadingStats {
+             if isLoadingStats {
+                 ProgressView("Loading chats")
+                     .accessibilityLabel("Loading project chats")
+             } else if allChats.isEmpty {
                  ProjectEmptyStateView(
                      icon: "bubble.left.and.bubble.right",
                      title: "No Chats Yet",

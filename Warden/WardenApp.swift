@@ -34,7 +34,7 @@ class PersistenceController {
         container = NSPersistentContainer(name: "wardenDataModel")
         
         if inMemory {
-            container.persistentStoreDescriptions.first!.url = URL(fileURLWithPath: "/dev/null")
+            container.persistentStoreDescriptions.first!.type = NSInMemoryStoreType
         } else if let persistentStoreURL {
             container.persistentStoreDescriptions.first!.url = persistentStoreURL
         }
