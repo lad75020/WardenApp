@@ -2,6 +2,8 @@ import SwiftUI
 import AppKit
 
 struct TabHotkeysView: View {
+    static let quickChatRegistrationWarning = "Quick Chat shortcut could not be registered. Try another combination."
+
     @StateObject private var hotkeyManager = HotkeyManager.shared
     @State private var editingActionId: String?
     @State private var showingResetConfirmation = false
@@ -19,6 +21,13 @@ struct TabHotkeysView: View {
                         .foregroundStyle(.secondary)
                 }
                 .padding(.bottom, 8)
+
+                if let warning = Self.quickChatWarning(for: hotkeyManager.quickChatRegistrationOutcome) {
+                    Label(warning, systemImage: "exclamationmark.triangle.fill")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.orange)
+                        .accessibilityIdentifier("quickChatRegistrationWarning")
+                }
                 
                 // Shortcuts by Category
                 ForEach(HotkeyAction.HotkeyCategory.allCases, id: \.self) { category in
@@ -85,6 +94,15 @@ struct TabHotkeysView: View {
         }
     }
     
+    static func quickChatWarning(for outcome: GlobalHotkeyHandler.RegistrationOutcome) -> String? {
+        switch outcome {
+        case .mappingFailure, .registrationFailure:
+            quickChatRegistrationWarning
+        case .notRegistered, .registered:
+            nil
+        }
+    }
+
     private func categoryColor(for category: HotkeyAction.HotkeyCategory) -> Color {
         switch category {
         case .chat: return .blue

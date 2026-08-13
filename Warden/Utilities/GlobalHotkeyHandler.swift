@@ -4,10 +4,18 @@ import os
 
 @MainActor
 final class GlobalHotkeyHandler: ObservableObject {
+    enum RegistrationOutcome: Equatable {
+        case notRegistered
+        case registered
+        case mappingFailure
+        case registrationFailure
+    }
+
     static let shared = GlobalHotkeyHandler()
     
     private var hotKeyRef: EventHotKeyRef?
     private var onTrigger: (() -> Void)?
+    @Published private(set) var registrationOutcome: RegistrationOutcome = .notRegistered
     
     private init() {}
     
@@ -23,10 +31,9 @@ final class GlobalHotkeyHandler: ObservableObject {
         if shortcut.modifiers.contains(.shift) { carbonModifiers |= UInt32(shiftKey) }
         
         guard let keyCode = keyCode(for: shortcut.key) else {
+            registrationOutcome = Self.registrationOutcome(forMappedKeyCode: nil, registrationStatus: nil)
             #if DEBUG
-            WardenLog.app.debug(
-                "GlobalHotkeyHandler: Could not map key '\(shortcut.key, privacy: .public)' to key code"
-            )
+            WardenLog.app.debug("GlobalHotkeyHandler: Could not map quick-chat key to key code")
             #endif
             return
         }
@@ -45,12 +52,21 @@ final class GlobalHotkeyHandler: ObservableObject {
         
         if status == noErr {
             self.hotKeyRef = hotKeyRef
+            registrationOutcome = Self.registrationOutcome(forMappedKeyCode: keyCode, registrationStatus: status)
             installEventHandler()
         } else {
+            registrationOutcome = Self.registrationOutcome(forMappedKeyCode: keyCode, registrationStatus: status)
+            #if DEBUG
             WardenLog.app.error(
                 "GlobalHotkeyHandler: Failed to register hotkey (status: \(status, privacy: .public))"
             )
+            #endif
         }
+    }
+
+    static func registrationOutcome(forMappedKeyCode keyCode: UInt16?, registrationStatus: OSStatus?) -> RegistrationOutcome {
+        guard keyCode != nil else { return .mappingFailure }
+        return registrationStatus == noErr ? .registered : .registrationFailure
     }
     
     func unregister() {

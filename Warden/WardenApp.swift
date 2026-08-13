@@ -410,9 +410,7 @@ struct WardenApp: App {
     private func setupGlobalHotkeys() {
         // Register the Quick Chat hotkey
         if let shortcut = HotkeyManager.shared.getShortcut(for: "quickChat") {
-            GlobalHotkeyHandler.shared.register(shortcut: shortcut) {
-                FloatingPanelManager.shared.togglePanel()
-            }
+            HotkeyManager.shared.registerQuickChatShortcut(shortcut)
         }
     }
     

@@ -24,13 +24,8 @@ final class MultiAgentMessageManager: ObservableObject {
         // Update state
         isProcessing = false
         
-        // Mark incomplete agents as cancelled
-        for index in activeAgents.indices {
-            if !activeAgents[index].isComplete {
-                activeAgents[index].isComplete = true
-                activeAgents[index].error = APIError.unknown("Request cancelled by user")
-            }
-        }
+        // Mark incomplete agents as cancelled.
+        Self.finalizeCancellation(of: &activeAgents, message: "Request cancelled by user")
     }
     
     /// Represents a response from a single agent/service
@@ -47,6 +42,26 @@ final class MultiAgentMessageManager: ObservableObject {
         var displayName: String {
             return "\(serviceName) (\(model))"
         }
+
+        mutating func markCompleted() {
+            isComplete = true
+            timestamp = Date()
+        }
+
+        mutating func markFailed(_ failure: APIError) {
+            error = failure
+            markCompleted()
+        }
+    }
+
+    static func cappedServices<T>(_ services: [T]) -> [T] {
+        Array(services.prefix(AppConstants.MultiAgent.maxConcurrentServices))
+    }
+
+    static func finalizeCancellation(of responses: inout [AgentResponse], message: String) {
+        for index in responses.indices where !responses[index].isComplete {
+            responses[index].markFailed(.unknown(message))
+        }
     }
     
     /// Sends a message to multiple AI services simultaneously
@@ -62,8 +77,8 @@ final class MultiAgentMessageManager: ObservableObject {
             return
         }
         
-        // Limit to maximum 3 services for optimal UX
-        let limitedServices = Array(selectedServices.prefix(3))
+        // Limit to the shared maximum number of services for optimal UX.
+        let limitedServices = Self.cappedServices(selectedServices)
         
         isProcessing = true
         activeAgents = []
@@ -158,8 +173,7 @@ final class MultiAgentMessageManager: ObservableObject {
                 if !Task.isCancelled {
                     await MainActor.run {
                         if agentIndex < self.activeAgents.count {
-                            self.activeAgents[agentIndex].isComplete = true
-                            self.activeAgents[agentIndex].timestamp = Date()
+                            self.activeAgents[agentIndex].markCompleted()
                         }
                     }
                 }
@@ -168,16 +182,14 @@ final class MultiAgentMessageManager: ObservableObject {
             } catch is CancellationError {
                 await MainActor.run {
                     if agentIndex < self.activeAgents.count {
-                        self.activeAgents[agentIndex].error = APIError.unknown("Request cancelled")
-                        self.activeAgents[agentIndex].isComplete = true
+                        self.activeAgents[agentIndex].markFailed(.unknown("Request cancelled"))
                     }
                 }
                 dispatchGroup.leave()
             } catch {
                 await MainActor.run {
                     if agentIndex < self.activeAgents.count {
-                        self.activeAgents[agentIndex].error = error as? APIError ?? APIError.unknown(error.localizedDescription)
-                        self.activeAgents[agentIndex].isComplete = true
+                        self.activeAgents[agentIndex].markFailed(error as? APIError ?? APIError.unknown(error.localizedDescription))
                     }
                 }
                 dispatchGroup.leave()
@@ -209,12 +221,10 @@ final class MultiAgentMessageManager: ObservableObject {
                 switch result {
                 case .success(let (responseText, _)):
                     self.activeAgents[agentIndex].response = responseText ?? "No response"
-                    self.activeAgents[agentIndex].isComplete = true
-                    self.activeAgents[agentIndex].timestamp = Date()
+                    self.activeAgents[agentIndex].markCompleted()
                     
                 case .failure(let error):
-                    self.activeAgents[agentIndex].error = error as? APIError ?? APIError.unknown(error.localizedDescription)
-                    self.activeAgents[agentIndex].isComplete = true
+                    self.activeAgents[agentIndex].markFailed(error as? APIError ?? APIError.unknown(error.localizedDescription))
                 }
                 
                 dispatchGroup.leave()

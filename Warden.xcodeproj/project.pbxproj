@@ -151,6 +151,13 @@
 		7F8D7CA62DE9DAF4003E7BCA /* MultiAgentServiceSelector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F8D7CA52DE9DAF4003E7BCA /* MultiAgentServiceSelector.swift */; };
 		7F8D7CA72DE9DAF4003E7BCA /* MultiAgentResponseView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F8D7CA42DE9DAF4003E7BCA /* MultiAgentResponseView.swift */; };
 		7F8D7CA92DE9DB13003E7BCA /* MultiAgentMessageManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F8D7CA82DE9DB13003E7BCA /* MultiAgentMessageManager.swift */; };
+		F01200000000000000000002 /* HotkeyModelsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F01200000000000000000001 /* HotkeyModelsTests.swift */; };
+		F01200000000000000000004 /* MultiAgentMessageManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F01200000000000000000003 /* MultiAgentMessageManagerTests.swift */; };
+		F01200000000000000000006 /* MultiAgentServiceSelectorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F01200000000000000000005 /* MultiAgentServiceSelectorTests.swift */; };
+		F01200000000000000000008 /* FloatingPanelManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F01200000000000000000007 /* FloatingPanelManagerTests.swift */; };
+		F0120000000000000000000A /* GlobalHotkeyHandlerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F01200000000000000000009 /* GlobalHotkeyHandlerTests.swift */; };
+		F0120000000000000000000C /* TabHotkeysViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0120000000000000000000B /* TabHotkeysViewTests.swift */; };
+		F0120000000000000000000E /* MultiAgentQuickChatTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0120000000000000000000D /* MultiAgentQuickChatTests.swift */; };
 		7F97AE1B2E0D75000050CAFE /* Markdown in Frameworks */ = {isa = PBXBuildFile; productRef = 7F97AE1A2E0D75000050CAFE /* Markdown */; };
 		7F97AE1D2E0D75CE0050CAFE /* MarkdownView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F97AE1C2E0D75CE0050CAFE /* MarkdownView.swift */; };
 		7FDDAED02DE8BA5C0072EA51 /* MistralHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FDDAECF2DE8BA5C0072EA51 /* MistralHandler.swift */; };
@@ -386,6 +393,13 @@
 		7F8D7CA42DE9DAF4003E7BCA /* MultiAgentResponseView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultiAgentResponseView.swift; sourceTree = "<group>"; };
 		7F8D7CA52DE9DAF4003E7BCA /* MultiAgentServiceSelector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultiAgentServiceSelector.swift; sourceTree = "<group>"; };
 		7F8D7CA82DE9DB13003E7BCA /* MultiAgentMessageManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultiAgentMessageManager.swift; sourceTree = "<group>"; };
+		F01200000000000000000001 /* HotkeyModelsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotkeyModelsTests.swift; sourceTree = "<group>"; };
+		F01200000000000000000003 /* MultiAgentMessageManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultiAgentMessageManagerTests.swift; sourceTree = "<group>"; };
+		F01200000000000000000005 /* MultiAgentServiceSelectorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultiAgentServiceSelectorTests.swift; sourceTree = "<group>"; };
+		F01200000000000000000007 /* FloatingPanelManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloatingPanelManagerTests.swift; sourceTree = "<group>"; };
+		F01200000000000000000009 /* GlobalHotkeyHandlerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobalHotkeyHandlerTests.swift; sourceTree = "<group>"; };
+		F0120000000000000000000B /* TabHotkeysViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabHotkeysViewTests.swift; sourceTree = "<group>"; };
+		F0120000000000000000000D /* MultiAgentQuickChatTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultiAgentQuickChatTests.swift; sourceTree = "<group>"; };
 		7F97AE1C2E0D75CE0050CAFE /* MarkdownView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownView.swift; sourceTree = "<group>"; };
 		7FDDAECF2DE8BA5C0072EA51 /* MistralHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MistralHandler.swift; sourceTree = "<group>"; };
 		7FE379012DE9A1DA0093DACE /* InteractiveOnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InteractiveOnboardingView.swift; sourceTree = "<group>"; };
@@ -880,6 +894,12 @@
 				D0040000000000000000000A /* MessageManagerStreamingTests.swift */,
 				D0040000000000000000000C /* MessageManagerRetryTests.swift */,
 				4D133259302C4BD50029CD47 /* LocalProviderTests.swift */,
+				F01200000000000000000001 /* HotkeyModelsTests.swift */,
+				F01200000000000000000003 /* MultiAgentMessageManagerTests.swift */,
+				F01200000000000000000005 /* MultiAgentServiceSelectorTests.swift */,
+				F0120000000000000000000D /* MultiAgentQuickChatTests.swift */,
+				F01200000000000000000007 /* FloatingPanelManagerTests.swift */,
+				F01200000000000000000009 /* GlobalHotkeyHandlerTests.swift */,
 			);
 			path = Utilities;
 			sourceTree = "<group>";
@@ -977,6 +997,7 @@
 				D00400000000000000000011 /* ChatViewModelStreamingTests.swift */,
 				D00400000000000000000013 /* ChatViewModelRetryTests.swift */,
 				D00400000000000000000015 /* MessageListScrollBehaviorTests.swift */,
+				F0120000000000000000000B /* TabHotkeysViewTests.swift */,
 			);
 			path = UI;
 			sourceTree = "<group>";
@@ -1383,6 +1404,13 @@
 				D00400000000000000000014 /* ChatViewModelRetryTests.swift in Sources */,
 				4D133261302C66370029CD47 /* MCPToolIntegrationTests.swift in Sources */,
 				4D13325A302C4BD50029CD47 /* LocalProviderTests.swift in Sources */,
+				F01200000000000000000002 /* HotkeyModelsTests.swift in Sources */,
+				F01200000000000000000004 /* MultiAgentMessageManagerTests.swift in Sources */,
+				F01200000000000000000006 /* MultiAgentServiceSelectorTests.swift in Sources */,
+				F01200000000000000000008 /* FloatingPanelManagerTests.swift in Sources */,
+				F0120000000000000000000A /* GlobalHotkeyHandlerTests.swift in Sources */,
+				F0120000000000000000000C /* TabHotkeysViewTests.swift in Sources */,
+				F0120000000000000000000E /* MultiAgentQuickChatTests.swift in Sources */,
 				D00400000000000000000016 /* MessageListScrollBehaviorTests.swift in Sources */,
 			);
 		};

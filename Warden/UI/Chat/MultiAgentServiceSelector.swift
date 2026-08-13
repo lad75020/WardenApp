@@ -6,7 +6,11 @@ struct MultiAgentServiceSelector: View {
     @Binding var selectedServices: [APIServiceEntity]
     @Binding var isVisible: Bool
     let availableServices: [APIServiceEntity]
-    private let maxSelectedServices = 3
+    private let maxSelectedServices = AppConstants.MultiAgent.maxConcurrentServices
+
+    static func isServiceSelectionDisabled(selectedCount: Int, isSelected: Bool) -> Bool {
+        !isSelected && selectedCount >= AppConstants.MultiAgent.maxConcurrentServices
+    }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -33,7 +37,10 @@ struct MultiAgentServiceSelector: View {
                             service: service,
                             isSelected: selectedServices.contains(where: { $0.id == service.id }),
                             selectionCount: selectedServices.filter({ $0.id == service.id }).count,
-                            isDisabled: !selectedServices.contains(where: { $0.id == service.id }) && selectedServices.count >= maxSelectedServices
+                            isDisabled: Self.isServiceSelectionDisabled(
+                                selectedCount: selectedServices.count,
+                                isSelected: selectedServices.contains(where: { $0.id == service.id })
+                            )
                         ) { isSelected in
                             if isSelected && selectedServices.count < maxSelectedServices {
                                 selectedServices.append(service)

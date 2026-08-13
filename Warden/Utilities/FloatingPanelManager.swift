@@ -59,7 +59,7 @@ final class FloatingPanelManager: NSObject, NSWindowDelegate, ObservableObject {
     
     func updateHeight(_ height: CGFloat) {
         guard let panel = panel else { return }
-        let clampedHeight = min(max(height, 60), 600) // Min 60, Max 600
+        let clampedHeight = Self.clampedHeight(height)
         
         if panel.frame.height != clampedHeight {
             var frame = panel.frame
@@ -73,6 +73,10 @@ final class FloatingPanelManager: NSObject, NSWindowDelegate, ObservableObject {
             
             panel.setFrame(frame, display: true, animate: true)
         }
+    }
+
+    nonisolated static func clampedHeight(_ height: CGFloat) -> CGFloat {
+        min(max(height, AppConstants.QuickChat.minPanelHeight), AppConstants.QuickChat.maxPanelHeight)
     }
     
     private func createPanel() {
