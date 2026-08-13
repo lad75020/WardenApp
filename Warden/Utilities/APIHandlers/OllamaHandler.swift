@@ -126,6 +126,13 @@ class OllamaHandler: BaseAPIHandler {
         stream: Bool
     ) throws -> URLRequest {
         try LocalEndpointPolicy.validate(baseURL)
+
+        guard !isImageGenerationModel(model.lowercased()) else {
+            throw APIError.noApiService(
+                "Ollama's current API does not support image generation. Choose Warden's MLX image provider or another supported image provider."
+            )
+        }
+
         // Determine if this is image generation
         let isImageGeneration = detectImageGeneration(in: requestMessages)
         
@@ -484,7 +491,7 @@ class OllamaHandler: BaseAPIHandler {
                     if let errorMessage = dict["error"] as? String, !errorMessage.isEmpty {
                         ollamaLog.error("Ollama returned error in stream body")
                         if errorMessage.lowercased().contains("image generation models are not currently supported") {
-                            return (true, APIError.serverError("This Ollama server doesn't support image generation. Image generation was removed in Ollama 0.32.6 — install Ollama 0.32.5 to generate images."), nil, nil, nil)
+                            return (true, APIError.serverError("Ollama's current API does not support image generation. Choose Warden's MLX image provider or another supported image provider."), nil, nil, nil)
                         }
                         return (true, APIError.serverError(errorMessage), nil, nil, nil)
                     }

@@ -172,10 +172,10 @@ private extension BaseAPIHandler {
     func mapServerError(statusCode: Int, body: String?) -> APIError {
         let lowered = (body ?? "").lowercased()
 
-        // Ollama removed image generation in 0.32.6; it returns HTTP 400 with this body.
+        // The current Ollama HTTP API rejects image-generation models before output parsing.
         if lowered.contains("image generation models are not currently supported") {
             return .serverError(
-                "This Ollama server doesn't support image generation. Image generation was removed in Ollama 0.32.6 — install Ollama 0.32.5 to generate images."
+                "Ollama's current API does not support image generation. Choose Warden's MLX image provider or another supported image provider."
             )
         }
 

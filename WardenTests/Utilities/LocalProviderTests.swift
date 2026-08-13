@@ -31,6 +31,29 @@ final class LocalProviderTests: XCTestCase {
         XCTAssertThrowsError(try lmStudio.prepareRequest(requestMessages: [], tools: nil, model: "local", temperature: 0.2, stream: false))
     }
 
+    func testOllamaImageModelIsRejectedBeforeRequestDispatch() {
+        let ollama = OllamaHandler(
+            config: localConfig(name: "ollama", model: "x/z-image-turbo:latest"),
+            session: .shared,
+            streamingSession: .shared
+        )
+
+        XCTAssertThrowsError(
+            try ollama.prepareRequest(
+                requestMessages: [["role": "user", "content": "A red cube"]],
+                tools: nil,
+                model: "x/z-image-turbo:latest",
+                temperature: 0.2,
+                stream: false
+            )
+        ) { error in
+            XCTAssertEqual(
+                (error as? APIError)?.errorDescription,
+                "Ollama's current API does not support image generation. Choose Warden's MLX image provider or another supported image provider."
+            )
+        }
+    }
+
     func testFactoryRoutesEachLocalProviderToItsLocalService() {
         XCTAssertTrue(APIServiceFactory.createAPIService(config: localConfig(name: "ollama", model: "llama3")) is OllamaHandler)
         XCTAssertTrue(APIServiceFactory.createAPIService(config: localConfig(name: "lmstudio")) is LMStudioHandler)
