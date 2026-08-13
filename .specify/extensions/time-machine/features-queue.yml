@@ -224,6 +224,6 @@ features:
     status: done # pending | in-progress | done | skipped
     current_phase: null # null | specify | clarify | plan | tasks | implement
     branch: "feature/time-machine-multi-agent-and-quick-chat"
-    pushed: null # null | true | false
+    pushed: true # null | true | false
     started_at: "2026-08-13T01:51:00Z"
     completed_at: "2026-08-13T02:45:00Z"
