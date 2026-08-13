@@ -848,8 +848,8 @@ extension ChatView {
             return
         }
         
-        // Ensure we don't exceed the 3-service limit
-        let limitedServices = Array(selectedMultiAgentServices.prefix(3))
+        // Ensure we don't exceed the shared multi-agent service limit.
+        let limitedServices = Array(selectedMultiAgentServices.prefix(AppConstants.MultiAgent.maxConcurrentServices))
         if limitedServices.count != selectedMultiAgentServices.count {
             // Update the selection to reflect the limit
             selectedMultiAgentServices = limitedServices

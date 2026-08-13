@@ -57,6 +57,17 @@ struct AppConstants {
     // MARK: - Preferences & Flags
     static let defaultPersonasFlag = "defaultPersonasAdded"
     static let defaultApiType = "chatgpt"
+
+    // MARK: - Multi-Agent Configuration
+    struct MultiAgent {
+        static let maxConcurrentServices: Int = 3
+    }
+
+    // MARK: - Quick Chat Configuration
+    struct QuickChat {
+        static let minPanelHeight: CGFloat = 60
+        static let maxPanelHeight: CGFloat = 600
+    }
     
     // MARK: - Temperature Settings
     struct Temperature {

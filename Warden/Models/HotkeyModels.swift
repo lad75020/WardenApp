@@ -142,6 +142,7 @@ class HotkeyManager: ObservableObject {
     
     @Published private(set) var availableActions: [HotkeyAction] = []
     @Published private(set) var shortcuts: [String: KeyboardShortcut] = [:]
+    @Published private(set) var quickChatRegistrationOutcome: GlobalHotkeyHandler.RegistrationOutcome = .notRegistered
     
     private init() {
         setupDefaultActions()
@@ -217,10 +218,15 @@ class HotkeyManager: ObservableObject {
         
         // If this is the global quick chat hotkey, update the global registration
         if actionId == "quickChat" {
-            GlobalHotkeyHandler.shared.register(shortcut: shortcut) {
-                FloatingPanelManager.shared.togglePanel()
-            }
+            registerQuickChatShortcut(shortcut)
         }
+    }
+
+    func registerQuickChatShortcut(_ shortcut: KeyboardShortcut) {
+        GlobalHotkeyHandler.shared.register(shortcut: shortcut) {
+            FloatingPanelManager.shared.togglePanel()
+        }
+        quickChatRegistrationOutcome = GlobalHotkeyHandler.shared.registrationOutcome
     }
     
     func getShortcut(for actionId: String) -> KeyboardShortcut? {
