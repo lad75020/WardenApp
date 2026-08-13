@@ -478,6 +478,17 @@ class OllamaHandler: BaseAPIHandler {
 
                 if let dict = jsonResponse as? [String: Any] {
                     ollamaLog.debug("Delta keys: \(Array(dict.keys).joined(separator: ","), privacy: .public)")
+
+                    // Surface a top-level error (e.g. Ollama returning an error body
+                    // even with a 200) instead of silently yielding nothing.
+                    if let errorMessage = dict["error"] as? String, !errorMessage.isEmpty {
+                        ollamaLog.error("Ollama returned error in stream body")
+                        if errorMessage.lowercased().contains("image generation models are not currently supported") {
+                            return (true, APIError.serverError("This Ollama server doesn't support image generation. Image generation was removed in Ollama 0.32.6 — install Ollama 0.32.5 to generate images."), nil, nil, nil)
+                        }
+                        return (true, APIError.serverError(errorMessage), nil, nil, nil)
+                    }
+
                     let done = dict["done"] as? Bool ?? false
                     ollamaLog.debug("Delta 'done' = \(done, privacy: .public)")
                     

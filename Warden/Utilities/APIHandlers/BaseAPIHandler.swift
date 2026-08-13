@@ -66,22 +66,24 @@ class BaseAPIHandler: APIService {
             do {
                 let (stream, response) = try await streamingSession.bytes(for: request)
                 
+                let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
                 #if DEBUG
                 log.debug("Got stream from URL session")
-                let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
                 log.debug("Response status: \(statusCode, privacy: .public)")
-                
-                // Check for HTTP errors first
+                #endif
+
+                // Check for HTTP errors first (must run in release too, otherwise
+                // non-2xx responses like Ollama's 400 are silently swallowed).
                 if !(200...299).contains(statusCode) {
                     let errorBody = try await self.collectResponseBody(from: stream)
-                    if let errorString = String(data: errorBody, encoding: .utf8) {
-                        log.error("HTTP error \(statusCode): \(errorBody.count, privacy: .public) byte redacted body")
-                        throw APIError.serverError("HTTP \(statusCode): \(errorString)")
-                    } else {
-                        throw APIError.serverError("HTTP \(statusCode)")
-                    }
+                    let errorString = String(data: errorBody, encoding: .utf8)
+                    #if DEBUG
+                    log.error("HTTP error \(statusCode): \(errorBody.count, privacy: .public) byte redacted body")
+                    #endif
+                    throw self.mapServerError(statusCode: statusCode, body: errorString)
                 }
-                
+
+                #if DEBUG
                 if let httpResponse = response as? HTTPURLResponse {
                     for (key, value) in httpResponse.allHeaderFields {
                         let valueString: String
@@ -165,6 +167,24 @@ class BaseAPIHandler: APIService {
 }
 
 private extension BaseAPIHandler {
+    /// Maps a non-2xx HTTP response into a user-facing APIError, translating known
+    /// provider error strings into friendly guidance. Runs in release builds.
+    func mapServerError(statusCode: Int, body: String?) -> APIError {
+        let lowered = (body ?? "").lowercased()
+
+        // Ollama removed image generation in 0.32.6; it returns HTTP 400 with this body.
+        if lowered.contains("image generation models are not currently supported") {
+            return .serverError(
+                "This Ollama server doesn't support image generation. Image generation was removed in Ollama 0.32.6 — install Ollama 0.32.5 to generate images."
+            )
+        }
+
+        if let body, !body.isEmpty {
+            return .serverError("HTTP \(statusCode): \(body)")
+        }
+        return .serverError("HTTP \(statusCode)")
+    }
+
     func collectResponseBody(from stream: URLSession.AsyncBytes, maxBytes: Int = 1_048_576) async throws -> Data {
         var data = Data()
         data.reserveCapacity(min(16_384, maxBytes))
