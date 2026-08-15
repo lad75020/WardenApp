@@ -53,12 +53,14 @@ This guide explains how to add an **OpenRouter** API key to Warden so you can us
 ## Where the API key is stored (security)
 
 - Warden stores API tokens in the **macOS Keychain** (not in source code and not in Core Data).
-- Internally, the token is saved under the Keychain service name `notfullin.com.macai` and keyed per API service `id` (UUID).
+- The current `TokenManager` source uses the Keychain service `fr.dubertrand.WardenAI`.
+- Tokens are stored in an encoded bundle under `api_tokens_bundle`, with service-keyed identifiers using the `api_token_` prefix.
+- Existing installations may also contain legacy per-item entries that are cleaned up after a successful bundle save.
 
 To remove an OpenRouter key:
 
 - Deleting the API Service in Warden stops it being used, but the Keychain entry may remain.
-- To fully remove the key, use **Keychain Access** and delete the relevant `api_token_*` entry (advanced/manual).
+- To fully remove the key, use **Keychain Access** and remove the relevant WardenApp token item after confirming its service and account (advanced/manual).
 
 ## Troubleshooting
 

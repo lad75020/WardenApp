@@ -49,6 +49,19 @@ To configure OpenRouter after launching the app:
 4. Paste the API token, choose or refresh the model list, test the connection, and save.
 5. Set the service as default if desired.
 
+## Documentation
+
+The full documentation set is in [`docs/`](docs/README.md):
+
+- [Getting started](docs/getting-started.md) - build, launch, and configure a first service.
+- [User guide](docs/user-guide.md) - chats, models, attachments, search, MCP, and Quick Chat.
+- [Functional requirements](docs/functional-requirements.md) - consolidated index for the twelve feature specifications.
+- [Architecture](docs/architecture.md) - application layers, request flows, persistence, and integrations.
+- [Provider reference](docs/provider-reference.md) - hosted and local provider behavior.
+- [Developer guide](docs/developer-guide.md) - source layout, build, test, and extension workflow.
+- [Security and privacy](docs/security-and-privacy.md) - credentials, transport, sandbox, logging, and data boundaries.
+- [Troubleshooting](docs/troubleshooting.md) - common provider, persistence, search, MCP, and runtime issues.
+
 ## Run and development commands
 
 The inspected README documents the source workflow as:
